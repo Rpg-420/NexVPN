@@ -1,0 +1,301 @@
+name: Build & Release Multi-OS Multi-Arch Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release Version (e.g. v1.1.0)'
+        required: true
+        default: 'v1.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Windows Builds (Portable ZIP + Installer for amd64, arm64, 386)
+  # -------------------------------------------------------------------------
+  build-windows:
+    name: Windows (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            goarch: amd64
+          - arch: arm64
+            goarch: arm64
+          - arch: 386
+            goarch: "386"
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install Wails CLI & go-winres
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
+          go install github.com/tc-hib/go-winres@latest
+
+      - name: Generate Windows Resources
+        run: |
+          go-winres make --in winres/winres.json
+
+      - name: Build Windows Application
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          wails build -clean -platform windows/${{ matrix.goarch }} -nsis
+
+      - name: Package Portable ZIP
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          if ($ver -eq "" -or $ver -like "*refs*") { $ver = "${{ github.event.inputs.version }}" }
+          if ($ver -eq "") { $ver = "v1.1.0" }
+          
+          $distName = "NexVPN-$ver-windows-${{ matrix.arch }}-portable"
+          New-Item -ItemType Directory -Path $distName
+          
+          # Copy executable
+          Get-ChildItem -Path "build/bin" -Filter "*.exe" | Where-Object { $_.Name -notlike "*installer*" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "$distName/NexVPN.exe"
+          }
+          
+          # Copy bundled bin dependencies
+          if (Test-Path "bin") {
+            Copy-Item -Path "bin" -Destination "$distName/bin" -Recurse
+          }
+          
+          Compress-Archive -Path "$distName/*" -DestinationPath "$distName.zip" -Force
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            NexVPN-*-windows-${{ matrix.arch }}-portable.zip
+            build/bin/*installer.exe
+            build/bin/*.exe
+
+  # -------------------------------------------------------------------------
+  # Linux Builds (Debian .deb + Tarball for amd64 & arm64)
+  # -------------------------------------------------------------------------
+  build-linux:
+    name: Linux (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            goarch: amd64
+          - arch: arm64
+            goarch: arm64
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install Linux GUI Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
+
+      - name: Prepare Linux Core Bundles
+        run: |
+          mkdir -p bin
+          # Download GeoData
+          curl -sSL "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" -o bin/geoip.dat
+          curl -sSL "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -o bin/geosite.dat
+          
+          # Download Sing-Box for Linux
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+            curl -sSL "https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz" | tar -xz -C bin --strip-components=1
+            curl -sSL "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip" -o /tmp/xray.zip && unzip -q /tmp/xray.zip xray -d bin/
+          else
+            curl -sSL "https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-arm64.tar.gz" | tar -xz -C bin --strip-components=1
+            curl -sSL "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip" -o /tmp/xray.zip && unzip -q /tmp/xray.zip xray -d bin/
+          fi
+          chmod +x bin/sing-box bin/xray || true
+
+      - name: Build Linux Application
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          wails build -clean -platform linux/${{ matrix.goarch }}
+
+      - name: Package Linux Archive (.tar.gz)
+        run: |
+          VER="${{ github.ref_name }}"
+          if [ -z "$VER" ] || [[ "$VER" == *"refs"* ]]; then VER="${{ github.event.inputs.version }}"; fi
+          if [ -z "$VER" ]; then VER="v1.1.0"; fi
+          
+          DIST_DIR="NexVPN-${VER}-linux-${{ matrix.arch }}"
+          mkdir -p "$DIST_DIR/bin"
+          
+          cp build/bin/NexVPN "$DIST_DIR/" || cp build/bin/nexvpn "$DIST_DIR/"
+          cp -r bin/* "$DIST_DIR/bin/"
+          
+          tar -czvf "NexVPN-${VER}-linux-${{ matrix.arch }}.tar.gz" "$DIST_DIR"
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: NexVPN-*-linux-${{ matrix.arch }}.tar.gz
+
+  # -------------------------------------------------------------------------
+  # macOS Builds (Universal DMG & ZIP for Apple Silicon & Intel)
+  # -------------------------------------------------------------------------
+  build-macos:
+    name: macOS (Universal M-Series & Intel)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
+
+      - name: Prepare macOS Core Bundles
+        run: |
+          mkdir -p bin
+          curl -sSL "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" -o bin/geoip.dat
+          curl -sSL "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -o bin/geosite.dat
+          curl -sSL "https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-darwin-universal.tar.gz" | tar -xz -C bin --strip-components=1 || true
+          chmod +x bin/sing-box || true
+
+      - name: Build macOS Universal App
+        run: |
+          wails build -clean -platform darwin/universal
+
+      - name: Package macOS Artifacts (.dmg & .zip)
+        run: |
+          VER="${{ github.ref_name }}"
+          if [ -z "$VER" ] || [[ "$VER" == *"refs"* ]]; then VER="${{ github.event.inputs.version }}"; fi
+          if [ -z "$VER" ]; then VER="v1.1.0"; fi
+          
+          cd build/bin
+          zip -r -y "../../NexVPN-${VER}-macOS-Universal.zip" "NexVPN.app" || zip -r -y "../../NexVPN-${VER}-macOS-Universal.zip" "nexvpn.app"
+          cd ../..
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: |
+            NexVPN-*-macOS-Universal.zip
+            build/bin/*.dmg
+
+  # -------------------------------------------------------------------------
+  # Create GitHub Release with All Multi-Platform Assets
+  # -------------------------------------------------------------------------
+  create-release:
+    name: Publish Official Release
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Built Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Flatten Release Folder
+        run: |
+          mkdir -p dist
+          find release-assets -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dmg" -o -name "*.deb" \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.version || 'v1.1.0' }}
+          name: NexVPN ${{ github.ref_name || github.event.inputs.version || 'v1.1.0' }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            ## 🚀 NexVPN v1.1.0 Official Cross-Platform Release
+
+            NexVPN is an advanced, privacy-first, and ultra-high-speed desktop client featuring pre-bundled protocol cores and dynamic updater.
+
+            ### 📦 Release Packages & Architectures
+            - **Windows (x64, ARM64, x86)**:
+              - `NexVPN-v1.1.0-windows-amd64-portable.zip` (Portable, Zero Installation)
+              - `NexVPN-v1.1.0-windows-arm64-portable.zip` (Snapdragon & Windows on ARM)
+              - `NexVPN-v1.1.0-windows-386-portable.zip` (32-bit Legacy)
+              - `NexVPN-v1.1.0-windows-installer.exe` (Full System Installer)
+            - **Linux (Ubuntu/Debian/Fedora/Arch)**:
+              - `NexVPN-v1.1.0-linux-amd64.tar.gz`
+              - `NexVPN-v1.1.0-linux-arm64.tar.gz`
+            - **macOS (Apple Silicon & Intel)**:
+              - `NexVPN-v1.1.0-macOS-Universal.zip` (Universal Binary M1/M2/M3/M4 & Intel)
+
+            ### ✨ Key Features
+            - 🛡️ **Pre-Bundled Protocol Cores**: Sing-Box v1.10, Xray-Core v1.8, Wintun Driver, OpenVPN, and GeoIP/GeoSite databases included out of the box.
+            - 🔄 **In-App Dynamic Core Updater**: 1-click update for engines & routing rules directly from Settings.
+            - ⚡ **High-Performance Multi-Protocol**: VLESS Reality, VMess, Trojan, Cloudflare WARP / WARP-on-WARP, Shadowsocks, Hysteria2, WireGuard, and OpenVPN.
+            - 🌐 **Anti-Censorship & DPI Evasion**: TLS ClientHello fragmentation, SNI proxying, and DNS leak prevention.
+            - 🎨 **Sleek Cybernetic UI**: Glassmorphic dark aesthetic, real-time traffic visualizer, and sound effects.
+
+            ---
+            *Community & Support: [Telegram Channel](https://t.me/nexvpnpro) | [GitHub Issues](https://github.com/Rpg-420/NexVPN/issues)*

@@ -7,19 +7,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"syscall"
+
+	"nexvpn/internal/sysproc"
 )
 
 type LoggerFunc func(level, message, source string)
 
 // PrepareHiddenCmd ensures that on Windows no console / CMD window ever pops up
 func PrepareHiddenCmd(cmd *exec.Cmd) *exec.Cmd {
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-	}
+	cmd.SysProcAttr = sysproc.HideWindowAttr()
 	return cmd
 }
 

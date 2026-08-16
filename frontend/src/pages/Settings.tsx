@@ -88,6 +88,9 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
   const [proxyCleared, setProxyCleared] = useState(false)
   const [binaries, setBinaries] = useState<Record<string, BinaryInfo>>({})
   const [isInstallingCores, setIsInstallingCores] = useState(false)
+  const [updatingCore, setUpdatingCore] = useState<string | null>(null)
+  const [updatingGeo, setUpdatingGeo] = useState(false)
+  const [geoUpdated, setGeoUpdated] = useState(false)
   const [newAppInput, setNewAppInput] = useState('')
 
   useEffect(() => {
@@ -104,6 +107,32 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
       if (b) setBinaries(b)
     }).catch(err => console.error('Failed to check binaries:', err))
   }, [])
+
+  const handleUpdateCore = async (key: string) => {
+    setUpdatingCore(key)
+    try {
+      await api.updateCoreEngine(key)
+      const updated = await api.checkCoreBinaries()
+      setBinaries(updated)
+    } catch (err) {
+      console.error(`Update ${key} error:`, err)
+    } finally {
+      setUpdatingCore(null)
+    }
+  }
+
+  const handleUpdateGeoData = async () => {
+    setUpdatingGeo(true)
+    try {
+      await api.updateGeoData()
+      setGeoUpdated(true)
+      setTimeout(() => setGeoUpdated(false), 3000)
+    } catch (err) {
+      console.error('Update geo data error:', err)
+    } finally {
+      setUpdatingGeo(false)
+    }
+  }
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     if (!settings) return
@@ -1211,11 +1240,21 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
             </div>
           </div>
 
-          {/* Core Binaries Management Section */}
+          {/* Core Binaries & Routing Databases Management Section */}
           <div className="section">
-            <div className="section-title">
-              <Cpu size={13} style={{ display: 'inline', marginInlineEnd: 6 }} />
-              {t('sec_cores')}
+            <div className="section-title flex items-center justify-between">
+              <div>
+                <Cpu size={13} style={{ display: 'inline', marginInlineEnd: 6 }} />
+                {t('sec_cores')}
+              </div>
+              <button
+                className="btn btn-secondary btn-sm text-[11px] flex items-center gap-1.5"
+                onClick={handleUpdateGeoData}
+                disabled={updatingGeo}
+              >
+                <RefreshCw size={12} className={updatingGeo ? 'animate-spin' : ''} />
+                {updatingGeo ? t('updating') : geoUpdated ? '✓ GeoIP & GeoSite Updated' : t('update_geo_rules')}
+              </button>
             </div>
             <div className="card">
               <div className="card-header flex items-center justify-between">
@@ -1240,18 +1279,35 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '16px 20px',
+                      padding: '14px 20px',
                       borderBottom: '1px solid var(--color-border)',
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-text-primary)' }}>
-                        {info.name}
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-text-primary)' }}>
+                          {info.name}
+                        </span>
+                        {info.version && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">
+                            {info.version}
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-muted font-mono">{info.filename}</div>
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm text-[11px] px-2.5 py-1 flex items-center gap-1"
+                        onClick={() => handleUpdateCore(key)}
+                        disabled={updatingCore === key}
+                      >
+                        <RefreshCw size={11} className={updatingCore === key ? 'animate-spin' : ''} />
+                        {updatingCore === key ? t('updating') : t('update_core_btn')}
+                      </button>
+
                       <span
                         className={`badge ${info.status === 'installed' ? 'badge-success' : 'badge-error'}`}
                       >

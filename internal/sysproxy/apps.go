@@ -4,7 +4,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
+
+	"nexvpn/internal/sysproc"
 )
 
 type InstalledApp struct {
@@ -60,23 +61,32 @@ var knownAppCatalog = []InstalledApp{
 func GetDetectedApplications() []InstalledApp {
 	runningMap := make(map[string]bool)
 
-	// Query running processes using tasklist
-	cmd := exec.Command("tasklist", "/FO", "CSV", "/NH")
 	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000,
+		cmd := exec.Command("tasklist", "/FO", "CSV", "/NH")
+		cmd.SysProcAttr = sysproc.HideWindowAttr()
+		out, err := cmd.Output()
+		if err == nil {
+			lines := strings.Split(string(out), "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, ",")
+				if len(parts) > 0 {
+					exe := strings.Trim(parts[0], `" \r\n`)
+					if exe != "" {
+						runningMap[strings.ToLower(exe)] = true
+					}
+				}
+			}
 		}
-	}
-	out, err := cmd.Output()
-	if err == nil {
-		lines := strings.Split(string(out), "\n")
-		for _, line := range lines {
-			parts := strings.Split(line, ",")
-			if len(parts) > 0 {
-				exe := strings.Trim(parts[0], `" \r\n`)
-				if exe != "" {
-					runningMap[strings.ToLower(exe)] = true
+	} else {
+		cmd := exec.Command("ps", "-A", "-o", "comm=")
+		out, err := cmd.Output()
+		if err == nil {
+			lines := strings.Split(string(out), "\n")
+			for _, line := range lines {
+				trimmed := strings.ToLower(strings.TrimSpace(line))
+				if trimmed != "" {
+					runningMap[trimmed] = true
+					runningMap[trimmed+".exe"] = true
 				}
 			}
 		}

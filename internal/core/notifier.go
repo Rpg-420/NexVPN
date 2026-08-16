@@ -5,19 +5,17 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
-	"syscall"
+
+	"nexvpn/internal/sysproc"
 )
 
-// ShowWindowsNotification displays a native Windows system notification
+// ShowWindowsNotification displays a native system notification across Windows, Linux, and macOS
 func ShowWindowsNotification(title, message string) {
-	if runtime.GOOS != "windows" {
-		return
-	}
+	if runtime.GOOS == "windows" {
+		titleB64 := base64.StdEncoding.EncodeToString([]byte(title))
+		messageB64 := base64.StdEncoding.EncodeToString([]byte(message))
 
-	titleB64 := base64.StdEncoding.EncodeToString([]byte(title))
-	messageB64 := base64.StdEncoding.EncodeToString([]byte(message))
-
-	psScript := fmt.Sprintf(`
+		psScript := fmt.Sprintf(`
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
 $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
 $toastXml = [xml]$template.GetXml()
@@ -31,10 +29,18 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("NexVPN Client").Show($toast)
 `, titleB64, messageB64)
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000,
+		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+		cmd.SysProcAttr = sysproc.HideWindowAttr()
+		_ = cmd.Start()
+	} else if runtime.GOOS == "darwin" {
+		script := fmt.Sprintf(`display notification %q with title %q`, message, title)
+		cmd := exec.Command("osascript", "-e", script)
+		cmd.SysProcAttr = sysproc.HideWindowAttr()
+		_ = cmd.Start()
+	} else {
+		// Linux notify-send
+		cmd := exec.Command("notify-send", title, message, "-a", "NexVPN")
+		cmd.SysProcAttr = sysproc.HideWindowAttr()
+		_ = cmd.Start()
 	}
-	_ = cmd.Start()
 }

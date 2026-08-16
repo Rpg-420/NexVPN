@@ -426,7 +426,7 @@ export const translations = {
     game_mode_desc: 'Optimize UDP packet queues and routing for minimum ping in games & Discord',
     allow_lan_label: 'Share Proxy over Wi-Fi (Allow LAN)',
     allow_lan_desc: 'Allow smartphones, smart TVs, and consoles on your local network to connect to proxy (0.0.0.0)',
-    
+
     // DNS Settings
     dns_engine_label: 'Primary DNS Engine (DoH / UDP)',
     dns_engine_desc: 'Zero-pollution remote DNS resolver through the tunnel to bypass DNS filtering',
@@ -527,12 +527,15 @@ export const translations = {
     clear_stale_proxy_desc: 'Reset any residual WinINet proxy settings left by other VPN applications',
     clear_proxy_btn: 'Clean Proxy',
 
-    sec_cores: 'Protocol Cores & Drivers',
-    cores_desc: 'Status of Wintun network adapter, Xray-core, Sing-box, and OpenVPN binaries',
+    sec_cores: 'Protocol Cores & Routing Databases',
+    cores_desc: 'Status of Wintun network adapter, Xray-core, Sing-box, OpenVPN, and GeoIP/GeoSite databases',
     installed: 'Installed',
     missing: 'Missing',
     auto_install_all: 'Auto-Install Missing Cores',
     installing: 'Downloading and installing...',
+    update_geo_rules: 'Update GeoIP & GeoSite',
+    update_core_btn: 'Update',
+    updating: 'Updating...',
 
     // Global Hotkeys
     global_hotkeys_title: 'Desktop Global Hotkeys',
@@ -666,7 +669,7 @@ export const translations = {
     support_feedback: 'Support & Community',
     check_updates: 'Check for Updates',
     checking_updates: 'Checking update server...',
-    update_latest_notice: '✓ You are using the latest stable release of NexVPN (v1.3.2)',
+    update_latest_notice: '✓ You are using the latest stable release of NexVPN (v1.1.0)',
     cores_status_title: 'Active Core Kernels',
     about_license: 'Released under open-source license. Dedicated to internet freedom and privacy.',
 
@@ -1214,12 +1217,15 @@ export const translations = {
     clear_stale_proxy_desc: 'غیرفعال‌سازی و پاکسازی تنظیمات پروکسی باقی‌مانده از سایر نرم‌افزارها',
     clear_proxy_btn: 'پاکسازی پروکسی',
 
-    sec_cores: 'هسته‌ها و درایورهای پروتکل',
-    cores_desc: 'وضعیت درایور کارت شبکه Wintun، هسته Xray، Sing-box و OpenVPN',
+    sec_cores: 'هسته‌های پروتکل و دیتابیس‌های مسیریابی',
+    cores_desc: 'وضعیت درایور Wintun، هسته‌های Sing-box و Xray، کلاینت OpenVPN و دیتابیس‌های هوشمند GeoIP/GeoSite',
     installed: 'نصب شده',
     missing: 'نصب نیست',
     auto_install_all: 'نصب خودکار هسته‌ها',
-    installing: 'در حال نصب...',
+    installing: 'در حال دانلود و نصب...',
+    update_geo_rules: 'به‌روزرسانی GeoIP و GeoSite',
+    update_core_btn: 'آپدیت هسته',
+    updating: 'در حال به‌روزرسانی...',
 
     // Global Hotkeys
     global_hotkeys_title: 'کلیدهای میانبر سراسری دسکتاپ',
@@ -1353,7 +1359,7 @@ export const translations = {
     support_feedback: 'پشتیبانی و پیشنهادات',
     check_updates: 'بررسی بروزرسانی جدید',
     checking_updates: 'در حال بررسی سرور...',
-    update_latest_notice: '✓ شما از آخرین نسخه پایدار و بروز برنامه استفاده می‌کنید (v1.3.2)',
+    update_latest_notice: '✓ شما از آخرین نسخه پایدار و بروز برنامه استفاده می‌کنید (v1.1.0)',
     cores_status_title: 'وضعیت هسته‌های اجرایی',
     about_license: 'طراحی و توسعه یافته تحت لایسنس متن‌باز با هدف دسترسی آزاد و امن به اینترنت جهانی.',
 

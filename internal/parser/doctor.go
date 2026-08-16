@@ -5,22 +5,17 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"nexvpn/internal/sysproc"
 )
 
 func hiddenCmd(prog string, args ...string) *exec.Cmd {
 	cmd := exec.Command(prog, args...)
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000,
-		}
-	}
+	cmd.SysProcAttr = sysproc.HideWindowAttr()
 	return cmd
 }
 

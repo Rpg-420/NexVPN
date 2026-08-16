@@ -1,13 +1,14 @@
-﻿package core
+//go:build windows
+
+package core
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
-	"syscall"
 
 	"golang.org/x/sys/windows/registry"
+	"nexvpn/internal/sysproc"
 )
 
 const runRegistryKey = `Software\Microsoft\Windows\CurrentVersion\Run`
@@ -16,10 +17,6 @@ const taskName = "NexVPN_AutoStart"
 
 // SetAutoStart configures elevated Windows autostart via Task Scheduler with registry fallback
 func SetAutoStart(enable bool) error {
-	if runtime.GOOS != "windows" {
-		return nil
-	}
-
 	execPath, err := os.Executable()
 	if err != nil {
 		return err
@@ -28,12 +25,8 @@ func SetAutoStart(enable bool) error {
 	if enable {
 		// 1. Try creating an elevated Task in Task Scheduler (starts with highest privileges, no UAC on login)
 		cmdTask := exec.Command("schtasks", "/Create", "/F", "/TN", taskName, "/TR", fmt.Sprintf(`"%s" --minimized`, execPath), "/SC", "ONLOGON", "/RL", "HIGHEST")
-		cmdTask.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000,
-		}
+		cmdTask.SysProcAttr = sysproc.HideWindowAttr()
 		if err := cmdTask.Run(); err == nil {
-			// Clean registry entry if task succeeded to prevent double launch
 			cleanRegistryRun()
 			return nil
 		}
@@ -48,10 +41,7 @@ func SetAutoStart(enable bool) error {
 	} else {
 		// Remove Task Scheduler task
 		cmdDel := exec.Command("schtasks", "/Delete", "/F", "/TN", taskName)
-		cmdDel.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000,
-		}
+		cmdDel.SysProcAttr = sysproc.HideWindowAttr()
 		_ = cmdDel.Run()
 
 		// Remove Registry Run key
@@ -61,7 +51,8 @@ func SetAutoStart(enable bool) error {
 }
 
 func cleanRegistryRun() {
-	if k, err := registry.OpenKey(registry.CURRENT_USER, runRegistryKey, registry.SET_VALUE); err == nil {
+	k, err := registry.OpenKey(registry.CURRENT_USER, runRegistryKey, registry.SET_VALUE)
+	if err == nil {
 		_ = k.DeleteValue(appValueName)
 		k.Close()
 	}

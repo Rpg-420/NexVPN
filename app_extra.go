@@ -528,4 +528,19 @@ func (a *App) GenerateShareableSubscription(category string) (string, error) {
 	return base64.StdEncoding.EncodeToString([]byte(bundle)), nil
 }
 
+// CheckCoreBinaries returns status and version of all protocol cores
+func (a *App) CheckCoreBinaries() map[string]core.BinaryInfo {
+	return core.CheckBinaries()
+}
+
+// UpdateCoreEngine downloads and updates a core binary (singbox, xray, openvpn)
+func (a *App) UpdateCoreEngine(coreKey string) (string, error) {
+	return core.UpdateCoreEngine(coreKey)
+}
+
+// UpdateGeoData updates GeoIP and GeoSite routing databases
+func (a *App) UpdateGeoData() (string, error) {
+	return core.UpdateGeoData()
+}
+
 

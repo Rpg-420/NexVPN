@@ -252,6 +252,8 @@ export const api = {
   getGroupsByCategory: (category: string) => callGo<string[]>('GetGroupsByCategory', category),
   checkCoreBinaries: () => callGo<Record<string, BinaryInfo>>('CheckCoreBinaries'),
   installCoreBinary: (key: string) => callGo<void>('InstallCoreBinary', key),
+  updateCoreEngine: (key: string) => callGo<string>('UpdateCoreEngine', key),
+  updateGeoData: () => callGo<string>('UpdateGeoData'),
 
   connect: (profileId: string) => callGo<void>('Connect', profileId),
   disconnect: () => callGo<void>('Disconnect'),

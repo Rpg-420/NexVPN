@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"syscall"
+
+	"nexvpn/internal/sysproc"
 )
 
 type KillSwitchManager struct {
@@ -23,12 +24,7 @@ func GetKillSwitch() *KillSwitchManager {
 }
 
 func prepareHiddenCmd(cmd *exec.Cmd) *exec.Cmd {
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-	}
+	cmd.SysProcAttr = sysproc.HideWindowAttr()
 	return cmd
 }
 

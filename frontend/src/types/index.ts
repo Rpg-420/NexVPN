@@ -219,6 +219,7 @@ export interface BinaryInfo {
   filename: string
   status: 'installed' | 'missing'
   path: string
+  version?: string
   download_url: string
 }
 
