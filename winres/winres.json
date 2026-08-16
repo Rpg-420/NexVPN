@@ -1,0 +1,95 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": [
+        "icon256.png",
+        "icon128.png",
+        "icon64.png",
+        "icon48.png",
+        "icon32.png",
+        "icon16.png"
+      ]
+    },
+    "#1": {
+      "0000": [
+        "icon256.png",
+        "icon128.png",
+        "icon64.png",
+        "icon48.png",
+        "icon32.png",
+        "icon16.png"
+      ]
+    },
+    "APPICON": {
+      "0000": [
+        "icon256.png",
+        "icon128.png",
+        "icon64.png",
+        "icon48.png",
+        "icon32.png",
+        "icon16.png"
+      ]
+    },
+    "IDI_ICON": {
+      "0000": [
+        "icon256.png",
+        "icon128.png",
+        "icon64.png",
+        "icon48.png",
+        "icon32.png",
+        "icon16.png"
+      ]
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "com.nexvpn.client",
+          "version": "1.1.0.0"
+        },
+        "description": "NexVPN Multi-Protocol Desktop Client",
+        "minimum-os": "win7",
+        "execution-level": "as invoker",
+        "ui-access": false,
+        "auto-elevate": false,
+        "dpi-awareness": "system",
+        "disable-theming": false,
+        "disable-window-filtering": false,
+        "high-resolution-scrolling-aware": true,
+        "ultra-high-resolution-scrolling-aware": true,
+        "long-path-aware": true,
+        "printer-driver-isolation": false,
+        "gdi-scaling": false,
+        "segment-heap": false,
+        "use-common-controls-v6": true
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "1.1.0.0",
+          "product_version": "1.1.0.0"
+        },
+        "info": {
+          "0409": {
+            "Comments": "NexVPN Multi-Protocol Client",
+            "CompanyName": "NexVPN Team",
+            "FileDescription": "NexVPN Desktop Client",
+            "FileVersion": "1.1.0.0",
+            "InternalName": "NexVPN",
+            "LegalCopyright": "Copyright 2026 NexVPN Open Source Project",
+            "LegalTrademarks": "NexVPN",
+            "OriginalFilename": "NexVPN.exe",
+            "PrivateBuild": "",
+            "ProductName": "NexVPN",
+            "ProductVersion": "1.1.0.0",
+            "SpecialBuild": ""
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+# Binaries & Builds
+build/bin/
+*.exe
+*.dll
+*.syso
+*.so
+*.dylib
+
+# Allow required core engine runtimes
+!bin/*.exe
+!bin/*.dll
+!bin/*.dat
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary & Cache
+scratch/
+tmp/
+*.log
+*.tmp

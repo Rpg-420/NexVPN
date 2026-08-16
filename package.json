@@ -1,0 +1,10 @@
+{
+  "name": "nexvpn",
+  "private": true,
+  "version": "1.1.0",
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "dev": "wails dev",
+    "build:app": "pwsh -File ./build.ps1"
+  }
+}

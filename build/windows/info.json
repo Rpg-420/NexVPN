@@ -1,0 +1,20 @@
+{
+  "section": "info",
+  "fixed": {
+    "file_version": "1.1.0.0",
+    "product_version": "1.1.0.0"
+  },
+  "info": {
+    "0409": {
+      "Comments": "NexVPN Multi-Protocol Desktop Client",
+      "CompanyName": "NexVPN Team",
+      "FileDescription": "NexVPN Multi-Protocol VPN Client",
+      "FileVersion": "1.1.0.0",
+      "InternalName": "NexVPN",
+      "LegalCopyright": "Copyright 2026 NexVPN Open Source Project",
+      "OriginalFilename": "NexVPN.exe",
+      "ProductName": "NexVPN",
+      "ProductVersion": "1.1.0.0"
+    }
+  }
+}

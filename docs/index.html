@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NexVPN — Next-Generation Multi-Protocol Anti-Censorship Client</title>
+  <meta name="description" content="NexVPN is a high-performance, open-source multi-protocol VPN and anti-censorship desktop client supporting VLESS Reality, Cloudflare WARP, WireGuard, Hysteria 2, and OpenVPN.">
+  <meta name="keywords" content="VPN, V2Ray, VLESS, Reality, Cloudflare WARP, WireGuard, Hysteria 2, Anti-Censorship, Wintun, Sing-box, Xray">
+  
+  <!-- Modern Google Fonts: Vazirmatn for Persian, Outfit & Inter for EN/RU -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-card: rgba(18, 22, 34, 0.75);
+      --bg-card-hover: rgba(28, 34, 52, 0.85);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(0, 240, 255, 0.3);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --cyan: #00f0ff;
+      --purple: #a855f7;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --glow-cyan: 0 0 35px rgba(0, 240, 255, 0.35);
+      --glow-purple: 0 0 35px rgba(168, 85, 247, 0.35);
+      --glow-emerald: 0 0 35px rgba(16, 185, 129, 0.35);
+      --font-fa: 'Vazirmatn', sans-serif;
+      --font-en: 'Outfit', 'Inter', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-fa);
+      overflow-x: hidden;
+      line-height: 1.6;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(0, 240, 255, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 60%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    body[dir="ltr"] {
+      font-family: var(--font-en);
+    }
+
+    /* Top Navigation Bar */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(7, 9, 14, 0.8);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1300px;
+      margin: 0 auto;
+      border-radius: 0 0 20px 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .brand-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--glow-cyan);
+    }
+
+    .brand-logo svg {
+      width: 24px;
+      height: 24px;
+      fill: #000;
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      font-family: var(--font-en);
+      background: linear-gradient(to right, #fff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--cyan);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    /* Language Switcher */
+    .lang-picker {
+      display: flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .lang-btn.active {
+      background: var(--cyan);
+      color: #000;
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+    }
+
+    .btn-github {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 160px 24px 80px;
+      max-width: 1200px;
+      margin: 0 auto;
+      text-align: center;
+      position: relative;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      color: var(--cyan);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      animation: pulse 2s infinite;
+    }
+
+    .hero-title {
+      font-size: 52px;
+      font-weight: 900;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 60%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -1px;
+    }
+
+    .hero-desc {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 750px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+
+    .hero-cta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 60px;
+    }
+
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--cyan), #00a8ff);
+      color: #000;
+      padding: 14px 32px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.35);
+      transition: all 0.25s;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 15px 40px rgba(0, 240, 255, 0.5);
+    }
+
+    .btn-secondary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.25s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    /* Live Interactive Dashboard Mockup */
+    .mockup-container {
+      position: relative;
+      max-width: 960px;
+      margin: 0 auto;
+      border-radius: 24px;
+      border: 1px solid var(--border-accent);
+      background: rgba(13, 17, 28, 0.95);
+      backdrop-filter: blur(25px);
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.8), var(--glow-cyan);
+      overflow: hidden;
+      text-align: right;
+    }
+
+    body[dir="ltr"] .mockup-container {
+      text-align: left;
+    }
+
+    .mockup-header {
+      padding: 14px 20px;
+      background: rgba(0, 0, 0, 0.4);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot.red { background: #ff5f56; }
+    .dot.yellow { background: #ffbd2e; }
+    .dot.green { background: #27c93f; }
+
+    .mockup-body {
+      padding: 32px;
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 32px;
+      align-items: center;
+    }
+
+    @media (max-width: 850px) {
+      .mockup-body {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .orb-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .interactive-orb {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.05) 70%);
+      border: 3px solid var(--emerald);
+      box-shadow: var(--glow-emerald);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 20px;
+    }
+
+    .interactive-orb:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 50px rgba(16, 185, 129, 0.6);
+    }
+
+    .orb-power-icon {
+      width: 48px;
+      height: 48px;
+      stroke: var(--emerald);
+    }
+
+    .orb-status {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--emerald);
+      margin-top: 6px;
+    }
+
+    .live-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-val {
+      font-size: 20px;
+      font-weight: 800;
+      font-family: var(--font-en);
+      color: #fff;
+    }
+
+    .stat-val.cyan { color: var(--cyan); }
+    .stat-val.purple { color: var(--purple); }
+    .stat-val.emerald { color: var(--emerald); }
+
+    /* Features Section */
+    .section {
+      padding: 100px 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .section-title {
+      font-size: 38px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .section-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-5px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .feature-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    .feature-icon.cyan { background: rgba(0, 240, 255, 0.15); color: var(--cyan); border: 1px solid rgba(0, 240, 255, 0.3); }
+    .feature-icon.purple { background: rgba(168, 85, 247, 0.15); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.3); }
+    .feature-icon.emerald { background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .feature-icon.amber { background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .feature-icon.rose { background: rgba(244, 63, 94, 0.15); color: var(--rose); border: 1px solid rgba(244, 63, 94, 0.3); }
+
+    .feature-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    .feature-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    /* Protocol Comparison Table */
+    .table-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      overflow-x: auto;
+      margin-top: 40px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: right;
+    }
+
+    body[dir="ltr"] table {
+      text-align: left;
+    }
+
+    th, td {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 14px;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge-tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font-en);
+    }
+
+    .badge-tag.green { background: rgba(16, 185, 129, 0.15); color: var(--emerald); }
+    .badge-tag.blue { background: rgba(0, 240, 255, 0.15); color: var(--cyan); }
+    .badge-tag.purple { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 60px 24px 40px;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.4);
+    }
+
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .footer-copy {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <nav class="navbar">
+    <a href="#" class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V8.26l7-3.89v7.62z"/>
+        </svg>
+      </div>
+      <span class="brand-title">NexVPN</span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="#features" data-i18n="nav_features">قابلیت‌ها</a></li>
+      <li><a href="#protocols" data-i18n="nav_protocols">پروتکل‌ها</a></li>
+      <li><a href="#doctor" data-i18n="nav_doctor">پزشک شبکه</a></li>
+      <li><a href="#download" data-i18n="nav_download">دانلود برنامه</a></li>
+    </ul>
+
+    <div class="nav-actions">
+      <!-- Language Picker -->
+      <div class="lang-picker">
+        <button class="lang-btn active" onclick="setLang('fa')">فا</button>
+        <button class="lang-btn" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" onclick="setLang('ru')">RU</button>
+      </div>
+
+      <a href="https://github.com" target="_blank" class="btn-github">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="badge-pill">
+      <span>⚡</span>
+      <span data-i18n="badge_text">نسخه ۱.۳.۱ با هسته اختصاصی Sing-box و Xray</span>
+    </div>
+
+    <h1 class="hero-title" data-i18n="hero_title">
+      سریع‌ترین کلاینت ضدسانسور و مالتی‌پروتکل
+    </h1>
+
+    <p class="hero-desc" data-i18n="hero_desc">
+      پشتیبانی کامل از VLESS Reality، کلودفلر وارپ، AmneziaWG، هایستریا ۲ و اوپن‌وی‌پی‌ان به همراه اسکنر آی‌پی تمیز و کارت شبکه مجازی پرسرعت Wintun.
+    </p>
+
+    <div class="hero-cta">
+      <a href="#download" class="btn-primary">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        <span data-i18n="btn_download">دانلود رایگان برای ویندوز</span>
+      </a>
+
+      <a href="#features" class="btn-secondary">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
+        </svg>
+        <span data-i18n="btn_explore">مشاهده امکانات</span>
+      </a>
+    </div>
+
+    <!-- Live Interactive Dashboard Mockup -->
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <div class="window-dots">
+          <div class="dot red"></div>
+          <div class="dot yellow"></div>
+          <div class="dot green"></div>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); font-family: var(--font-en);">NexVPN v1.3.1 — Production Dashboard</div>
+        <div style="width: 40px;"></div>
+      </div>
+
+      <div class="mockup-body">
+        <div class="orb-wrapper">
+          <div class="interactive-orb" id="hero-orb" onclick="toggleOrb()">
+            <svg class="orb-power-icon" viewBox="0 0 24 24" fill="none" stroke-width="2.5">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
+            </svg>
+            <div class="orb-status" id="hero-status" data-i18n="mockup_connected">متصل (پایدار)</div>
+          </div>
+          <div style="font-size: 13px; color: var(--text-muted);" data-i18n="mockup_node_name">🇩🇪 Frankfurt VLESS Reality VIP</div>
+        </div>
+
+        <div class="live-stats-grid">
+          <div class="stat-card">
+            <div class="stat-label" data-i18n="mockup_speed_down">سرعت دانلود لحظه‌ای</div>
+            <div class="stat-val cyan" id="stat-down">28.4 MB/s</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label" data-i18n="mockup_speed_up">سرعت آپلود لحظه‌ای</div>
+            <div class="stat-val purple" id="stat-up">6.8 MB/s</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label" data-i18n="mockup_ping">پینگ واقعی سرور</div>
+            <div class="stat-val emerald" id="stat-ping">42 ms</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label" data-i18n="mockup_mode">حالت اتصال</div>
+            <div class="stat-val" style="font-size: 15px; color: #cbd5e1;">TUN (Wintun)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Features Section -->
+  <section class="section" id="features">
+    <div class="section-header">
+      <h2 class="section-title" data-i18n="feat_header_title">امکانات منحصر‌به‌فرد و پیشرفته</h2>
+      <p class="section-subtitle" data-i18n="feat_header_desc">طراحی شده برای دور زدن شدیدترین اختلالات و فیلترینگ اینترنت با بالاترین پایداری</p>
+    </div>
+
+    <div class="features-grid">
+      <!-- Feature 1 -->
+      <div class="feature-card">
+        <div class="feature-icon cyan">⚡</div>
+        <h3 class="feature-title" data-i18n="f1_title">اتصال هوشمند خودکار (Auto-Select)</h3>
+        <p class="feature-desc" data-i18n="f1_desc">سنجش خودکار و موازی پینگ تمامی سرورها و اتصال آنی به سریع‌ترین سرور بدون معطلی و با قابلیت سوئیچ ضد قطعی (Auto-Failover).</p>
+      </div>
+
+      <!-- Feature 2 -->
+      <div class="feature-card">
+        <div class="feature-icon purple">🛡️</div>
+        <h3 class="feature-title" data-i18n="f2_title">پشتیبانی از پروتکل‌های نسل جدید</h3>
+        <p class="feature-desc" data-i18n="f2_desc">هماهنگی کامل با VLESS Reality، هایستریا ۲، TUIC، وارپ دوگانه و AmneziaWG با مبهم‌سازی پیشرفته بسته‌ها جهت عبور از DPI.</p>
+      </div>
+
+      <!-- Feature 3 -->
+      <div class="feature-card">
+        <div class="feature-icon emerald">📡</div>
+        <h3 class="feature-title" data-i18n="f3_title">اسکنر آی‌پی تمیز کلودفلر</h3>
+        <p class="feature-desc" data-i18n="f3_desc">جستجو و سنجش صدها آی‌پی تمیز Anycast کلودفلر بدون پکت‌لاس و ساخت اکانت رایگان ۱-کلیکه وارپ برای بازی و استریم.</p>
+      </div>
+
+      <!-- Feature 4 -->
+      <div class="feature-card">
+        <div class="feature-icon amber">🎮</div>
+        <h3 class="feature-title" data-i18n="f4_title">تفکیک ترافیک برنامه‌ها (Split Tunneling)</h3>
+        <p class="feature-desc" data-i18n="f4_desc">انتخابگر گرافیکی برنامه‌ها با آیکون برای عبور مستقیم سایت‌های داخلی و اپ‌های بانکی بدون نیاز به خاموش کردن فیلترشکن.</p>
+      </div>
+
+      <!-- Feature 5 -->
+      <div class="feature-card">
+        <div class="feature-icon rose">🩺</div>
+        <h3 class="feature-title" data-i18n="f5_title">پزشک هوشمند شبکه (Network Doctor)</h3>
+        <p class="feature-desc" data-i18n="f5_desc">تست خودکار مسیرهای DNS، درایور Wintun، رفع پروکسی‌های جامانده رجیستری و خالی کردن کش DNS با یک کلیک.</p>
+      </div>
+
+      <!-- Feature 6 -->
+      <div class="feature-card">
+        <div class="feature-icon cyan">📊</div>
+        <h3 class="feature-title" data-i18n="f6_title">مدیریت سابسکریپشن و سهمیه حجم</h3>
+        <p class="feature-desc" data-i18n="f6_desc">نمایش لحظه‌ای حجم مصرف‌شده، حجم باقیمانده و روزهای اعتبار اکانت با پشتیبانی از هدرهای رسمی Subscription-Userinfo.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Protocols Comparison Table -->
+  <section class="section" id="protocols">
+    <div class="section-header">
+      <h2 class="section-title" data-i18n="proto_header_title">جدول مقایسه پروتکل‌های پشتیبانی‌شده</h2>
+      <p class="section-subtitle" data-i18n="proto_header_desc">انتخاب بهترین پروتکل متناسب با نوع اینترنت (همراه اول، ایرانسل، مخابرات و فیبر نوری)</p>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="th_proto">پروتکل</th>
+            <th data-i18n="th_core">هسته اجرایی</th>
+            <th data-i18n="th_dpi">مقاومت در برابر فیلترینگ</th>
+            <th data-i18n="th_speed">سرعت و تاخیر (Latency)</th>
+            <th data-i18n="th_usecase">کاربرد پیشنهادی</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>VLESS Reality</strong></td>
+            <td><span class="badge-tag blue">Sing-box / Xray</span></td>
+            <td><span class="badge-tag green">حداکثر (TLS Camouflage)</span></td>
+            <td><span class="badge-tag green">بسیار عالی (RTT پایین)</span></td>
+            <td data-i18n="td_use_reality">وبگردی، اینستاگرام، یوتیوب ۴K</td>
+          </tr>
+          <tr>
+            <td><strong>Cloudflare WARP</strong></td>
+            <td><span class="badge-tag purple">WireGuard Engine</span></td>
+            <td><span class="badge-tag blue">بالا (با Clean IP)</span></td>
+            <td><span class="badge-tag green">حداکثر سرعت و بدون پکت‌لاس</span></td>
+            <td data-i18n="td_use_warp">گیمینگ، دانلود و استریم</td>
+          </tr>
+          <tr>
+            <td><strong>AmneziaWG</strong></td>
+            <td><span class="badge-tag purple">Sing-box AWG</span></td>
+            <td><span class="badge-tag green">فوق‌العاده (Junk Packet Obfuscation)</span></td>
+            <td><span class="badge-tag green">عالی (UDP اختصاصی)</span></td>
+            <td data-i18n="td_use_awg">اینترنت‌های به شدت محدود و ملی</td>
+          </tr>
+          <tr>
+            <td><strong>Hysteria 2 / TUIC</strong></td>
+            <td><span class="badge-tag blue">Sing-box Core</span></td>
+            <td><span class="badge-tag green">بسیار بالا (QUIC / UDP)</span></td>
+            <td><span class="badge-tag green">ترافیک سنگین و پکت‌لاس بالا</span></td>
+            <td data-i18n="td_use_hy2">اینترنت موبایل پرنوسان</td>
+          </tr>
+          <tr>
+            <td><strong>OpenVPN</strong></td>
+            <td><span class="badge-tag">Native OpenVPN</span></td>
+            <td><span class="badge-tag blue">متوسط (سازمانی)</span></td>
+            <td><span class="badge-tag blue">پایدار</span></td>
+            <td data-i18n="td_use_ovpn">ارتباطات کاری و فایل‌های .ovpn</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Download Section -->
+  <section class="section" id="download" style="text-align: center;">
+    <div class="mockup-container" style="padding: 60px 30px; text-align: center;">
+      <h2 class="section-title" style="margin-bottom: 16px;" data-i18n="dl_title">دانلود نرم‌افزار NexVPN برای ویندوز</h2>
+      <p class="section-subtitle" style="margin-bottom: 36px;" data-i18n="dl_desc">نسخه پایدار و تست‌شده سازگار با ویندوز ۱۰ و ۱۱ (۶۴ بیتی) همراه با درایور رسمی Wintun</p>
+      
+      <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+        <a href="https://github.com" target="_blank" class="btn-primary" style="font-size: 16px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          <span data-i18n="dl_installer">دانلود نسخه نصبی (Installer .exe)</span>
+        </a>
+
+        <a href="https://github.com" target="_blank" class="btn-secondary" style="font-size: 16px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="21 8 21 21 3 21 3 8"/>
+            <rect x="1" y="3" width="22" height="5"/>
+            <line x1="10" y1="12" x2="14" y2="12"/>
+          </svg>
+          <span data-i18n="dl_portable">دانلود نسخه پرتابل (Portable .zip)</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="brand" style="justify-content: center;">
+        <div class="brand-logo" style="width: 32px; height: 32px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#000">
+            <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V8.26l7-3.89v7.62z"/>
+          </svg>
+        </div>
+        <span class="brand-title" style="font-size: 18px;">NexVPN Project</span>
+      </div>
+
+      <div class="footer-copy" data-i18n="footer_text">
+        توسعه داده شده با افتخار به صورت متن‌باز جهت آزادی دسترسی به اینترنت آزاد و بدون محدودیت.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Multi-Language Translations Dictionary & Dynamic Switcher -->
+  <script>
+    const i18nData = {
+      fa: {
+        nav_features: "قابلیت‌ها",
+        nav_protocols: "پروتکل‌ها",
+        nav_doctor: "پزشک شبکه",
+        nav_download: "دانلود برنامه",
+        badge_text: "نسخه ۱.۳.۱ با هسته اختصاصی Sing-box و Xray",
+        hero_title: "سریع‌ترین کلاینت ضدسانسور و مالتی‌پروتکل",
+        hero_desc: "پشتیبانی کامل از VLESS Reality، کلودفلر وارپ، AmneziaWG، هایستریا ۲ و اوپن‌وی‌پی‌ان به همراه اسکنر آی‌پی تمیز و کارت شبکه مجازی پرسرعت Wintun.",
+        btn_download: "دانلود رایگان برای ویندوز",
+        btn_explore: "مشاهده امکانات",
+        mockup_connected: "متصل (پایدار)",
+        mockup_node_name: "🇩🇪 Frankfurt VLESS Reality VIP",
+        mockup_speed_down: "سرعت دانلود لحظه‌ای",
+        mockup_speed_up: "سرعت آپلود لحظه‌ای",
+        mockup_ping: "پینگ واقعی سرور",
+        mockup_mode: "حالت اتصال",
+        feat_header_title: "امکانات منحصر‌به‌فرد و پیشرفته",
+        feat_header_desc: "طراحی شده برای دور زدن شدیدترین اختلالات و فیلترینگ اینترنت با بالاترین پایداری",
+        f1_title: "اتصال هوشمند خودکار (Auto-Select)",
+        f1_desc: "سنجش خودکار و موازی پینگ تمامی سرورها و اتصال آنی به سریع‌ترین سرور بدون معطلی و با قابلیت سوئیچ ضد قطعی (Auto-Failover).",
+        f2_title: "پشتیبانی از پروتکل‌های نسل جدید",
+        f2_desc: "هماهنگی کامل با VLESS Reality، هایستریا ۲، TUIC، وارپ دوگانه و AmneziaWG با مبهم‌سازی پیشرفته بسته‌ها جهت عبور از DPI.",
+        f3_title: "اسکنر آی‌پی تمیز کلودفلر",
+        f3_desc: "جستجو و سنجش صدها آی‌پی تمیز Anycast کلودفلر بدون پکت‌لاس و ساخت اکانت رایگان ۱-کلیکه وارپ برای بازی و استریم.",
+        f4_title: "تفکیک ترافیک برنامه‌ها (Split Tunneling)",
+        f4_desc: "انتخابگر گرافیکی برنامه‌ها با آیکون برای عبور مستقیم سایت‌های داخلی و اپ‌های بانکی بدون نیاز به خاموش کردن فیلترشکن.",
+        f5_title: "پزشک هوشمند شبکه (Network Doctor)",
+        f5_desc: "تست خودکار مسیرهای DNS، درایور Wintun، رفع پروکسی‌های جامانده رجیستری و خالی کردن کش DNS با یک کلیک.",
+        f6_title: "مدیریت سابسکریپشن و سهمیه حجم",
+        f6_desc: "نمایش لحظه‌ای حجم مصرف‌شده، حجم باقیمانده و روزهای اعتبار اکانت با پشتیبانی از هدرهای رسمی Subscription-Userinfo.",
+        proto_header_title: "جدول مقایسه پروتکل‌های پشتیبانی‌شده",
+        proto_header_desc: "انتخاب بهترین پروتکل متناسب با نوع اینترنت (همراه اول، ایرانسل، مخابرات و فیبر نوری)",
+        th_proto: "پروتکل",
+        th_core: "هسته اجرایی",
+        th_dpi: "مقاومت در برابر فیلترینگ",
+        th_speed: "سرعت و تاخیر (Latency)",
+        th_usecase: "کاربرد پیشنهادی",
+        td_use_reality: "وبگردی، اینستاگرام، یوتیوب ۴K",
+        td_use_warp: "گیمینگ، دانلود و استریم",
+        td_use_awg: "اینترنت‌های به شدت محدود و ملی",
+        td_use_hy2: "اینترنت موبایل پرنوسان",
+        td_use_ovpn: "ارتباطات کاری و فایل‌های .ovpn",
+        dl_title: "دانلود نرم‌افزار NexVPN برای ویندوز",
+        dl_desc: "نسخه پایدار و تست‌شده سازگار با ویندوز ۱۰ و ۱۱ (۶۴ بیتی) همراه با درایور رسمی Wintun",
+        dl_installer: "دانلود نسخه نصبی (Installer .exe)",
+        dl_portable: "دانلود نسخه پرتابل (Portable .zip)",
+        footer_text: "توسعه داده شده با افتخار به صورت متن‌باز جهت آزادی دسترسی به اینترنت آزاد و بدون محدودیت."
+      },
+      en: {
+        nav_features: "Features",
+        nav_protocols: "Protocols",
+        nav_doctor: "Network Doctor",
+        nav_download: "Download",
+        badge_text: "v1.3.1 Powered by Sing-box & Xray Cores",
+        hero_title: "Next-Gen Anti-Censorship & Multi-Protocol Client",
+        hero_desc: "Full support for VLESS Reality, Cloudflare WARP, AmneziaWG, Hysteria 2, TUIC, and OpenVPN with high-speed Wintun TUN adapter and Clean IP Scanner.",
+        btn_download: "Download for Windows",
+        btn_explore: "Explore Features",
+        mockup_connected: "Connected (Protected)",
+        mockup_node_name: "🇩🇪 Frankfurt VLESS Reality VIP",
+        mockup_speed_down: "Download Speed",
+        mockup_speed_up: "Upload Speed",
+        mockup_ping: "Real Ping Delay",
+        mockup_mode: "Routing Engine",
+        feat_header_title: "Exceptional Modern Features",
+        feat_header_desc: "Engineered to penetrate strict DPI firewalls and network throttling with maximum stability",
+        f1_title: "Smart Auto-Select & Failover",
+        f1_desc: "Concurrent latency probing across all nodes with instant auto-connection and seamless zero-downtime failover switching.",
+        f2_title: "Next-Gen Obfuscation Protocols",
+        f2_desc: "VLESS Reality, Hysteria 2, TUIC, WARP-on-WARP, and AmneziaWG with TLS ClientHello camouflage and packet junking.",
+        f3_title: "Cloudflare Clean IP Scanner",
+        f3_desc: "Parallel Anycast scanner finding zero-loss clean endpoints with 1-click batch WARP and AmneziaWG configuration generator.",
+        f4_title: "Visual App Split Tunneling",
+        f4_desc: "Select specific applications with official icons to bypass domestic websites and banking apps without disconnecting.",
+        f5_title: "Smart Network Doctor",
+        f5_desc: "1-Click automated diagnosis & repair for DNS poisoning, Wintun adapter state, and stale Windows registry proxies.",
+        f6_title: "Subscription Hub & Quota Tracker",
+        f6_desc: "Live tracking of remaining bandwidth quota, total data usage, and expiration days with Subscription-Userinfo parsing.",
+        proto_header_title: "Protocol Capability Matrix",
+        proto_header_desc: "Choose the optimal protocol tailored for your ISP and network conditions",
+        th_proto: "Protocol",
+        th_core: "Core Engine",
+        th_dpi: "DPI Resistance",
+        th_speed: "Speed & Latency",
+        th_usecase: "Recommended Use Case",
+        td_use_reality: "Browsing, YouTube 4K, Instagram",
+        td_use_warp: "Gaming, Downloads, and Streaming",
+        td_use_awg: "Severely restricted / National Intranets",
+        td_use_hy2: "Unstable mobile carrier networks",
+        td_use_ovpn: "Enterprise VPN & custom .ovpn files",
+        dl_title: "Download NexVPN for Windows",
+        dl_desc: "Fully tested and compatible with Windows 10 & 11 (64-bit) with signed Wintun drivers",
+        dl_installer: "Download Installer (.exe)",
+        dl_portable: "Download Portable (.zip)",
+        footer_text: "Proudly developed as open-source software for unrestricted global internet freedom."
+      },
+      ru: {
+        nav_features: "Функции",
+        nav_protocols: "Протоколы",
+        nav_doctor: "Доктор сети",
+        nav_download: "Скачать",
+        badge_text: "Версия 1.3.1 на ядрах Sing-box и Xray",
+        hero_title: "Мультипротокольный клиент нового поколения",
+        hero_desc: "Полная поддержка VLESS Reality, Cloudflare WARP, AmneziaWG, Hysteria 2, TUIC и OpenVPN с высокоскоростным Wintun адаптером и сканером чистых IP.",
+        btn_download: "Скачать для Windows",
+        btn_explore: "Обзор возможностей",
+        mockup_connected: "Подключено (Защищено)",
+        mockup_node_name: "🇩🇪 Frankfurt VLESS Reality VIP",
+        mockup_speed_down: "Скорость загрузки",
+        mockup_speed_up: "Скорость отдачи",
+        mockup_ping: "Реальный пинг",
+        mockup_mode: "Режим туннеля",
+        feat_header_title: "Передовые технологии обхода блокировок",
+        feat_header_desc: "Создан для преодоления строгих DPI-фильтров и блокировок с максимальной стабильностью",
+        f1_title: "Умный автовыбор и Failover",
+        f1_desc: "Параллельное тестирование пинга серверов с мгновенным подключением к самому быстрому узлу и бесшовным переключением.",
+        f2_title: "Протоколы нового поколения",
+        f2_desc: "Поддержка VLESS Reality, Hysteria 2, TUIC, WARP-on-WARP и AmneziaWG с маскировкой TLS ClientHello для обхода блокировок.",
+        f3_title: "Сканер чистых IP Cloudflare",
+        f3_desc: "Быстрый поиск Anycast IP без потерь пакетов и генерация готовых конфигураций WARP и AmneziaWG в 1 клик.",
+        f4_title: "Раздельное туннелирование (Split Tunneling)",
+        f4_desc: "Визуальный выбор приложений для прямого доступа к локальным сайтам и банкам без отключения VPN.",
+        f5_title: "Умный доктор сети",
+        f5_desc: "Автоматическая диагностика и устранение проблем с DNS, драйвером Wintun и системным прокси в 1 клик.",
+        f6_title: "Менеджер подписок и трафика",
+        f6_desc: "Отслеживание остатка гигабайт и срока действия аккаунта на основе заголовков Subscription-Userinfo.",
+        proto_header_title: "Сравнение поддерживаемых протоколов",
+        proto_header_desc: "Выберите оптимальный протокол под вашего интернет-провайдера",
+        th_proto: "Протокол",
+        th_core: "Ядро",
+        th_dpi: "Защита от DPI",
+        th_speed: "Скорость и пинг",
+        th_usecase: "Рекомендуемое назначение",
+        td_use_reality: "Веб-серфинг, YouTube 4K, соцсети",
+        td_use_warp: "Игры, стриминг и скачивание",
+        td_use_awg: "Жесткие блокировки и белые списки",
+        td_use_hy2: "Нестабильный мобильный интернет",
+        td_use_ovpn: "Корпоративные сети и файлы .ovpn",
+        dl_title: "Скачать NexVPN для Windows",
+        dl_desc: "Совместимо с Windows 10 и 11 (64-bit) с официальным драйвером Wintun",
+        dl_installer: "Скачать установщик (.exe)",
+        dl_portable: "Скачать портативную версию (.zip)",
+        footer_text: "Разработано с открытым исходным кодом во имя свободы интернета."
+      }
+    };
+
+    function setLang(lang) {
+      document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = Array.from(document.querySelectorAll('.lang-btn')).find(b => b.textContent.toLowerCase().includes(lang === 'fa' ? 'فا' : lang));
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const html = document.documentElement;
+      if (lang === 'fa') {
+        html.setAttribute('lang', 'fa');
+        html.setAttribute('dir', 'rtl');
+      } else {
+        html.setAttribute('lang', lang);
+        html.setAttribute('dir', 'ltr');
+      }
+
+      const dict = i18nData[lang] || i18nData.en;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) {
+          el.textContent = dict[key];
+        }
+      });
+    }
+
+    // Interactive Orb animation
+    let isConnectedState = true;
+    function toggleOrb() {
+      isConnectedState = !isConnectedState;
+      const orb = document.getElementById('hero-orb');
+      const statusText = document.getElementById('hero-status');
+      const down = document.getElementById('stat-down');
+      const up = document.getElementById('stat-up');
+      const ping = document.getElementById('stat-ping');
+
+      const currentLang = document.documentElement.getAttribute('lang') || 'fa';
+      const dict = i18nData[currentLang] || i18nData.en;
+
+      if (isConnectedState) {
+        orb.style.borderColor = 'var(--emerald)';
+        orb.style.boxShadow = 'var(--glow-emerald)';
+        statusText.style.color = 'var(--emerald)';
+        statusText.textContent = dict.mockup_connected || 'متصل (پایدار)';
+        down.textContent = '28.4 MB/s';
+        up.textContent = '6.8 MB/s';
+        ping.textContent = '42 ms';
+      } else {
+        orb.style.borderColor = '#64748b';
+        orb.style.boxShadow = 'none';
+        statusText.style.color = '#94a3b8';
+        statusText.textContent = currentLang === 'fa' ? 'قطع شد' : currentLang === 'ru' ? 'Отключено' : 'Disconnected';
+        down.textContent = '0.0 KB/s';
+        up.textContent = '0.0 KB/s';
+        ping.textContent = '--';
+      }
+    }
+  </script>
+</body>
+</html>
