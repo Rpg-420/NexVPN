@@ -393,7 +393,11 @@ func (e *Engine) startStatsLoop(ctx context.Context, adapter protocols.ProtocolA
 			}
 
 			e.mu.Lock()
-			duration := int64(time.Since(e.status.ConnectedAt).Seconds())
+			// Fix: only calculate duration if actually connected and ConnectedAt is non-zero
+			var duration int64
+			if e.status.State == StateConnected && !e.status.ConnectedAt.IsZero() {
+				duration = int64(time.Since(e.status.ConnectedAt).Seconds())
+			}
 			e.status.Duration = duration
 
 			speedDown := rx - lastRx
@@ -462,7 +466,12 @@ func (e *Engine) setErrorStatus(msg string) {
 		go sessionCb(session)
 	}
 
-	const maxFailoverAttempts = 3
+	const defaultMaxFailoverAttempts = 3
+	maxFailoverAttempts := int32(defaultMaxFailoverAttempts)
+	// Use user-configured reconnect attempts if available
+	if lastS.ReconnectAttempts > 0 {
+		maxFailoverAttempts = int32(lastS.ReconnectAttempts)
+	}
 
 	if lastS.AutoFailover && e.failoverCallback != nil && activeP.ID != "" {
 		attempts := atomic.AddInt32(&e.failoverAttempts, 1)

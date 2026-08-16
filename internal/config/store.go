@@ -361,6 +361,35 @@ func (s *Store) AddProfile(p Profile) (string, error) {
 	return p.ID, s.saveUnlocked()
 }
 
+// AddProfileBatch adds multiple profiles in a single atomic file write (much faster than N AddProfile calls).
+// Returns the IDs of all added profiles in the same order.
+func (s *Store) AddProfileBatch(profiles []Profile) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	ids := make([]string, len(profiles))
+
+	for i := range profiles {
+		p := &profiles[i]
+		if p.ID == "" {
+			p.ID = uuid.New().String()
+		}
+		if p.Category == "" {
+			p.Category = InferCategory(p.Protocol)
+		}
+		if p.CreatedAt.IsZero() {
+			p.CreatedAt = now
+		}
+		p.UpdatedAt = now
+		ids[i] = p.ID
+		s.data.Profiles = append(s.data.Profiles, *p)
+	}
+
+	// Single file write for all profiles
+	return ids, s.saveUnlocked()
+}
+
 // ReplaceSubscriptionProfiles replaces all nodes belonging to a subscriptionURL to prevent duplicates
 func (s *Store) ReplaceSubscriptionProfiles(subURL string, newProfiles []Profile) error {
 	s.mu.Lock()

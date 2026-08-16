@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Power,
   Shield,
@@ -35,6 +35,8 @@ import {
   Archive,
   Link2,
   AlertTriangle,
+  Search,
+  SortAsc,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { api } from '../lib/api'
@@ -67,6 +69,146 @@ import MobileRemoteModal from '../components/MobileRemoteModal'
 import FragmentStudioModal from '../components/FragmentStudioModal'
 import GamingModeModal from '../components/GamingModeModal'
 import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
+
+// ─── Profile Search Selector ─────────────────────────────────────────────────
+// Searchable dropdown with latency sorting and group display
+type SortMode = 'default' | 'latency' | 'name'
+
+function ProfileSearchSelector({
+  profiles,
+  selectedProfileId,
+  onSelect,
+}: {
+  profiles: Profile[]
+  selectedProfileId: string
+  onSelect: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<SortMode>('default')
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const filtered = useMemo(() => {
+    let list = [...profiles]
+    if (query.trim()) {
+      const q = query.toLowerCase()
+      list = list.filter(
+        p =>
+          p.name.toLowerCase().includes(q) ||
+          (p.server || '').toLowerCase().includes(q) ||
+          (p.group || '').toLowerCase().includes(q)
+      )
+    }
+    if (sort === 'latency') {
+      list.sort((a, b) => {
+        const la = a.latency_ms && a.latency_ms > 0 ? a.latency_ms : 99999
+        const lb = b.latency_ms && b.latency_ms > 0 ? b.latency_ms : 99999
+        return la - lb
+      })
+    } else if (sort === 'name') {
+      list.sort((a, b) => a.name.localeCompare(b.name))
+    }
+    return list
+  }, [profiles, query, sort])
+
+  const selected = profiles.find(p => p.id === selectedProfileId)
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      {/* Trigger button */}
+      <button
+        id="dashboard-profile-select"
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:border-cyan-500/50 transition text-xs font-semibold text-slate-200 text-left rtl:text-right"
+      >
+        <Server size={13} className="text-cyan-400 shrink-0" />
+        <span className="flex-1 truncate">
+          {selected
+            ? `${getCountryFlag(selected.country_code)} ${selected.name}${selected.latency_ms ? ` (${selected.latency_ms}ms)` : ''}`
+            : t('select_server_prompt')}
+        </span>
+        <span className="text-slate-500 text-[9px]">▼</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full mt-1 w-full rounded-2xl bg-slate-950 border border-slate-700 shadow-2xl shadow-black/60 overflow-hidden">
+          {/* Search + sort row */}
+          <div className="flex items-center gap-1.5 p-2 border-b border-slate-800">
+            <div className="flex items-center gap-1 flex-1 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1">
+              <Search size={12} className="text-slate-500 shrink-0" />
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder={t('search') || 'Search profiles...'}
+                className="flex-1 bg-transparent text-xs text-slate-200 outline-none placeholder-slate-600"
+              />
+              {query && (
+                <button onClick={() => setQuery('')} className="text-slate-500 hover:text-slate-300">
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setSort(s => s === 'latency' ? 'name' : s === 'name' ? 'default' : 'latency')}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-cyan-400 transition text-[9px] font-bold flex items-center gap-1"
+              title="Sort: default → latency → name"
+            >
+              <SortAsc size={12} />
+              <span>{sort === 'latency' ? 'ms' : sort === 'name' ? 'A-Z' : '—'}</span>
+            </button>
+          </div>
+
+          {/* Profile list */}
+          <div className="max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs text-slate-500">{t('no_results') || 'No matching profiles'}</div>
+            ) : (
+              filtered.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { onSelect(p.id); setOpen(false); setQuery('') }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left rtl:text-right transition hover:bg-slate-800 ${
+                    p.id === selectedProfileId ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-300'
+                  }`}
+                >
+                  <span className="text-base leading-none shrink-0">{getCountryFlag(p.country_code)}</span>
+                  <span className="flex-1 truncate font-semibold">{p.name}</span>
+                  {p.group && <span className="text-[10px] text-slate-500 truncate max-w-[60px]">{p.group}</span>}
+                  {p.latency_ms && p.latency_ms > 0 && (
+                    <span className={`text-[10px] font-mono font-bold shrink-0 ${
+                      p.latency_ms < 150 ? 'text-emerald-400' : p.latency_ms < 300 ? 'text-amber-400' : 'text-rose-400'
+                    }`}>{p.latency_ms}ms</span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+
+          {filtered.length < profiles.length && (
+            <div className="px-3 py-1.5 text-center text-[10px] text-slate-600 border-t border-slate-800">
+              {filtered.length} / {profiles.length} profiles
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
   status: ConnectionStatus
@@ -103,7 +245,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
   const [peakDown, setPeakDown] = useState(0)
   const [peakUp, setPeakUp] = useState(0)
   const [monthlyQuotaGB, setMonthlyQuotaGB] = useState<number>(0)
-  const [healthStatus, setHealthStatus] = useState<any | null>(null)
+  const [healthStatus, setHealthStatus] = useState<import('../types').HealthStatus | null>(null)
 
   // Modals
   const [showSpeedTestModal, setShowSpeedTestModal] = useState(false)
@@ -178,7 +320,8 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
 
   const handleSelectProfile = (id: string) => {
     setSelectedProfileId(id)
-    localStorage.setItem('nexvpn_last_selected_profile_id', id)
+    // NOTE: last_profile_id is persisted in backend settings on Connect.
+    // We do NOT duplicate it in localStorage to avoid inconsistency.
   }
 
   const loadDashboardData = useCallback(async () => {
@@ -191,7 +334,9 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         if (s?.last_profile_id && pList.some(p => p.id === s.last_profile_id)) {
           targetId = s.last_profile_id
         } else if (savedLocal && pList.some(p => p.id === savedLocal)) {
+          // Legacy: still read from localStorage once, then rely on backend
           targetId = savedLocal
+          localStorage.removeItem('nexvpn_last_selected_profile_id')
         } else if (pList.length > 0) {
           targetId = pList[0].id
         }
@@ -267,8 +412,9 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
           await api.connect(idToConnect)
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Connect toggle error:', err)
+      showToast(err?.message || t('error'))
     } finally {
       setIsActioning(false)
     }
@@ -375,7 +521,12 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
     onOpenLANShare: () => setShowLANShareModal(true),
     onOpenEmergencyFixer: () => setShowEmergencyModal(true),
     onOpenQuotaManager: () => setShowQuotaModal(true),
+    onOpenDNSLeak: () => setShowDNSLeakModal(true),
+    onOpenHistory: () => setShowHistoryModal(true),
+    onOpenBackup: () => setShowBackupModal(true),
+    onPingAll: handlePingAllAndPickBest,
   })
+
 
   const totalUsedBytes = stats.bytes_received + stats.bytes_sent
   const usedGB = (totalUsedBytes / (1024 * 1024 * 1024)).toFixed(2)
@@ -708,22 +859,15 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
               )}
             </div>
           ) : (
-            /* Server Selector with 1-Click Ping All and Mobile QR Exporter */
+            /* Server Selector with Search, 1-Click Ping All and Mobile QR Exporter */
             <div className="w-full space-y-2 pt-2 border-t border-white/5">
+              {/* Search filter input */}
+              <ProfileSearchSelector
+                profiles={profiles}
+                selectedProfileId={selectedProfileId}
+                onSelect={handleSelectProfile}
+              />
               <div className="flex items-center gap-1.5">
-                <select
-                  id="dashboard-profile-select"
-                  className="form-control text-xs font-semibold bg-slate-900/90 border-slate-700/60 hover:border-cyan-500/50 transition cursor-pointer flex-1"
-                  value={selectedProfileId}
-                  onChange={e => handleSelectProfile(e.target.value)}
-                >
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {getCountryFlag(p.country_code)} {p.name} {p.latency_ms ? `(${p.latency_ms}ms)` : ''}
-                    </option>
-                  ))}
-                </select>
-
                 <button
                   type="button"
                   onClick={handlePingAllAndPickBest}

@@ -189,8 +189,8 @@ func (a *App) ImportURI(rawURI string, group string) (string, error) {
 	rawURI = strings.TrimSpace(rawURI)
 	lines := strings.Split(rawURI, "\n")
 	if len(lines) > 1 {
-		lastID := ""
-		count := 0
+		// Fix: batch all profiles into a single AddProfileBatch call (1 file write vs N)
+		var batch []config.Profile
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") {
@@ -201,7 +201,7 @@ func (a *App) ImportURI(rawURI string, group string) (string, error) {
 				if group != "" {
 					node.Group = group
 				}
-				profile := config.Profile{
+				batch = append(batch, config.Profile{
 					Name:          node.Name,
 					Protocol:      node.Protocol,
 					Category:      node.Category,
@@ -211,15 +211,15 @@ func (a *App) ImportURI(rawURI string, group string) (string, error) {
 					Port:          node.Port,
 					Group:         node.Group,
 					CreatedAt:     time.Now(),
-				}
-				if id, err := a.AddProfile(profile); err == nil {
-					lastID = id
-					count++
-				}
+				})
 			}
 		}
-		if count > 0 {
-			return lastID, nil
+		if len(batch) > 0 {
+			ids, err := a.store.AddProfileBatch(batch)
+			if err != nil {
+				return "", err
+			}
+			return ids[len(ids)-1], nil
 		}
 	}
 
@@ -615,24 +615,28 @@ func (a *App) triggerAutoFailover(failedProfileID string) {
 	var candidate *config.Profile
 	bestLatency := 999999
 
-	for _, p := range profiles {
-		if p.ID == failedProfileID {
+	for i := range profiles {
+		if profiles[i].ID == failedProfileID {
 			continue
 		}
-		lat := p.LatencyMs
+		lat := profiles[i].LatencyMs
 		if lat <= 0 {
 			lat = 9999
 		}
 		if lat < bestLatency {
 			bestLatency = lat
-			candidate = &p
+			// Fix: use index-based reference to avoid loop variable capture bug
+			pCopy := profiles[i]
+			candidate = &pCopy
 		}
 	}
 
 	if candidate == nil {
-		for _, p := range profiles {
-			if p.ID != failedProfileID {
-				candidate = &p
+		for i := range profiles {
+			if profiles[i].ID != failedProfileID {
+				// Fix: use index-based reference to avoid loop variable capture bug
+				pCopy := profiles[i]
+				candidate = &pCopy
 				break
 			}
 		}
@@ -691,7 +695,7 @@ func (a *App) ClearLogs() {
 }
 
 func (a *App) GetVersion() string {
-	return "1.3.1"
+	return AppVersion
 }
 
 // ============================================================
@@ -708,7 +712,9 @@ func (a *App) GetLocalIPAddress() (string, error) {
 		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
 			if ipNet.IP.To4() != nil {
 				ipStr := ipNet.IP.String()
-				if strings.HasPrefix(ipStr, "192.168.") || strings.HasPrefix(ipStr, "10.") || strings.HasPrefix(ipStr, "172.16.") || strings.HasPrefix(ipStr, "172.20.") || strings.HasPrefix(ipStr, "172.28.") {
+				// Fix: complete RFC 1918 private address space check
+				// 10.0.0.0/8, 172.16.0.0/12 (172.16-31.x.x), 192.168.0.0/16
+				if strings.HasPrefix(ipStr, "192.168.") || strings.HasPrefix(ipStr, "10.") || isRFC1918_172(ipStr) {
 					return ipStr, nil
 				}
 			}
@@ -717,7 +723,26 @@ func (a *App) GetLocalIPAddress() (string, error) {
 	return "127.0.0.1", nil
 }
 
-// ToggleAllowLan enables or disables LAN proxy sharing
+// isRFC1918_172 checks the full 172.16.0.0/12 private range (172.16.x.x through 172.31.x.x)
+func isRFC1918_172(ipStr string) bool {
+	if !strings.HasPrefix(ipStr, "172.") {
+		return false
+	}
+	parts := strings.Split(ipStr, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	second := 0
+	for _, c := range parts[1] {
+		if c < '0' || c > '9' {
+			return false
+		}
+		second = second*10 + int(c-'0')
+	}
+	return second >= 16 && second <= 31
+}
+
+
 func (a *App) ToggleAllowLan(enabled bool) error {
 	settings := a.store.GetSettings()
 	settings.AllowLan = enabled
@@ -889,7 +914,13 @@ func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
 		status := "success"
 		msg := strings.TrimSpace(string(out))
 		if err != nil {
-			status = "success"
+			// Fix: properly mark failed steps as error (not success)
+			if s.prog == "arp" {
+				// arp -d * always exits non-zero on Windows — treat as success
+				status = "success"
+			} else {
+				status = "error"
+			}
 			if msg == "" {
 				msg = err.Error()
 			}

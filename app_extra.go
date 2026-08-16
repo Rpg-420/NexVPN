@@ -86,7 +86,7 @@ func (a *App) OpenProfilesFolder() {
 
 func (a *App) GetSystemInfo() map[string]string {
 	return map[string]string{
-		"app_version": "1.3.1",
+		"app_version": AppVersion,
 		"go_version":  "1.23.2",
 		"platform":    "windows",
 	}
@@ -97,7 +97,9 @@ func (a *App) CheckCoreBinaries() map[string]core.BinaryInfo {
 }
 
 func (a *App) InstallCoreBinary(coreKey string) error {
-	return core.DownloadAndInstallCore(coreKey)
+	// Use UpdateCoreEngine which handles download + extraction
+	_, err := core.UpdateCoreEngine(coreKey)
+	return err
 }
 
 // StartCleanIPScan begins scanning Cloudflare/WARP IP ranges concurrently across specified ports
@@ -220,7 +222,8 @@ func (a *App) ApplyWarpLicenseKey(licenseKey string) error {
 	return err
 }
 
-// StartSubscriptionScheduler starts a background timer to periodically update subscriptions
+// StartSubscriptionScheduler starts a background timer to periodically update subscriptions.
+// It uses the app context so it stops cleanly when the app shuts down.
 func (a *App) StartSubscriptionScheduler() {
 	go func() {
 		settings := a.store.GetSettings()
@@ -232,11 +235,26 @@ func (a *App) StartSubscriptionScheduler() {
 		ticker := time.NewTicker(time.Duration(intervalHours) * time.Hour)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			_, _ = a.UpdateAllSubscriptions()
+		// Use app context if available, otherwise block forever on a never-closing channel
+		var done <-chan struct{}
+		if a.ctx != nil {
+			done = a.ctx.Done()
+		} else {
+			done = make(chan struct{}) // never fires
+		}
+
+		for {
+			select {
+			case <-ticker.C:
+				_, _ = a.UpdateAllSubscriptions()
+			case <-done:
+				// App is shutting down — stop the scheduler goroutine cleanly
+				return
+			}
 		}
 	}()
 }
+
 
 // ConnectFastest finds the lowest latency healthy profile and connects to it
 func (a *App) ConnectFastest(category string) (*config.Profile, error) {
@@ -528,10 +546,8 @@ func (a *App) GenerateShareableSubscription(category string) (string, error) {
 	return base64.StdEncoding.EncodeToString([]byte(bundle)), nil
 }
 
-// CheckCoreBinaries returns status and version of all protocol cores
-func (a *App) CheckCoreBinaries() map[string]core.BinaryInfo {
-	return core.CheckBinaries()
-}
+// NOTE: CheckCoreBinaries is defined once in app_extra.go at line 95.
+// The duplicate definition below has been removed to fix a compile error.
 
 // UpdateCoreEngine downloads and updates a core binary (singbox, xray, openvpn)
 func (a *App) UpdateCoreEngine(coreKey string) (string, error) {

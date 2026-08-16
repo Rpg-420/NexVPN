@@ -90,6 +90,11 @@ export const translations = {
     game_mode_inactive: 'Game Mode is Disabled',
     click_to_disconnect: 'Click to Disconnect',
     click_to_connect: 'Click to Connect (Ctrl+Shift+V)',
+    search: 'Search profiles...',
+    no_results: 'No matching profiles',
+    sort_by_latency: 'Sort by Latency',
+    sort_by_name: 'Sort A-Z',
+    keyboard_shortcuts: 'Keyboard Shortcuts',
 
     // V2Ray & Xray Page
     v2ray_title: 'V2Ray / Xray Nodes',
@@ -201,7 +206,6 @@ export const translations = {
     scanner_select_all: 'Select All',
     scanner_deselect_all: 'Deselect All',
     scanner_copy_list: 'Copy List',
-    scanner_selected_count: 'IPs selected for auto-creation:',
     scanner_batch_warp: '⚡ Batch Create WARP Configs',
     scanner_batch_amnezia: '🛡️ Batch Create AmneziaWG Configs',
     scanner_item_port: 'Port:',
@@ -780,6 +784,12 @@ export const translations = {
     game_mode_inactive: 'حالت گیمینگ غیرفعال است',
     click_to_disconnect: 'کلیک جهت قطع اتصال فوری',
     click_to_connect: 'کلیک جهت اتصال هوشمند و ایمن (Ctrl+Shift+V)',
+    search: 'جستجوی پروفایل...',
+    no_results: 'پروفایلی یافت نشد',
+    sort_by_latency: 'مرتب‌سازی بر اساس تاخیر',
+    sort_by_name: 'مرتب‌سازی حروف الفبا',
+    keyboard_shortcuts: 'میانبرهای صفحه‌کلید',
+
 
     // V2Ray & Xray Page
     v2ray_title: 'سرورهای V2Ray / Xray',

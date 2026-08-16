@@ -85,22 +85,27 @@ export default function App() {
       setStats(newStats)
     })
 
-    // Low-overhead background fallback timer
-    const interval = setInterval(() => {
-      api.getConnectionStatus().then(st => {
-        if (st) {
-          setStatus(st)
-          handleGlobalStatusNotification(st)
-        }
-      })
-    }, 3000)
+    // Low-overhead fallback poll — only fires if Wails events are unavailable (dev/mock mode)
+    const hasWailsRuntime =
+      typeof window !== 'undefined' &&
+      (window as any).runtime?.EventsOn
+    const interval = hasWailsRuntime
+      ? null
+      : setInterval(() => {
+          api.getConnectionStatus().then(st => {
+            if (st) {
+              setStatus(st)
+              handleGlobalStatusNotification(st)
+            }
+          })
+        }, 3000)
 
     return () => {
       unsubLang()
       unsubTheme()
       unlistenStatus()
       unlistenStats()
-      clearInterval(interval)
+      if (interval) clearInterval(interval)
     }
   }, [])
 
@@ -125,7 +130,8 @@ export default function App() {
   const isConnecting = status.state === 'connecting'
 
   return (
-    <div className="app-container" key={lang}>
+    // Use dir/lang attributes instead of key={lang} to avoid full remount on language change
+    <div className="app-container" dir={lang === 'fa' ? 'rtl' : 'ltr'} lang={lang}>
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="sidebar-brand-icon overflow-hidden bg-transparent border-0">

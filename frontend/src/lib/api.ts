@@ -15,6 +15,9 @@ import type {
   SubscriptionFetchResult,
   RadarReport,
   EmergencyRepairReport,
+  ConnectionSession,
+  DNSLeakReport,
+  BatchTestResult,
 } from '../types'
 
 const isWails = () => {
@@ -294,10 +297,10 @@ export const api = {
   importEncryptedBackup: (payload: string, password: string) => callGo<void>('ImportEncryptedBackup', payload, password),
   exportFullBackup: () => callGo<string>('ExportFullBackup'),
   importFullBackup: (jsonStr: string, overwrite: boolean) => callGo<number>('ImportFullBackup', jsonStr, overwrite),
-  getConnectionHistory: () => callGo<any[]>('GetConnectionHistory'),
+  getConnectionHistory: () => callGo<ConnectionSession[]>('GetConnectionHistory'),
   clearConnectionHistory: () => callGo<void>('ClearConnectionHistory'),
-  testAllProfilesBatch: (category?: string) => callGo<any[]>('TestAllProfilesBatch', category || 'all'),
-  runDNSLeakDiagnostics: () => callGo<any>('RunDNSLeakDiagnostics'),
+  testAllProfilesBatch: (category?: string) => callGo<BatchTestResult[]>('TestAllProfilesBatch', category || 'all'),
+  runDNSLeakDiagnostics: () => callGo<DNSLeakReport>('RunDNSLeakDiagnostics'),
   sendSystemNotification: (title: string, message: string) => callGo<void>('SendSystemNotification', title, message),
   createProxyChain: (hopProfileIDs: string[], chainName: string) =>
     callGo<string>('CreateProxyChain', hopProfileIDs, chainName),
