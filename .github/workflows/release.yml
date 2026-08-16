@@ -162,7 +162,7 @@ jobs:
         env:
           GOARCH: ${{ matrix.goarch }}
         run: |
-          wails build -clean -platform linux/${{ matrix.goarch }}
+          wails build -clean -platform linux/${{ matrix.goarch }} -tags webkit2_41
 
       - name: Package Linux Archive (.tar.gz)
         run: |
