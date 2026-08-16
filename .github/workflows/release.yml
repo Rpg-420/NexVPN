@@ -92,10 +92,15 @@ jobs:
           }
 
       - name: Build Windows Application
+        shell: pwsh
         env:
           GOARCH: ${{ matrix.goarch }}
         run: |
-          wails build -clean -platform windows/${{ matrix.goarch }} -nsis
+          if ("${{ matrix.arch }}" -eq "386") {
+            wails build -clean -platform windows/${{ matrix.goarch }}
+          } else {
+            wails build -clean -platform windows/${{ matrix.goarch }} -nsis
+          }
 
       - name: Package Portable ZIP
         shell: pwsh
