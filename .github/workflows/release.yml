@@ -60,6 +60,39 @@ jobs:
       - name: Generate Windows Resources
         run: |
           go-winres make --in winres/winres.json
+      - name: Prepare Windows Core Bundles
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin
+          Invoke-WebRequest -Uri "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" -OutFile "bin\geoip.dat"
+          Invoke-WebRequest -Uri "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -OutFile "bin\geosite.dat"
+          
+          if ("${{ matrix.arch }}" -eq "amd64") {
+            Invoke-WebRequest -Uri "https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-windows-amd64.zip" -OutFile "singbox.zip"
+            Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile "xray.zip"
+          } elseif ("${{ matrix.arch }}" -eq "arm64") {
+            Invoke-WebRequest -Uri "https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-windows-arm64.zip" -OutFile "singbox.zip"
+            Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-arm64-v8a.zip" -OutFile "xray.zip"
+          } else {
+            Invoke-WebRequest -Uri "https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-windows-386.zip" -OutFile "singbox.zip"
+            Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-32.zip" -OutFile "xray.zip"
+          }
+          Expand-Archive -Path "singbox.zip" -DestinationPath "singbox_temp" -Force
+          Expand-Archive -Path "xray.zip" -DestinationPath "xray_temp" -Force
+          
+          Copy-Item "singbox_temp\*\sing-box.exe" -Destination "bin\sing-box.exe" -Force
+          Copy-Item "xray_temp\xray.exe" -Destination "bin\xray.exe" -Force
+          
+          Invoke-WebRequest -Uri "https://www.wintun.net/builds/wintun-0.14.1.zip" -OutFile "wintun.zip"
+          Expand-Archive -Path "wintun.zip" -DestinationPath "wintun_temp" -Force
+          
+          if ("${{ matrix.arch }}" -eq "amd64") {
+            Copy-Item "wintun_temp\wintun\bin\amd64\wintun.dll" -Destination "bin\wintun.dll" -Force
+          } elseif ("${{ matrix.arch }}" -eq "arm64") {
+            Copy-Item "wintun_temp\wintun\bin\arm64\wintun.dll" -Destination "bin\wintun.dll" -Force
+          } else {
+            Copy-Item "wintun_temp\wintun\bin\x86\wintun.dll" -Destination "bin\wintun.dll" -Force
+          }
 
       - name: Build Windows Application
         env:
