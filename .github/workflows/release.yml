@@ -56,7 +56,7 @@ jobs:
 
       - name: Install Wails CLI & go-winres
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
           go install github.com/tc-hib/go-winres@latest
 
       - name: Generate Windows Resources
@@ -174,7 +174,7 @@ jobs:
         run: npm ci
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Prepare Linux Core Bundles
         run: |
@@ -247,7 +247,7 @@ jobs:
         run: npm ci
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Prepare macOS Core Bundles
         run: |
