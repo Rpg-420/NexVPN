@@ -227,27 +227,11 @@ jobs:
           ln -sf /usr/share/nexvpn/NexVPN "$PKG_DIR/usr/bin/nexvpn"
           cp build/appicon.png "$PKG_DIR/usr/share/icons/hicolor/512x512/apps/nexvpn.png" || true
 
-          cat << 'EOF' > "$PKG_DIR/usr/share/applications/nexvpn.desktop"
-[Desktop Entry]
-Name=NexVPN
-Comment=Next-Gen Multi-Protocol Client
-Exec=/usr/share/nexvpn/NexVPN
-Icon=nexvpn
-Terminal=false
-Type=Application
-Categories=Network;VPN;Security;
-EOF
+          # Create .desktop file
+          printf "[Desktop Entry]\nName=NexVPN\nComment=Next-Gen Multi-Protocol Client\nExec=/usr/share/nexvpn/NexVPN\nIcon=nexvpn\nTerminal=false\nType=Application\nCategories=Network;VPN;Security;\n" > "$PKG_DIR/usr/share/applications/nexvpn.desktop"
 
-          cat << EOF > "$PKG_DIR/DEBIAN/control"
-Package: nexvpn
-Version: ${PKG_VER}
-Section: net
-Priority: optional
-Architecture: ${{ matrix.arch }}
-Maintainer: Rpg-420 <https://github.com/Rpg-420/NexVPN>
-Description: NexVPN Next-Gen Multi-Protocol Desktop Client
- Sing-Box, Xray-core, WireGuard, and V2Ray high-speed proxy client.
-EOF
+          # Create deb control file
+          printf "Package: nexvpn\nVersion: %s\nSection: net\nPriority: optional\nArchitecture: %s\nMaintainer: Rpg-420 <https://github.com/Rpg-420/NexVPN>\nDescription: NexVPN Next-Gen Multi-Protocol Desktop Client\n Sing-Box, Xray-core, WireGuard, and V2Ray high-speed proxy client.\n" "$PKG_VER" "${{ matrix.arch }}" > "$PKG_DIR/DEBIAN/control"
 
           dpkg-deb --build --root-owner-group "$PKG_DIR" "NexVPN-${VER}-linux-${{ matrix.arch }}.deb"
 
