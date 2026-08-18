@@ -37,6 +37,16 @@ func (a *WireGuardAdapter) SetLogger(fn LoggerFunc) {
 	}
 }
 
+func (a *WireGuardAdapter) SetOnExit(fn OnExitFunc) {
+	a.mu.RLock()
+	engine := a.singboxEngine
+	a.mu.RUnlock()
+
+	if engine != nil {
+		engine.SetOnExit(fn)
+	}
+}
+
 func (a *WireGuardAdapter) Start(ctx context.Context, configContent string) error {
 	if configContent == "" {
 		return fmt.Errorf("wireguard configuration content is empty")

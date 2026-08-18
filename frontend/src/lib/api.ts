@@ -37,13 +37,15 @@ function waitForWails(): Promise<boolean> {
 
   wailsReadyPromise = new Promise<boolean>(resolve => {
     let attempts = 0
+    const isDev = Boolean((import.meta as any)?.env?.DEV)
+    const maxAttempts = isDev ? 50 : 300 // 1.5s in dev, 9s in prod
     const check = () => {
       if (isWails()) {
         resolve(true)
         return
       }
       attempts++
-      if (attempts > 50) {
+      if (attempts > maxAttempts) {
         resolve(false)
         return
       }
@@ -58,6 +60,7 @@ function waitForWails(): Promise<boolean> {
 async function callGo<T>(methodName: string, ...args: any[]): Promise<T> {
   const shortName = methodName.replace('main.App.', '')
   const ready = await waitForWails()
+  
   if (ready && isWails()) {
     const fn = (window as any).go.main.App[shortName]
     if (typeof fn === 'function') {
@@ -70,7 +73,25 @@ async function callGo<T>(methodName: string, ...args: any[]): Promise<T> {
     }
   }
 
-  return getMockData<T>(shortName, args)
+  // Only return mock data in development mode
+  const isDev = Boolean((import.meta as any)?.env?.DEV)
+  if (isDev) {
+    console.warn(`Wails not available for ${shortName}, using mock data.`)
+    return getMockData<T>(shortName, args)
+  }
+  
+  // In production, returning mock data is a bug. Throw or return empty based on expected type.
+  console.error(`Wails binding not found for ${shortName} in production!`)
+  
+  // Return a safe empty default based on method name to prevent UI crash
+  if (shortName.startsWith('GetProfiles') || shortName.startsWith('GetLogs') || shortName === 'GetGroups') {
+    return [] as unknown as T
+  }
+  if (shortName === 'GetSettings') {
+    return {} as unknown as T
+  }
+  
+  return undefined as unknown as T
 }
 
 function getMockData<T>(method: string, args: any[]): T {
@@ -85,7 +106,7 @@ function getMockData<T>(method: string, args: any[]): T {
   if (method === 'GetSettings') return mockSettings as unknown as T
   if (method === 'GetLogs') return mockLogs as unknown as T
   if (method === 'CheckCoreBinaries') return mockBinaries as unknown as T
-  if (method === 'GetVersion') return '1.3.1' as unknown as T
+  if (method === 'GetVersion') return '1.3.3' as unknown as T
   if (method === 'GetGroups' || method === 'GetGroupsByCategory') return ['Germany', 'Subscriptions', 'VIP-WARP'] as unknown as T
   if (method === 'PingProfile') return 65 as unknown as T
   if (method === 'PingAllProfiles') return mockProfiles as unknown as T
@@ -203,7 +224,7 @@ const mockSettings: Settings = {
 }
 
 const mockLogs: LogEntry[] = [
-  { timestamp: new Date().toISOString(), level: 'info', message: 'NexVPN Engine v1.3.1 initialized', source: 'engine' },
+  { timestamp: new Date().toISOString(), level: 'info', message: 'NexVPN Engine v1.3.3 initialized', source: 'engine' },
 ]
 
 const mockBinaries: Record<string, BinaryInfo> = {
@@ -271,6 +292,14 @@ export const api = {
   clearLogs: () => callGo<void>('ClearLogs'),
 
   getVersion: () => callGo<string>('GetVersion'),
+  checkForUpdates: () => callGo<{
+    has_update: boolean
+    latest_version: string
+    current_version: string
+    release_url: string
+    release_notes: string
+    error?: string
+  }>('CheckForUpdates'),
 
   // Clean IP Scanner & SpeedTest
   startCleanIPScan: (subnets?: string[], ports?: number[]) => callGo<void>('StartCleanIPScan', subnets || [], ports || []),
@@ -312,6 +341,56 @@ export const api = {
   updateGeoDatabase: () => callGo<Record<string, string>>('UpdateGeoDatabase'),
   generateShareableSubscription: (category?: string) =>
     callGo<string>('GenerateShareableSubscription', category || 'all'),
+
+  // Discovery Hub Methods
+  fetchTelegramProxies: (customSources?: string[]) =>
+    callGo<import('../types').TelegramProxy[]>('FetchTelegramProxies', customSources || []),
+  testTelegramProxies: (proxies: import('../types').TelegramProxy[]) =>
+    callGo<import('../types').TelegramProxy[]>('TestTelegramProxies', proxies),
+  launchTelegramProxyLink: (link: string) => callGo<void>('LaunchTelegramProxyLink', link),
+
+  fetchFreeConfigs: (customSources?: string[]) =>
+    callGo<import('../types').FreeConfigItem[]>('FetchFreeConfigs', customSources || []),
+  testFreeConfigs: (configs: import('../types').FreeConfigItem[]) =>
+    callGo<import('../types').FreeConfigItem[]>('TestFreeConfigs', configs),
+  importFreeConfigs: (configs: import('../types').FreeConfigItem[], groupName?: string) =>
+    callGo<number>('ImportFreeConfigs', configs, groupName || 'Free Community'),
+
+  startCloudflareDiscoveryScan: (mode: string, isp?: string, customSubnets?: string[], customPorts?: number[]) =>
+    callGo<void>('StartCloudflareDiscoveryScan', mode, isp || 'all', customSubnets || [], customPorts || []),
+  stopCloudflareDiscoveryScan: () => callGo<void>('StopCloudflareDiscoveryScan'),
+  applyCleanIPToWARPProfiles: (ip: string, port: number) =>
+    callGo<number>('ApplyCleanIPToWARPProfiles', ip, port),
+  applyCleanIPToV2RayProfiles: (ip: string, port: number, onlyCDN?: boolean) =>
+    callGo<number>('ApplyCleanIPToV2RayProfiles', ip, port, onlyCDN !== false),
+
+  // Fragment Scanner Methods
+  startFragmentDiscoveryScan: () => callGo<void>('StartFragmentDiscoveryScan'),
+  stopFragmentDiscoveryScan: () => callGo<void>('StopFragmentDiscoveryScan'),
+  applyOptimalFragment: (size: string, sleep: string) =>
+    callGo<void>('ApplyOptimalFragment', size, sleep),
+
+  // Config Converter & Batch Real Delay Methods
+  convertConfig: (rawInput: string, targetFormat: string) =>
+    callGo<string>('ConvertConfig', rawInput, targetFormat),
+  testAllProfilesRealDelay: (category: string) =>
+    callGo<import('../types').BatchTestResult[]>('TestAllProfilesRealDelay', category),
+  toggleAutoFailover: (enabled: boolean) =>
+    callGo<void>('ToggleAutoFailover', enabled),
+
+  // Smart ISP, Sub Info & P2P Local Sync
+  detectCurrentISP: () =>
+    callGo<any>('DetectCurrentISP'),
+  broadcastProfilesToLAN: (category: string, deviceName: string) =>
+    callGo<number>('BroadcastProfilesToLAN', category, deviceName),
+  listenForNearbyProfiles: (timeoutSeconds: number) =>
+    callGo<any>('ListenForNearbyProfiles', timeoutSeconds),
+  importNearbyProfiles: (profiles: any[], groupName: string) =>
+    callGo<number>('ImportNearbyProfiles', profiles, groupName),
+  getSubscriptionInfo: (subUrl: string) =>
+    callGo<any>('GetSubscriptionInfo', subUrl),
+  setTrayLanguage: (lang: string) =>
+    callGo<void>('SetTrayLanguage', lang),
 
   // Events listener helper
   onEvent: (eventName: string, callback: (...data: any[]) => void): (() => void) => {

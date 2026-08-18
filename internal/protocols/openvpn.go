@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"nexvpn/internal/config"
+	"nexvpn/internal/sysproc"
 )
 
 type OpenVPNAdapter struct {
@@ -164,6 +166,13 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		"--config", tmpPath,
 		"--verb", "3",
 		"--suppress-timestamps",
+		"--replay-window", "512", "60",
+		"--mute-replay-warnings",
+		"--ping", "10",
+		"--ping-restart", "60",
+		"--mssfix", "1360",
+		"--auth-nocache",
+		"--route-delay", "2",
 	}
 
 	if credsPath != "" {
@@ -174,13 +183,25 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 	cmd.Dir = binDir
 	PrepareHiddenCmd(cmd)
 
+	a.mu.Lock()
+	a.cmd = cmd
+	a.tmpConfig = tmpPath
+	a.tmpCreds = credsPath
+	a.running = true
+	a.bytesRx = 0
+	a.bytesTx = 0
+	a.mu.Unlock()
+
+	connectedCh := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+
 	stdout, err := cmd.StdoutPipe()
 	if err == nil {
-		go a.streamLogs(stdout, "info")
+		go a.streamLogs(stdout, "info", connectedCh, errCh)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err == nil {
-		go a.streamLogs(stderr, "warning")
+		go a.streamLogs(stderr, "warning", connectedCh, errCh)
 	}
 
 	if err := cmd.Start(); err != nil {
@@ -191,14 +212,7 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		return fmt.Errorf("failed to start openvpn process: %w", err)
 	}
 
-	a.mu.Lock()
-	a.cmd = cmd
-	a.tmpConfig = tmpPath
-	a.tmpCreds = credsPath
-	a.running = true
-	a.bytesRx = 0
-	a.bytesTx = 0
-	a.mu.Unlock()
+	sysproc.AssignCmdToJobObject(cmd)
 
 	a.log("info", fmt.Sprintf("OpenVPN process started (PID: %d)", cmd.Process.Pid))
 
@@ -215,17 +229,31 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 
 		if wasRunning && onExit != nil {
 			if waitErr != nil {
-				onExit(fmt.Errorf("openvpn process exited unexpectedly: %w", waitErr))
+				onExit(fmt.Errorf("openvpn process exited: %w", waitErr))
 			} else {
-				onExit(fmt.Errorf("openvpn process exited unexpectedly"))
+				onExit(fmt.Errorf("openvpn process exited"))
 			}
 		}
 	}()
 
-	return nil
+	// Wait for OpenVPN handshake completion, explicit error, timeout, or cancellation
+	select {
+	case <-connectedCh:
+		a.log("info", "OpenVPN tunnel established successfully!")
+		return nil
+	case opErr := <-errCh:
+		_ = a.Stop()
+		return opErr
+	case <-time.After(25 * time.Second):
+		_ = a.Stop()
+		return fmt.Errorf("CONNECTION_TIMEOUT: اتصال به سرور پس از ۲۵ ثانیه برقرار نشد (پورت مسدود یا سرور خاموش است)")
+	case <-ctx.Done():
+		_ = a.Stop()
+		return ctx.Err()
+	}
 }
 
-func (a *OpenVPNAdapter) streamLogs(r io.Reader, defaultLevel string) {
+func (a *OpenVPNAdapter) streamLogs(r io.Reader, defaultLevel string, connectedCh chan<- struct{}, errCh chan<- error) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		text := strings.TrimSpace(scanner.Text())
@@ -234,17 +262,37 @@ func (a *OpenVPNAdapter) streamLogs(r io.Reader, defaultLevel string) {
 		}
 		level := defaultLevel
 		lower := strings.ToLower(text)
-		if strings.Contains(lower, "error") || strings.Contains(lower, "fatal") {
+
+		if strings.Contains(lower, "initialization sequence completed") {
+			level = "info"
+			select {
+			case connectedCh <- struct{}{}:
+			default:
+			}
+		} else if strings.Contains(lower, "auth_failed") || strings.Contains(lower, "password verification failed") {
+			level = "error"
+			a.log("error", "AUTHENTICATION_FAILED: نام کاربری یا رمز عبور اشتباه است یا اشتراک منقضی شده است (AUTH_FAILED)")
+			select {
+			case errCh <- fmt.Errorf("AUTH_FAILED: نام کاربری یا رمز عبور اشتباه است (AUTH_FAILED)"):
+			default:
+			}
+		} else if strings.Contains(lower, "tls key negotiation failed") || strings.Contains(lower, "tls handshake failed") {
+			level = "error"
+			a.log("error", "ISP Filtering Detected: پورت یا سرور OpenVPN مسدود است یا پاسخی دریافت نشد.")
+		} else if strings.Contains(lower, "cannot resolve host") {
+			level = "error"
+			a.log("error", "DNS Resolution Error: آدرس سرور OpenVPN ترجمه نشد.")
+			select {
+			case errCh <- fmt.Errorf("DNS_FAILED: دامنه سرور قابل دسترسی نیست"):
+			default:
+			}
+		} else if strings.Contains(lower, "error") || strings.Contains(lower, "fatal") {
 			level = "error"
 			if strings.Contains(lower, "--ca fails with") || strings.Contains(lower, "cannot find the file") {
 				a.log("warning", "Hint: OpenVPN requires external certificate files. Embed them inside <ca>...</ca> in your .ovpn or copy to bin folder.")
-			} else if strings.Contains(lower, "tls key negotiation failed") || strings.Contains(lower, "tls handshake failed") {
-				a.log("error", "ISP Filtering Detected: OpenVPN UDP port is filtered/dropped by your ISP. Please use an OpenVPN TCP (port 443) profile, or switch to VLESS Reality / WARP.")
 			}
 		} else if strings.Contains(lower, "warn") {
 			level = "warning"
-		} else if strings.Contains(lower, "initialization sequence completed") {
-			level = "info"
 		}
 		a.log(level, text)
 	}

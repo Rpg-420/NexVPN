@@ -61,8 +61,8 @@ func (d *SmartCoreDispatcher) Decide(profile *config.Profile, settings config.Se
 		}, nil
 	}
 
-	// 2. WireGuard .conf Profile
-	if profile.Protocol == config.ProtocolWireGuard && profile.RawURI == "" && strings.Contains(profile.ConfigContent, "[Interface]") {
+	// 2. WireGuard / WARP .conf Profile
+	if (profile.Protocol == config.ProtocolWireGuard || profile.Protocol == config.ProtocolWARP || profile.Category == config.CategoryWireGuardWarp) && strings.Contains(profile.ConfigContent, "[Interface]") {
 		outbound, host, err := parser.ParseWireGuardConf(profile.ConfigContent)
 		if err != nil {
 			return nil, fmt.Errorf("wireguard config parse error: %w", err)

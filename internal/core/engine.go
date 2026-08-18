@@ -1,28 +1,65 @@
+// Package core implements the central VPN engine and orchestration subsystem for NexVPN.
+//
+// The Engine manages the entire lifecycle of VPN connections across diverse protocols
+// (VLESS Reality, VMess, Trojan, Shadowsocks, Hysteria 2, TUIC, WireGuard / WARP / AmneziaWG, and OpenVPN).
+// It coordinates:
+//   - Adaptive multi-core dispatching (Sing-box, Xray, and Native OpenVPN with Wintun).
+//   - Dual-layer routing (Virtual Wintun TUN Adapter + Local HTTP/SOCKS5 system proxy).
+//   - Real-time traffic analytics, latency probes, and connection health monitoring.
+//   - Automated failover and self-healing upon unexpected disconnection.
+//   - Privacy shielding, DNS leak mitigation, and Kill Switch firewall enforcement.
 package core
 
 import (
 	"context"
 	"fmt"
 	"net"
+	"os/exec"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"nexvpn/internal/config"
 	"nexvpn/internal/protocols"
+	"nexvpn/internal/sysproc"
 	"nexvpn/internal/sysproxy"
 )
 
+// CleanupStaleCores terminates any orphaned VPN core background processes (sing-box, xray, openvpn)
+// that may have lingered from previous unexpected crashes to prevent port conflicts or device locking.
+func CleanupStaleCores() {
+	if runtime.GOOS == "windows" {
+		for _, name := range []string{"sing-box.exe", "xray.exe", "openvpn.exe"} {
+			cmd := exec.Command("taskkill", "/F", "/IM", name)
+			cmd.SysProcAttr = sysproc.HideWindowAttr()
+			_ = cmd.Run()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func cleanupStaleCores() {
+	CleanupStaleCores()
+}
+
+// ConnectionState represents the high-level operational phase of the VPN connection.
 type ConnectionState string
 
 const (
-	StateDisconnected  ConnectionState = "disconnected"
-	StateConnecting    ConnectionState = "connecting"
-	StateConnected     ConnectionState = "connected"
+	// StateDisconnected indicates no VPN tunnel is currently active.
+	StateDisconnected ConnectionState = "disconnected"
+	// StateConnecting indicates the engine is actively initializing cores, probing ports, or negotiating handshakes.
+	StateConnecting ConnectionState = "connecting"
+	// StateConnected indicates the VPN tunnel and system routing are fully established and active.
+	StateConnected ConnectionState = "connected"
+	// StateDisconnecting indicates graceful termination and proxy cleanup are in progress.
 	StateDisconnecting ConnectionState = "disconnecting"
-	StateError         ConnectionState = "error"
+	// StateError indicates a critical failure occurred during connection setup or runtime.
+	StateError ConnectionState = "error"
 )
 
+// ConnectionStatus provides a real-time snapshot of current connection state and active profile metadata.
 type ConnectionStatus struct {
 	State       ConnectionState `json:"state"`
 	ProfileID   string          `json:"profile_id,omitempty"`
@@ -31,18 +68,20 @@ type ConnectionStatus struct {
 	ConnectedAt time.Time       `json:"connected_at,omitempty"`
 	Server      string          `json:"server,omitempty"`
 	ErrorMsg    string          `json:"error_msg,omitempty"`
-	Duration    int64           `json:"duration,omitempty"` // seconds
+	Duration    int64           `json:"duration,omitempty"` // Active connection duration in seconds
 }
 
+// TrafficStats captures real-time throughput metrics, bandwidth totals, and transfer rates.
 type TrafficStats struct {
 	BytesReceived   int64 `json:"bytes_received"`
 	BytesSent       int64 `json:"bytes_sent"`
-	SpeedDownload   int64 `json:"speed_download"` // bytes/sec
-	SpeedUpload     int64 `json:"speed_upload"`   // bytes/sec
+	SpeedDownload   int64 `json:"speed_download"` // Instantaneous download rate in bytes/sec
+	SpeedUpload     int64 `json:"speed_upload"`   // Instantaneous upload rate in bytes/sec
 	PacketsReceived int64 `json:"packets_received"`
 	PacketsSent     int64 `json:"packets_sent"`
 }
 
+// LogEntry represents an individual formatted event record emitted by the engine or core adapters.
 type LogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Level     string    `json:"level"`
@@ -50,6 +89,8 @@ type LogEntry struct {
 	Source    string    `json:"source"`
 }
 
+// Engine is the central orchestrator responsible for managing active VPN connections,
+// system proxy configuration, traffic statistics sampling, and multi-core process supervision.
 type Engine struct {
 	mu            sync.RWMutex
 	ctx           context.Context
@@ -62,10 +103,10 @@ type Engine struct {
 	lastSettings  config.Settings
 	autoReconnect bool
 
-	// Health Monitor
+	// Health Monitor for periodic heartbeat probing
 	healthMonitor *HealthMonitor
 
-	// Failover attempt counter to prevent infinite loops
+	// Failover attempt counter to prevent infinite reconnect loops
 	failoverAttempts int32
 
 	statusCallbacks  []func(ConnectionStatus)
@@ -76,6 +117,7 @@ type Engine struct {
 	sessionCallback  func(config.ConnectionSession)
 }
 
+// NewEngine creates and initializes a new instance of the Engine in the disconnected state.
 func NewEngine() *Engine {
 	return &Engine{
 		status: ConnectionStatus{State: StateDisconnected},
@@ -83,52 +125,72 @@ func NewEngine() *Engine {
 	}
 }
 
+// SetContext assigns the root context for child process management and cancellation trees.
 func (e *Engine) SetContext(ctx context.Context) {
 	e.ctx = ctx
 }
 
+// SetAutoReconnect enables or disables automated reconnect attempts on unexpected drops.
 func (e *Engine) SetAutoReconnect(enable bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.autoReconnect = enable
 }
 
+// OnStatusChange registers an event listener invoked whenever the connection state changes.
 func (e *Engine) OnStatusChange(cb func(ConnectionStatus)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.statusCallbacks = append(e.statusCallbacks, cb)
 }
 
+// OnLog registers an event listener invoked whenever a new log entry is recorded.
 func (e *Engine) OnLog(cb func(LogEntry)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.logCallbacks = append(e.logCallbacks, cb)
 }
 
+// OnStats registers an event listener invoked on every 1-second statistics sampling interval.
 func (e *Engine) OnStats(cb func(TrafficStats)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.statsCallbacks = append(e.statsCallbacks, cb)
 }
 
+// OnHealth registers an event listener invoked whenever health monitor latency probes update.
 func (e *Engine) OnHealth(cb func(HealthStatus)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.healthCallbacks = append(e.healthCallbacks, cb)
 }
 
+// OnFailover registers a handler invoked when an active connection drops and auto-failover is triggered.
 func (e *Engine) OnFailover(cb func(string)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.failoverCallback = cb
 }
 
+// OnSessionComplete registers a callback executed when a connection session ends to record history.
 func (e *Engine) OnSessionComplete(cb func(config.ConnectionSession)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.sessionCallback = cb
 }
 
+// Connect starts the VPN tunnel for the specified profile using the user's active settings.
+//
+// Workflow:
+//  1. Transition state to StateConnecting and clean up any previous active sessions, cores, or system proxies.
+//  2. Ensure Wintun virtual network adapter driver (wintun.dll) is available in system/bin path.
+//  3. Invoke SmartCoreDispatcher to choose the optimal engine (Sing-box, Xray, or OpenVPN) and generate config JSON.
+//  4. Launch the core process asynchronously in a dedicated cancellation context.
+//  5. Verify readiness (probing local SOCKS5 port 10808 for proxy cores, or waiting for Wintun device initialization).
+//  6. Configure system-wide routing (TUN virtual network device + dual HTTP/SOCKS5 system proxy).
+//  7. Enforce Kill Switch leak prevention firewall rules if enabled.
+//  8. Start background real-time bandwidth sampling and connection health heartbeat monitor.
+//  9. Transition state to StateConnected and emit native OS toast notifications.
 func (e *Engine) Connect(profile config.Profile, settings config.Settings) error {
 	e.mu.Lock()
 	currentState := e.status.State
@@ -160,6 +222,7 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 	if oldAdapter != nil {
 		_ = oldAdapter.Stop()
 	}
+	cleanupStaleCores()
 	if currentState == StateConnected || currentState == StateDisconnecting {
 		_ = sysproxy.ClearSystemProxy()
 		time.Sleep(80 * time.Millisecond)
@@ -284,6 +347,7 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 	return nil
 }
 
+// probeProxy repeatedly checks whether the local SOCKS5 proxy port (127.0.0.1:10808) is accepting TCP sockets.
 func probeProxy(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -297,6 +361,7 @@ func probeProxy(timeout time.Duration) bool {
 	return false
 }
 
+// Disconnect gracefully stops the active VPN connection and cleans up all system proxy / firewall modifications.
 func (e *Engine) Disconnect() error {
 	e.mu.Lock()
 	if e.status.State == StateDisconnected {
@@ -373,6 +438,7 @@ func (e *Engine) Disconnect() error {
 	return nil
 }
 
+// startStatsLoop periodically samples network bandwidth, adapter throughput, and connection duration every second.
 func (e *Engine) startStatsLoop(ctx context.Context, adapter protocols.ProtocolAdapter) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -433,6 +499,12 @@ func (e *Engine) setErrorStatus(msg string) {
 	_ = sysproxy.ClearSystemProxy()
 
 	e.mu.Lock()
+	previousState := e.status.State
+	if previousState == StateDisconnecting || previousState == StateDisconnected {
+		e.mu.Unlock()
+		return
+	}
+
 	e.status.State = StateError
 	e.status.ErrorMsg = msg
 	st := e.status
@@ -473,10 +545,13 @@ func (e *Engine) setErrorStatus(msg string) {
 		maxFailoverAttempts = int32(lastS.ReconnectAttempts)
 	}
 
-	if lastS.AutoFailover && e.failoverCallback != nil && activeP.ID != "" {
+	isAutoFailoverEnabled := lastS.AutoFailover || lastS.AutoFailoverEnabled
+	// Only trigger auto-failover if the session was previously established (StateConnected)
+	// and then dropped unexpectedly mid-connection, to avoid jumping servers on misconfiguration
+	if isAutoFailoverEnabled && previousState == StateConnected && e.failoverCallback != nil && activeP.ID != "" {
 		attempts := atomic.AddInt32(&e.failoverAttempts, 1)
 		if attempts <= maxFailoverAttempts {
-			e.AddLog("warning", fmt.Sprintf("[Auto-Failover] Connection dropped (attempt %d/%d). Switching to backup server...", attempts, maxFailoverAttempts), "engine")
+			e.AddLog("warning", fmt.Sprintf("[Auto-Failover] Active connection dropped (attempt %d/%d). Switching to backup server...", attempts, maxFailoverAttempts), "engine")
 			if lastS.NotificationsEnabled {
 				go ShowWindowsNotification("NexVPN Auto-Failover", "Connection dropped. Switching to best backup server...")
 			}
@@ -488,12 +563,14 @@ func (e *Engine) setErrorStatus(msg string) {
 			e.AddLog("error", fmt.Sprintf("[Auto-Failover] Max failover attempts (%d) reached. Stopping.", maxFailoverAttempts), "engine")
 			atomic.StoreInt32(&e.failoverAttempts, 0)
 		}
-	} else if autoReconn && activeP.ID != "" {
+	} else if autoReconn && previousState == StateConnected && activeP.ID != "" {
 		e.AddLog("warning", "Connection dropped. Auto-reconnecting in 3 seconds...", "engine")
 		go func() {
 			time.Sleep(3 * time.Second)
 			_ = e.Connect(activeP, lastS)
 		}()
+	} else {
+		atomic.StoreInt32(&e.failoverAttempts, 0)
 	}
 }
 
@@ -530,6 +607,8 @@ func (e *Engine) emitHealth(hs HealthStatus) {
 	}
 }
 
+// AddLog logs an event with the specified severity level, message, and subsystem origin.
+// If Privacy Shield is enabled in settings, sensitive tokens, UUIDs, and credentials are automatically redacted.
 func (e *Engine) AddLog(level string, message string, source string) {
 	// Privacy Shield: Mask sensitive tokens and UUIDs if enabled
 	e.mu.RLock()
@@ -561,18 +640,21 @@ func (e *Engine) AddLog(level string, message string, source string) {
 	}
 }
 
+// GetStatus returns a thread-safe copy of the current connection status.
 func (e *Engine) GetStatus() ConnectionStatus {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.status
 }
 
+// GetStats returns a thread-safe copy of the real-time traffic statistics.
 func (e *Engine) GetStats() TrafficStats {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.stats
 }
 
+// GetLogs returns a snapshot copy of the in-memory circular log buffer.
 func (e *Engine) GetLogs() []LogEntry {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -581,6 +663,7 @@ func (e *Engine) GetLogs() []LogEntry {
 	return res
 }
 
+// ClearLogs empties the in-memory circular log buffer.
 func (e *Engine) ClearLogs() {
 	e.mu.Lock()
 	defer e.mu.Unlock()

@@ -6,6 +6,18 @@ export function AddProfile(arg1) {
   return window['go']['main']['App']['AddProfile'](arg1);
 }
 
+export function ApplyCleanIPToV2RayProfiles(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ApplyCleanIPToV2RayProfiles'](arg1, arg2, arg3);
+}
+
+export function ApplyCleanIPToWARPProfiles(arg1, arg2) {
+  return window['go']['main']['App']['ApplyCleanIPToWARPProfiles'](arg1, arg2);
+}
+
+export function ApplyOptimalFragment(arg1, arg2) {
+  return window['go']['main']['App']['ApplyOptimalFragment'](arg1, arg2);
+}
+
 export function ApplyWarpLicenseKey(arg1) {
   return window['go']['main']['App']['ApplyWarpLicenseKey'](arg1);
 }
@@ -14,8 +26,16 @@ export function BatchGenerateWarpProfiles(arg1, arg2) {
   return window['go']['main']['App']['BatchGenerateWarpProfiles'](arg1, arg2);
 }
 
+export function BroadcastProfilesToLAN(arg1, arg2) {
+  return window['go']['main']['App']['BroadcastProfilesToLAN'](arg1, arg2);
+}
+
 export function CheckCoreBinaries() {
   return window['go']['main']['App']['CheckCoreBinaries']();
+}
+
+export function CheckForUpdates() {
+  return window['go']['main']['App']['CheckForUpdates']();
 }
 
 export function ClearConnectionHistory() {
@@ -36,6 +56,10 @@ export function Connect(arg1) {
 
 export function ConnectFastest(arg1) {
   return window['go']['main']['App']['ConnectFastest'](arg1);
+}
+
+export function ConvertConfig(arg1, arg2) {
+  return window['go']['main']['App']['ConvertConfig'](arg1, arg2);
 }
 
 export function CreateProxyChain(arg1, arg2) {
@@ -62,6 +86,10 @@ export function DeleteProfilesByCategory(arg1) {
   return window['go']['main']['App']['DeleteProfilesByCategory'](arg1);
 }
 
+export function DetectCurrentISP() {
+  return window['go']['main']['App']['DetectCurrentISP']();
+}
+
 export function Disconnect() {
   return window['go']['main']['App']['Disconnect']();
 }
@@ -78,12 +106,20 @@ export function ExportFullBackup() {
   return window['go']['main']['App']['ExportFullBackup']();
 }
 
+export function FetchFreeConfigs(arg1) {
+  return window['go']['main']['App']['FetchFreeConfigs'](arg1);
+}
+
 export function FetchLiveCleanIPFeed() {
   return window['go']['main']['App']['FetchLiveCleanIPFeed']();
 }
 
 export function FetchSubscriptionInfo(arg1) {
   return window['go']['main']['App']['FetchSubscriptionInfo'](arg1);
+}
+
+export function FetchTelegramProxies(arg1) {
+  return window['go']['main']['App']['FetchTelegramProxies'](arg1);
 }
 
 export function FixNetworkIssues() {
@@ -150,6 +186,10 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetSubscriptionInfo(arg1) {
+  return window['go']['main']['App']['GetSubscriptionInfo'](arg1);
+}
+
 export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
 }
@@ -170,8 +210,16 @@ export function ImportEncryptedBackup(arg1, arg2) {
   return window['go']['main']['App']['ImportEncryptedBackup'](arg1, arg2);
 }
 
+export function ImportFreeConfigs(arg1, arg2) {
+  return window['go']['main']['App']['ImportFreeConfigs'](arg1, arg2);
+}
+
 export function ImportFullBackup(arg1, arg2) {
   return window['go']['main']['App']['ImportFullBackup'](arg1, arg2);
+}
+
+export function ImportNearbyProfiles(arg1, arg2) {
+  return window['go']['main']['App']['ImportNearbyProfiles'](arg1, arg2);
 }
 
 export function ImportOpenVPNProfile(arg1, arg2, arg3, arg4, arg5) {
@@ -196,6 +244,14 @@ export function ImportWireGuardProfile(arg1, arg2, arg3) {
 
 export function InstallCoreBinary(arg1) {
   return window['go']['main']['App']['InstallCoreBinary'](arg1);
+}
+
+export function LaunchTelegramProxyLink(arg1) {
+  return window['go']['main']['App']['LaunchTelegramProxyLink'](arg1);
+}
+
+export function ListenForNearbyProfiles(arg1) {
+  return window['go']['main']['App']['ListenForNearbyProfiles'](arg1);
 }
 
 export function LookupExternalIP() {
@@ -274,12 +330,24 @@ export function SetTitle(arg1) {
   return window['go']['main']['App']['SetTitle'](arg1);
 }
 
+export function SetTrayLanguage(arg1) {
+  return window['go']['main']['App']['SetTrayLanguage'](arg1);
+}
+
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
 }
 
 export function StartCleanIPScan(arg1, arg2) {
   return window['go']['main']['App']['StartCleanIPScan'](arg1, arg2);
+}
+
+export function StartCloudflareDiscoveryScan(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['StartCloudflareDiscoveryScan'](arg1, arg2, arg3, arg4);
+}
+
+export function StartFragmentDiscoveryScan() {
+  return window['go']['main']['App']['StartFragmentDiscoveryScan']();
 }
 
 export function StartMobileRemote(arg1) {
@@ -298,6 +366,14 @@ export function StopCleanIPScan() {
   return window['go']['main']['App']['StopCleanIPScan']();
 }
 
+export function StopCloudflareDiscoveryScan() {
+  return window['go']['main']['App']['StopCloudflareDiscoveryScan']();
+}
+
+export function StopFragmentDiscoveryScan() {
+  return window['go']['main']['App']['StopFragmentDiscoveryScan']();
+}
+
 export function StopMobileRemote() {
   return window['go']['main']['App']['StopMobileRemote']();
 }
@@ -310,12 +386,36 @@ export function TestAllProfilesBatch(arg1) {
   return window['go']['main']['App']['TestAllProfilesBatch'](arg1);
 }
 
+export function TestAllProfilesRealDelay(arg1) {
+  return window['go']['main']['App']['TestAllProfilesRealDelay'](arg1);
+}
+
+export function TestFreeConfigs(arg1) {
+  return window['go']['main']['App']['TestFreeConfigs'](arg1);
+}
+
+export function TestTelegramProxies(arg1) {
+  return window['go']['main']['App']['TestTelegramProxies'](arg1);
+}
+
 export function ToggleAllowLan(arg1) {
   return window['go']['main']['App']['ToggleAllowLan'](arg1);
 }
 
+export function ToggleAutoFailover(arg1) {
+  return window['go']['main']['App']['ToggleAutoFailover'](arg1);
+}
+
 export function UpdateAllSubscriptions() {
   return window['go']['main']['App']['UpdateAllSubscriptions']();
+}
+
+export function UpdateCoreEngine(arg1) {
+  return window['go']['main']['App']['UpdateCoreEngine'](arg1);
+}
+
+export function UpdateGeoData() {
+  return window['go']['main']['App']['UpdateGeoData']();
 }
 
 export function UpdateGeoDatabase() {

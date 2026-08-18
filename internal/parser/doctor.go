@@ -203,19 +203,25 @@ func RunNetworkDoctor(ctx context.Context) DoctorReport {
 func RepairNetworkIssues() RepairResult {
 	actions := make([]string, 0)
 
-	// 1. Flush Windows DNS Cache
+	// 1. Terminate any orphaned core processes
+	hiddenCmd("taskkill", "/F", "/IM", "sing-box.exe").Run()
+	hiddenCmd("taskkill", "/F", "/IM", "xray.exe").Run()
+	hiddenCmd("taskkill", "/F", "/IM", "openvpn.exe").Run()
+	actions = append(actions, "Cleaned any orphaned core processes (sing-box, xray, openvpn)")
+
+	// 2. Flush Windows DNS Cache
 	cmdFlush := hiddenCmd("ipconfig", "/flushdns")
 	if err := cmdFlush.Run(); err == nil {
 		actions = append(actions, "Windows DNS cache successfully flushed (ipconfig /flushdns)")
 	}
 
-	// 2. Reset dangling System Proxy in Registry
+	// 3. Reset dangling System Proxy in Registry
 	cmdRegDisable := hiddenCmd("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
 	if err := cmdRegDisable.Run(); err == nil {
 		actions = append(actions, "Residual system proxy registry settings disabled")
 	}
 
-	// 3. Clear IE Proxy Server Key
+	// 4. Clear IE Proxy Server Key
 	cmdRegClear := hiddenCmd("reg", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyServer", "/f")
 	_ = cmdRegClear.Run()
 

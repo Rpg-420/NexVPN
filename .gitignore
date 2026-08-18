@@ -32,3 +32,6 @@ scratch/
 tmp/
 *.log
 *.tmp
+*.zip
+*.mjs
+*.timestamp-*

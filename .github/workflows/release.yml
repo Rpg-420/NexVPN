@@ -197,12 +197,13 @@ jobs:
         run: |
           wails build -clean -platform linux/${{ matrix.goarch }} -tags webkit2_41
 
-      - name: Package Linux Archive (.tar.gz)
+      - name: Package Linux Archive (.tar.gz & .deb)
         run: |
           VER="${{ github.ref_name }}"
           if [ -z "$VER" ] || [[ "$VER" == *"refs"* ]]; then VER="${{ github.event.inputs.version }}"; fi
-          if [ -z "$VER" ]; then VER="v1.1.0"; fi
+          if [ -z "$VER" ]; then VER="v1.3.3"; fi
           
+          # 1. Package .tar.gz
           DIST_DIR="NexVPN-${VER}-linux-${{ matrix.arch }}"
           mkdir -p "$DIST_DIR/bin"
           
@@ -211,11 +212,52 @@ jobs:
           
           tar -czvf "NexVPN-${VER}-linux-${{ matrix.arch }}.tar.gz" "$DIST_DIR"
 
+          # 2. Package Debian .deb
+          PKG_VER="${VER#v}"
+          PKG_DIR="nexvpn_${PKG_VER}_${{ matrix.arch }}"
+          mkdir -p "$PKG_DIR/DEBIAN"
+          mkdir -p "$PKG_DIR/usr/bin"
+          mkdir -p "$PKG_DIR/usr/share/nexvpn/bin"
+          mkdir -p "$PKG_DIR/usr/share/applications"
+          mkdir -p "$PKG_DIR/usr/share/icons/hicolor/512x512/apps"
+
+          cp build/bin/NexVPN "$PKG_DIR/usr/share/nexvpn/NexVPN" || cp build/bin/nexvpn "$PKG_DIR/usr/share/nexvpn/NexVPN"
+          chmod +x "$PKG_DIR/usr/share/nexvpn/NexVPN"
+          cp -r bin/* "$PKG_DIR/usr/share/nexvpn/bin/"
+          ln -sf /usr/share/nexvpn/NexVPN "$PKG_DIR/usr/bin/nexvpn"
+          cp build/appicon.png "$PKG_DIR/usr/share/icons/hicolor/512x512/apps/nexvpn.png" || true
+
+          cat << 'EOF' > "$PKG_DIR/usr/share/applications/nexvpn.desktop"
+[Desktop Entry]
+Name=NexVPN
+Comment=Next-Gen Multi-Protocol Client
+Exec=/usr/share/nexvpn/NexVPN
+Icon=nexvpn
+Terminal=false
+Type=Application
+Categories=Network;VPN;Security;
+EOF
+
+          cat << EOF > "$PKG_DIR/DEBIAN/control"
+Package: nexvpn
+Version: ${PKG_VER}
+Section: net
+Priority: optional
+Architecture: ${{ matrix.arch }}
+Maintainer: Rpg-420 <https://github.com/Rpg-420/NexVPN>
+Description: NexVPN Next-Gen Multi-Protocol Desktop Client
+ Sing-Box, Xray-core, WireGuard, and V2Ray high-speed proxy client.
+EOF
+
+          dpkg-deb --build --root-owner-group "$PKG_DIR" "NexVPN-${VER}-linux-${{ matrix.arch }}.deb"
+
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
-          path: NexVPN-*-linux-${{ matrix.arch }}.tar.gz
+          path: |
+            NexVPN-*-linux-${{ matrix.arch }}.tar.gz
+            NexVPN-*-linux-${{ matrix.arch }}.deb
 
   # -------------------------------------------------------------------------
   # macOS Builds (Universal DMG & ZIP for Apple Silicon & Intel)
@@ -263,11 +305,19 @@ jobs:
         run: |
           VER="${{ github.ref_name }}"
           if [ -z "$VER" ] || [[ "$VER" == *"refs"* ]]; then VER="${{ github.event.inputs.version }}"; fi
-          if [ -z "$VER" ]; then VER="v1.1.0"; fi
+          if [ -z "$VER" ]; then VER="v1.3.3"; fi
           
+          # Create ZIP
           cd build/bin
           zip -r -y "../../NexVPN-${VER}-macOS-Universal.zip" "NexVPN.app" || zip -r -y "../../NexVPN-${VER}-macOS-Universal.zip" "nexvpn.app"
           cd ../..
+
+          # Create DMG
+          APP_PATH="build/bin/NexVPN.app"
+          if [ ! -d "$APP_PATH" ]; then APP_PATH="build/bin/nexvpn.app"; fi
+          if [ -d "$APP_PATH" ]; then
+            hdiutil create -volname "NexVPN" -srcfolder "$APP_PATH" -ov -format UDZO "NexVPN-${VER}-macOS-Universal.dmg"
+          fi
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -275,7 +325,7 @@ jobs:
           name: macos-universal
           path: |
             NexVPN-*-macOS-Universal.zip
-            build/bin/*.dmg
+            NexVPN-*-macOS-Universal.dmg
 
   # -------------------------------------------------------------------------
   # Create GitHub Release with All Multi-Platform Assets
@@ -299,35 +349,36 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name == 'main' && format('v1.3.2-b{0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.3.2' }}
-          name: NexVPN ${{ github.ref_name == 'main' && format('v1.3.2 Build {0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.3.2' }}
+          tag_name: ${{ github.ref_name == 'main' && format('v1.3.3-b{0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.3.3' }}
+          name: NexVPN ${{ github.ref_name == 'main' && format('v1.3.3 Build {0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.3.3' }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: dist/*
           body: |
-            ## 🚀 NexVPN v1.1.0 Official Cross-Platform Release
+            ## 🚀 NexVPN v1.3.3 Official Cross-Platform Release
 
             NexVPN is an advanced, privacy-first, and ultra-high-speed desktop client featuring pre-bundled protocol cores and dynamic updater.
 
             ### 📦 Release Packages & Architectures
             - **Windows (x64, ARM64, x86)**:
-              - `NexVPN-v1.1.0-windows-amd64-portable.zip` (Portable, Zero Installation)
-              - `NexVPN-v1.1.0-windows-arm64-portable.zip` (Snapdragon & Windows on ARM)
-              - `NexVPN-v1.1.0-windows-386-portable.zip` (32-bit Legacy)
-              - `NexVPN-v1.1.0-windows-installer.exe` (Full System Installer)
+              - `NexVPN-v1.3.3-windows-amd64-portable.zip` (Portable, Zero Installation)
+              - `NexVPN-v1.3.3-windows-arm64-portable.zip` (Snapdragon & Windows on ARM)
+              - `NexVPN-v1.3.3-windows-386-portable.zip` (32-bit Legacy)
+              - `NexVPN-v1.3.3-windows-installer.exe` (Full System Installer)
             - **Linux (Ubuntu/Debian/Fedora/Arch)**:
-              - `NexVPN-v1.1.0-linux-amd64.tar.gz`
-              - `NexVPN-v1.1.0-linux-arm64.tar.gz`
+              - `NexVPN-v1.3.3-linux-amd64.deb` (Debian/Ubuntu Package)
+              - `NexVPN-v1.3.3-linux-amd64.tar.gz` (Universal Linux Binary)
             - **macOS (Apple Silicon & Intel)**:
-              - `NexVPN-v1.1.0-macOS-Universal.zip` (Universal Binary M1/M2/M3/M4 & Intel)
+              - `NexVPN-v1.3.3-macOS-Universal.dmg` (Installer Disk Image)
+              - `NexVPN-v1.3.3-macOS-Universal.zip` (Universal Binary M1/M2/M3/M4 & Intel)
 
             ### ✨ Key Features
             - 🛡️ **Pre-Bundled Protocol Cores**: Sing-Box v1.10, Xray-Core v1.8, Wintun Driver, OpenVPN, and GeoIP/GeoSite databases included out of the box.
             - 🔄 **In-App Dynamic Core Updater**: 1-click update for engines & routing rules directly from Settings.
             - ⚡ **High-Performance Multi-Protocol**: VLESS Reality, VMess, Trojan, Cloudflare WARP / WARP-on-WARP, Shadowsocks, Hysteria2, WireGuard, and OpenVPN.
             - 🌐 **Anti-Censorship & DPI Evasion**: TLS ClientHello fragmentation, SNI proxying, and DNS leak prevention.
-            - 🎨 **Sleek Cybernetic UI**: Glassmorphic dark aesthetic, real-time traffic visualizer, and sound effects.
+            - 🎨 **Sleek Cybernetic UI**: Glassmorphic dark aesthetic, real-time traffic visualizer, Discovery Hub, and sound effects.
 
             ---
             *Community & Support: [Telegram Channel](https://t.me/nexvpnpro) | [GitHub Issues](https://github.com/Rpg-420/NexVPN/issues)*

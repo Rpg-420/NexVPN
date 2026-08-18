@@ -164,6 +164,7 @@ export namespace config {
 	    app_routing_mode: string;
 	    selected_apps: string[];
 	    auto_failover: boolean;
+	    auto_failover_enabled: boolean;
 	    subscription_auto_update_hours: number;
 	    multi_hop_warp: boolean;
 	    ip_strategy: string;
@@ -225,6 +226,7 @@ export namespace config {
 	        this.app_routing_mode = source["app_routing_mode"];
 	        this.selected_apps = source["selected_apps"];
 	        this.auto_failover = source["auto_failover"];
+	        this.auto_failover_enabled = source["auto_failover_enabled"];
 	        this.subscription_auto_update_hours = source["subscription_auto_update_hours"];
 	        this.multi_hop_warp = source["multi_hop_warp"];
 	        this.ip_strategy = source["ip_strategy"];
@@ -457,6 +459,153 @@ export namespace core {
 
 }
 
+export namespace discovery {
+	
+	export class FreeConfigItem {
+	    id: string;
+	    name: string;
+	    protocol: string;
+	    server: string;
+	    port: number;
+	    raw_uri: string;
+	    latency_ms: number;
+	    is_alive: boolean;
+	    country?: string;
+	    country_code?: string;
+	    source_name?: string;
+	    network?: string;
+	    security?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FreeConfigItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.protocol = source["protocol"];
+	        this.server = source["server"];
+	        this.port = source["port"];
+	        this.raw_uri = source["raw_uri"];
+	        this.latency_ms = source["latency_ms"];
+	        this.is_alive = source["is_alive"];
+	        this.country = source["country"];
+	        this.country_code = source["country_code"];
+	        this.source_name = source["source_name"];
+	        this.network = source["network"];
+	        this.security = source["security"];
+	    }
+	}
+	export class ISPRecommendation {
+	    isp_name: string;
+	    isp_name_en: string;
+	    isp_category: string;
+	    ip: string;
+	    country: string;
+	    country_code: string;
+	    asn: string;
+	    recommended_protocol: string;
+	    recommended_fragment: string;
+	    recommended_dns: string;
+	    status_score: number;
+	    advice: string;
+	    advice_en: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ISPRecommendation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.isp_name = source["isp_name"];
+	        this.isp_name_en = source["isp_name_en"];
+	        this.isp_category = source["isp_category"];
+	        this.ip = source["ip"];
+	        this.country = source["country"];
+	        this.country_code = source["country_code"];
+	        this.asn = source["asn"];
+	        this.recommended_protocol = source["recommended_protocol"];
+	        this.recommended_fragment = source["recommended_fragment"];
+	        this.recommended_dns = source["recommended_dns"];
+	        this.status_score = source["status_score"];
+	        this.advice = source["advice"];
+	        this.advice_en = source["advice_en"];
+	    }
+	}
+	export class SyncPayload {
+	    device_name: string;
+	    timestamp: number;
+	    profiles: config.Profile[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.device_name = source["device_name"];
+	        this.timestamp = source["timestamp"];
+	        this.profiles = this.convertValues(source["profiles"], config.Profile);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TelegramProxy {
+	    id: string;
+	    type: string;
+	    server: string;
+	    port: number;
+	    secret?: string;
+	    username?: string;
+	    password?: string;
+	    latency_ms: number;
+	    is_alive: boolean;
+	    country?: string;
+	    country_code?: string;
+	    link: string;
+	    source?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TelegramProxy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.server = source["server"];
+	        this.port = source["port"];
+	        this.secret = source["secret"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.latency_ms = source["latency_ms"];
+	        this.is_alive = source["is_alive"];
+	        this.country = source["country"];
+	        this.country_code = source["country_code"];
+	        this.link = source["link"];
+	        this.source = source["source"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class BatchIPRequest {
@@ -604,6 +753,29 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	
+	export class UpdateCheckResult {
+	    has_update: boolean;
+	    latest_version: string;
+	    current_version: string;
+	    release_url: string;
+	    release_notes: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateCheckResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.has_update = source["has_update"];
+	        this.latest_version = source["latest_version"];
+	        this.current_version = source["current_version"];
+	        this.release_url = source["release_url"];
+	        this.release_notes = source["release_notes"];
+	        this.error = source["error"];
+	    }
 	}
 
 }

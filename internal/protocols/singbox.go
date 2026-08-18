@@ -3,8 +3,6 @@ package protocols
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +16,7 @@ import (
 	"time"
 
 	"nexvpn/internal/config"
+	"nexvpn/internal/sysproc"
 	"nexvpn/internal/sysproxy"
 )
 
@@ -28,6 +27,7 @@ type SingBoxAdapter struct {
 	bytesRx     int64
 	bytesTx     int64
 	tmpConfig   string
+	clashPort   int
 	logger      LoggerFunc
 	onExit      OnExitFunc
 	statsCancel context.CancelFunc
@@ -64,11 +64,14 @@ func (a *SingBoxAdapter) log(level, msg string) {
 	}
 }
 
-// generateClashSecret produces a random 16-byte hex secret for the Clash API.
-func generateClashSecret() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+// getFreeLocalPort finds an available TCP port for Clash API to prevent 9090 port conflicts
+func getFreeLocalPort() int {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 19090
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error {
@@ -77,8 +80,13 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 		return fmt.Errorf("sing-box.exe not found. Please place sing-box.exe in bin folder")
 	}
 
-	// Fix #14: Inject a random Clash API secret into the config JSON
-	configContent = injectClashSecret(configContent)
+	// Dynamically allocate a free local port for clash_api
+	port := getFreeLocalPort()
+	a.mu.Lock()
+	a.clashPort = port
+	a.mu.Unlock()
+
+	configContent = injectClashConfig(configContent, port)
 
 	// Fix #15: Use dedicated secure temp dir
 	tmpDir := ensureNexVPNTempDir()
@@ -109,18 +117,20 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 	}
 	stderr, err := cmd.StderrPipe()
 	if err == nil {
-		go a.streamLogs(stderr, "warning")
+		go a.streamLogs(stderr, "error")
 	}
 
 	if err := cmd.Start(); err != nil {
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("failed to start sing-box process: %w", err)
+		return fmt.Errorf("failed to start sing-box: %w", err)
 	}
+
+	sysproc.AssignCmdToJobObject(cmd)
 
 	a.mu.Lock()
 	a.cmd = cmd
-	a.tmpConfig = tmpPath
 	a.running = true
+	a.tmpConfig = tmpPath
 	a.bytesRx = 0
 	a.bytesTx = 0
 	a.lastError = ""
@@ -128,61 +138,56 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 
 	a.log("info", fmt.Sprintf("Sing-box core started (PID: %d)", cmd.Process.Pid))
 
-	// Fix #2: Monitor process exit — fire onExit callback on unexpected crash
-	go func() {
-		waitErr := cmd.Wait()
-		a.mu.Lock()
-		wasRunning := a.running
-		a.running = false
-		onExit := a.onExit
-		a.mu.Unlock()
-
-		a.log("info", "Sing-box process exited")
-
-		if wasRunning && onExit != nil {
-			if waitErr != nil {
-				onExit(fmt.Errorf("sing-box process exited unexpectedly: %w", waitErr))
-			} else {
-				onExit(fmt.Errorf("sing-box process exited unexpectedly"))
-			}
-		}
-	}()
-
-	// Probe local mixed port 10808
-	go func() {
-		for i := 0; i < 5; i++ {
-			time.Sleep(300 * time.Millisecond)
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 500*time.Millisecond)
-			if err == nil {
-				conn.Close()
-				break
-			}
-		}
-	}()
-
-	statsCtx, cancel := context.WithCancel(context.Background())
+	statsCtx, statsCancel := context.WithCancel(ctx)
 	a.mu.Lock()
-	a.statsCancel = cancel
+	a.statsCancel = statsCancel
 	a.mu.Unlock()
 	go a.pollClashStats(statsCtx)
+
+	go a.waitForExit(cmd, tmpPath)
 
 	return nil
 }
 
-// injectClashSecret adds a random secret to the clash_api config block if present.
-func injectClashSecret(configContent string) string {
+func (a *SingBoxAdapter) waitForExit(cmd *exec.Cmd, tmpPath string) {
+	err := cmd.Wait()
+
+	a.mu.Lock()
+	wasRunning := a.running
+	a.running = false
+	a.cmd = nil
+	a.mu.Unlock()
+
+	_ = os.Remove(tmpPath)
+
+	if wasRunning {
+		a.log("info", "Sing-box process exited")
+		if err != nil {
+			a.mu.RLock()
+			onExit := a.onExit
+			a.mu.RUnlock()
+			if onExit != nil {
+				onExit(fmt.Errorf("sing-box process exited unexpectedly: %w", err))
+			}
+		}
+	}
+}
+
+// injectClashConfig injects the dynamic port and secret to clash_api
+func injectClashConfig(configContent string, port int) string {
 	var cfg map[string]interface{}
 	if err := json.Unmarshal([]byte(configContent), &cfg); err != nil {
 		return configContent
 	}
 	exp, ok := cfg["experimental"].(map[string]interface{})
 	if !ok {
-		return configContent
+		exp = make(map[string]interface{})
 	}
 	clashAPI, ok := exp["clash_api"].(map[string]interface{})
 	if !ok {
-		return configContent
+		clashAPI = make(map[string]interface{})
 	}
+	clashAPI["external_controller"] = fmt.Sprintf("127.0.0.1:%d", port)
 	clashAPI["secret"] = ""
 	exp["clash_api"] = clashAPI
 	cfg["experimental"] = exp
@@ -193,8 +198,15 @@ func injectClashSecret(configContent string) string {
 }
 
 func (a *SingBoxAdapter) pollClashStats(ctx context.Context) {
-	// Fix #3: Use a proper timeout to prevent goroutine leak
 	client := &http.Client{Timeout: 5 * time.Second}
+
+	a.mu.RLock()
+	cPort := a.clashPort
+	a.mu.RUnlock()
+	if cPort <= 0 {
+		cPort = 19090
+	}
+	trafficURL := fmt.Sprintf("http://127.0.0.1:%d/traffic", cPort)
 
 	for {
 		select {
@@ -203,7 +215,7 @@ func (a *SingBoxAdapter) pollClashStats(ctx context.Context) {
 		default:
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", "http://127.0.0.1:9090/traffic", nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", trafficURL, nil)
 		if err != nil {
 			time.Sleep(1 * time.Second)
 			continue

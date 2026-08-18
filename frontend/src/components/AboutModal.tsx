@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Shield,
   Globe,
@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   ExternalLink,
   Cpu,
-  Layers,
   Sparkles,
   X,
-  Code2,
+  ArrowDownToLine,
+  AlertCircle,
+  Tag,
+  Loader2,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
@@ -22,9 +24,25 @@ interface Props {
   onClose: () => void
 }
 
+interface UpdateResult {
+  has_update: boolean
+  latest_version: string
+  current_version: string
+  release_url: string
+  release_notes: string
+  error?: string
+}
+
 export default function AboutModal({ isOpen, onClose }: Props) {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
-  const [updateStatus, setUpdateStatus] = useState<string | null>(null)
+  const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null)
+  const [appVersion, setAppVersion] = useState<string>('1.3.3')
+
+  useEffect(() => {
+    if (isOpen) {
+      api.getVersion().then(v => { if (v) setAppVersion(v) }).catch(() => {})
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -36,20 +54,31 @@ export default function AboutModal({ isOpen, onClose }: Props) {
     }
   }
 
-  const handleCheckUpdate = () => {
+  const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true)
-    setUpdateStatus(null)
-    setTimeout(() => {
+    setUpdateResult(null)
+    try {
+      const result = await (api as any).checkForUpdates() as UpdateResult
+      setUpdateResult(result)
+    } catch {
+      setUpdateResult({
+        has_update: false,
+        latest_version: appVersion,
+        current_version: appVersion,
+        release_url: 'https://github.com/Rpg-420/NexVPN/releases',
+        release_notes: '',
+        error: 'Connection failed – check your internet',
+      })
+    } finally {
       setIsCheckingUpdate(false)
-      setUpdateStatus(t('update_latest_notice'))
-    }, 1200)
+    }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-lg shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 font-bold text-slate-100 text-sm">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
               <Shield size={16} />
@@ -62,7 +91,7 @@ export default function AboutModal({ isOpen, onClose }: Props) {
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
           {/* App Brand Banner */}
           <div className="flex flex-col items-center text-center p-4 bg-gradient-to-b from-slate-900/90 via-slate-900/60 to-slate-950/80 rounded-2xl border border-white/5 relative overflow-hidden">
             <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-xl shadow-cyan-500/20 mb-3 ring-1 ring-cyan-500/40">
@@ -70,7 +99,7 @@ export default function AboutModal({ isOpen, onClose }: Props) {
             </div>
             <h2 className="text-lg font-extrabold text-slate-100 flex items-center gap-2">
               <span>NexVPN Pro Client</span>
-              <span className="badge badge-info text-[10px] font-mono font-bold">v1.1.0</span>
+              <span className="badge badge-info text-[10px] font-mono font-bold">v{appVersion}</span>
             </h2>
             <p className="text-xs text-slate-400 mt-1 max-w-sm leading-relaxed">
               {t('about_description')}
@@ -163,22 +192,75 @@ export default function AboutModal({ isOpen, onClose }: Props) {
           </div>
 
           {/* Update Checker Button */}
-          <div className="pt-2 border-t border-white/5 flex flex-col items-center gap-2">
+          <div className="pt-2 border-t border-white/5 flex flex-col items-center gap-3">
             <button
               type="button"
               onClick={handleCheckUpdate}
               disabled={isCheckingUpdate}
               className="btn btn-secondary btn-sm w-full flex items-center justify-center gap-2 text-xs font-bold text-slate-200 border-slate-700 hover:border-accent/40"
             >
-              <RefreshCw size={13} className={isCheckingUpdate ? 'animate-spin text-accent' : ''} />
+              {isCheckingUpdate ? (
+                <Loader2 size={13} className="animate-spin text-accent" />
+              ) : (
+                <RefreshCw size={13} />
+              )}
               <span>{isCheckingUpdate ? t('checking_updates') : t('check_updates')}</span>
             </button>
 
-            {updateStatus && (
-              <p className="text-[11px] font-medium text-emerald-400 text-center animate-fade-in flex items-center gap-1">
-                <CheckCircle2 size={13} />
-                <span>{updateStatus}</span>
-              </p>
+            {/* Update Result Panel */}
+            {updateResult && (
+              <div className={`w-full rounded-xl border p-3 text-xs space-y-2 animate-fade-in ${
+                updateResult.error
+                  ? 'bg-rose-950/30 border-rose-700/40 text-rose-300'
+                  : updateResult.has_update
+                  ? 'bg-amber-950/30 border-amber-600/50 text-amber-200'
+                  : 'bg-emerald-950/30 border-emerald-700/40 text-emerald-300'
+              }`}>
+                {updateResult.error ? (
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-rose-400 shrink-0" />
+                    <span>{updateResult.error}</span>
+                  </div>
+                ) : updateResult.has_update ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ArrowDownToLine size={14} className="text-amber-400 shrink-0" />
+                        <span className="font-bold">{t('update_new_available')}</span>
+                      </div>
+                      <span className="font-mono text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
+                        v{updateResult.latest_version}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-amber-300/70">
+                      <span>{t('current_version')}: v{updateResult.current_version}</span>
+                    </div>
+                    {updateResult.release_notes && (
+                      <p className="text-[11px] text-slate-400 leading-relaxed border-t border-amber-700/30 pt-2">
+                        {updateResult.release_notes}
+                      </p>
+                    )}
+                    <button
+                      onClick={() => handleOpenLink(updateResult.release_url)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-bold transition-all w-full justify-center"
+                    >
+                      <ArrowDownToLine size={12} />
+                      <span>{t('download_version')} v{updateResult.latest_version}</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="font-bold">{t('update_latest_notice')}</span>
+                      <div className="flex items-center gap-1 mt-0.5 text-[10px] text-emerald-400/70">
+                        <Tag size={10} />
+                        <span>v{updateResult.current_version}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

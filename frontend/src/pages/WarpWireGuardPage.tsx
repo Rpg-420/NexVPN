@@ -20,6 +20,8 @@ import {
   Activity,
   Edit3,
   RefreshCw,
+  Scan,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
@@ -27,15 +29,18 @@ import type { Profile, ConnectionStatus } from '../types'
 import { generateQRCodeSVG } from '../lib/qrcode'
 import CleanIPScannerModal from '../components/CleanIPScannerModal'
 import EditProfileModal from '../components/EditProfileModal'
+import ScreenQRScannerModal from '../components/ScreenQRScannerModal'
+import ConfigConverterModal from '../components/ConfigConverterModal'
 
 interface Props {
   status: ConnectionStatus
   onStatusChange?: (s: ConnectionStatus) => void
+  onNavigateTab?: (tab: any) => void
 }
 
 type SortMode = 'default' | 'ping_asc' | 'ping_desc' | 'name'
 
-export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
+export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTab }: Props) {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [search, setSearch] = useState('')
   const [sortMode, setSortModeState] = useState<SortMode>(() => {
@@ -47,11 +52,13 @@ export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
   }
   const [isGeneratingWarp, setIsGeneratingWarp] = useState(false)
   const [isGeneratingWoW, setIsGeneratingWoW] = useState(false)
-  const [selectedCleanIP, setSelectedCleanIP] = useState('162.159.192.1')
-  const [customPort, setCustomPort] = useState(2408)
+  const [selectedCleanIP, setSelectedCleanIP] = useState('8.6.112.31')
+  const [customPort, setCustomPort] = useState(1180)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showScannerModal, setShowScannerModal] = useState(false)
   const [showLicenseModal, setShowLicenseModal] = useState(false)
+  const [showScreenQRModal, setShowScreenQRModal] = useState(false)
+  const [showConverterModal, setShowConverterModal] = useState(false)
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
   const [licenseKeyInput, setLicenseKeyInput] = useState('')
   const [isApplyingLicense, setIsApplyingLicense] = useState(false)
@@ -258,15 +265,34 @@ export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
   return (
     <div className="page space-y-5">
       {/* Header */}
-      <div className="page-header flex items-center justify-between flex-wrap gap-3">
+      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 bg-slate-900/90 backdrop-blur-xl py-3 -mx-2 px-4 rounded-2xl border border-white/5 shadow-lg shadow-black/20">
         <div>
           <h1 className="page-title">{t('warp_title')}</h1>
           <p className="page-subtitle">{t('warp_subtitle')}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={() => setShowScreenQRModal(true)}
+            title="Scan QR Code from Screen or Image"
+          >
+            <Scan size={14} className="text-cyan-400" />
+            <span>{t('screen_qr_title') || 'Scan QR'}</span>
+          </button>
+
+          <button
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={() => setShowConverterModal(true)}
+            title="Universal Config Converter"
+          >
+            <ArrowRightLeft size={14} className="text-amber-400" />
+            <span>{t('config_converter_title') || 'Converter'}</span>
+          </button>
+
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => setShowScannerModal(true)}
+            onClick={() => (onNavigateTab ? onNavigateTab('discovery') : setShowScannerModal(true))}
+            title="Discovery Hub Cloudflare Scanner"
           >
             <Zap size={14} className="text-amber-400" />
             {t('scanner_btn')}
@@ -293,8 +319,9 @@ export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
       <div className="card p-5 bg-gradient-to-br from-amber-950/20 via-slate-900/80 to-slate-900 border-amber-500/30 shadow-xl">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="badge badge-warning text-[10px]">Cloudflare Official</span>
+              <span className="badge badge-primary text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">🛡️ AmneziaWG Anti-DPI</span>
               <span className="badge badge-success text-[10px]">Unlimited Bandwidth</span>
               <span className="badge badge-info text-[10px]">WireGuard Protocol</span>
             </div>
@@ -335,15 +362,23 @@ export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-400 font-semibold">{t('clean_ip_label')}:</label>
               <select
-                className="form-control text-xs font-mono w-44"
+                className="form-control text-xs font-mono w-52"
                 value={selectedCleanIP}
-                onChange={e => setSelectedCleanIP(e.target.value)}
+                onChange={e => {
+                  setSelectedCleanIP(e.target.value)
+                  if (e.target.value === '8.6.112.31') setCustomPort(1180)
+                  else if (e.target.value === '8.6.112.135') setCustomPort(864)
+                  else if (e.target.value === '188.114.96.22') setCustomPort(878)
+                  else if (e.target.value === '188.114.97.105') setCustomPort(1070)
+                  else if (e.target.value === '162.159.193.10') setCustomPort(854)
+                }}
               >
-                <option value="162.159.192.1">162.159.192.1 (Standard)</option>
-                <option value="162.159.193.1">162.159.193.1 (IR Clean)</option>
-                <option value="162.159.195.1">162.159.195.1 (Fast RTT)</option>
-                <option value="188.114.96.1">188.114.96.1 (EU)</option>
-                <option value="188.114.97.1">188.114.97.1 (EU Clean)</option>
+                <option value="8.6.112.31">8.6.112.31:1180 (⚡ Anycast Ultra Fast)</option>
+                <option value="8.6.112.135">8.6.112.135:864 (⚡ Anycast Clean)</option>
+                <option value="188.114.96.22">188.114.96.22:878 (EU Clean)</option>
+                <option value="188.114.97.105">188.114.97.105:1070 (EU Fast)</option>
+                <option value="162.159.193.10">162.159.193.10:854 (IR Clean)</option>
+                <option value="162.159.192.1">162.159.192.1:2408 (Standard)</option>
               </select>
             </div>
 
@@ -351,19 +386,20 @@ export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
               <label className="text-xs text-slate-400 font-semibold">{t('port_label')}:</label>
               <input
                 type="number"
-                className="form-control text-xs font-mono w-24"
+                className="form-control text-xs font-mono w-20"
                 value={customPort}
-                onChange={e => setCustomPort(parseInt(e.target.value) || 2408)}
+                onChange={e => setCustomPort(parseInt(e.target.value) || 1180)}
               />
             </div>
           </div>
 
           <button
-            onClick={() => setShowScannerModal(true)}
-            className="btn btn-secondary btn-sm text-xs text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+            onClick={() => (onNavigateTab ? onNavigateTab('discovery') : setShowScannerModal(true))}
+            className="btn btn-secondary btn-sm text-xs text-amber-400 border-amber-500/30 hover:bg-amber-500/10 flex items-center gap-1.5"
+            title="Discovery Hub Cloudflare Scanner"
           >
             <Search size={13} />
-            {t('scanner_btn')}...
+            <span>🚀 {t('tab_cloudflare_ips') || 'اسکنر دیسکاوری هاب'}</span>
           </button>
         </div>
       </div>
@@ -686,6 +722,19 @@ export default function WarpWireGuardPage({ status, onStatusChange }: Props) {
           </div>
         </div>
       )}
+
+      {/* Screen QR Code Scanner Modal */}
+      <ScreenQRScannerModal
+        isOpen={showScreenQRModal}
+        onClose={() => setShowScreenQRModal(false)}
+        onProfileImported={loadProfiles}
+      />
+
+      {/* Universal Config Converter Modal */}
+      <ConfigConverterModal
+        isOpen={showConverterModal}
+        onClose={() => setShowConverterModal(false)}
+      />
     </div>
   )
 }

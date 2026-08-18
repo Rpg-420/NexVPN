@@ -2,7 +2,10 @@
 
 package sysproc
 
-import "syscall"
+import (
+	"os/exec"
+	"syscall"
+)
 
 // HideWindowAttr returns POSIX process attributes for non-Windows platforms
 func HideWindowAttr() *syscall.SysProcAttr {
@@ -10,3 +13,8 @@ func HideWindowAttr() *syscall.SysProcAttr {
 		Setpgid: true,
 	}
 }
+
+// AssignCmdToJobObject is a no-op on non-Windows platforms
+func AssignCmdToJobObject(cmd *exec.Cmd) {
+}
+

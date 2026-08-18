@@ -304,3 +304,90 @@ export interface SubscriptionFetchResult {
   user_info?: SubscriptionUserInfo
 }
 
+export interface TelegramProxy {
+  id: string
+  type: 'mtproto' | 'socks5'
+  server: string
+  port: number
+  secret?: string
+  username?: string
+  password?: string
+  latency_ms: number
+  is_alive: boolean
+  country?: string
+  country_code?: string
+  link: string
+  source?: string
+}
+
+export interface TelegramTestProgress {
+  tested_count: number
+  total_count: number
+  current: string
+  results?: TelegramProxy[]
+}
+
+export interface FreeConfigItem {
+  id: string
+  name: string
+  protocol: 'vless' | 'vmess' | 'trojan' | 'shadowsocks' | 'hysteria2' | 'tuic' | 'wireguard' | string
+  server: string
+  port: number
+  raw_uri: string
+  latency_ms: number
+  is_alive: boolean
+  country?: string
+  country_code?: string
+  source_name?: string
+  network?: string
+  security?: string
+}
+
+export interface FreeConfigTestProgress {
+  tested_count: number
+  total_count: number
+  current: string
+  results?: FreeConfigItem[]
+}
+
+export interface CloudflareTarget {
+  ip: string
+  port: number
+  latency_ms: number
+  loss_rate: number
+  location?: string
+  mode: 'warp' | 'cdn' | string
+  is_clean: boolean
+}
+
+export interface CloudflareScanProgress {
+  total: number
+  scanned: number
+  found: number
+  current_ip: string
+  mode: string
+  results: CloudflareTarget[]
+}
+
+export interface FragmentCandidate {
+  id: string
+  size_range: string
+  sleep_range: string
+  min_size: number
+  max_size: number
+  min_sleep_ms: number
+  max_sleep_ms: number
+  success_rate: number
+  avg_latency: number
+  status: 'optimal' | 'passed' | 'failed' | string
+  score: number
+  recommended: boolean
+}
+
+export interface FragmentScanProgress {
+  total: number
+  scanned: number
+  current: string
+  best_setting?: FragmentCandidate
+  results: FragmentCandidate[]
+}

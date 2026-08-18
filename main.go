@@ -27,8 +27,12 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sigChan
+		if app.engine != nil {
+			_ = app.engine.Disconnect()
+		}
 		sysproxy.ClearSystemProxy()
 		_ = core.GetKillSwitch().Disable()
+		core.CleanupStaleCores()
 		os.Exit(0)
 	}()
 
@@ -44,6 +48,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 8, G: 10, B: 15, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		HideWindowOnClose: true,
 		Bind: []interface{}{
 			app,
 		},
@@ -65,8 +70,12 @@ func main() {
 	})
 
 	// Ensure cleanup on normal termination
+	if app.engine != nil {
+		_ = app.engine.Disconnect()
+	}
 	sysproxy.ClearSystemProxy()
 	_ = core.GetKillSwitch().Disable()
+	core.CleanupStaleCores()
 
 	if err != nil {
 		println("Error:", err.Error())

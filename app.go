@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os/exec"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"nexvpn/internal/config"
 	"nexvpn/internal/core"
 	"nexvpn/internal/parser"
+	"nexvpn/internal/sysproc"
 	"nexvpn/internal/sysproxy"
 	"nexvpn/internal/tray"
 
@@ -75,14 +77,39 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.engine.SetContext(ctx)
 
-	// Clean any dangling proxy left by a crash or previous session
+	// Clean any dangling proxy, firewall rules, or core processes left by a crash or previous session
 	sysproxy.CheckAndClearStaleProxy()
+	_ = core.GetKillSwitch().Disable()
+	core.CleanupStaleCores()
 
 	// Initialize Windows Taskbar Notification Area (System Tray) icon near the clock
-	tray.SetDisconnectHandler(func() {
-		_ = a.Disconnect()
+	tray.SetToggleConnectHandler(func() {
+		status := a.GetConnectionStatus()
+		if status.State == "connected" || status.State == "connecting" {
+			_ = a.Disconnect()
+		} else {
+			_, _ = a.ConnectFastest("all")
+		}
 	})
-	tray.InitSystemTray("NexVPN Pro - Ready")
+	tray.SetFastConnectHandler(func() {
+		_, _ = a.ConnectFastest("all")
+	})
+	tray.SetPanicWipeHandler(func() {
+		_ = a.PanicWipe()
+	})
+	tray.SetShowHandler(func() {
+		if a.ctx != nil {
+			runtime.WindowShow(a.ctx)
+			runtime.WindowUnminimise(a.ctx)
+		}
+		tray.ShowMainWindow()
+	})
+	tray.SetExitHandler(func() {
+		if a.ctx != nil {
+			runtime.Quit(a.ctx)
+		}
+	})
+	tray.InitSystemTray("NexVPN Pro")
 	tray.ApplyMainWindowIcon()
 
 	// Load store data
@@ -113,6 +140,7 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	sysproxy.ClearSystemProxy()
 	_ = core.GetKillSwitch().Disable()
+	core.CleanupStaleCores()
 }
 
 // ============================================================
@@ -377,6 +405,7 @@ func (a *App) ExportAllProfiles(category string) string {
 // OpenTelegramProxy launches Telegram with the local SOCKS5 proxy URL
 func (a *App) OpenTelegramProxy() error {
 	cmd := exec.Command("cmd", "/c", "start", "tg://socks?server=127.0.0.1&port=10808")
+	cmd.SysProcAttr = sysproc.HideWindowAttr()
 	return cmd.Start()
 }
 
@@ -446,7 +475,7 @@ func (a *App) PingProfile(id string) (int, error) {
 	port := profile.Port
 
 	// If server address is missing, extract it dynamically from config content
-	if server == "" && profile.ConfigContent != "" && profile.Protocol == config.ProtocolWireGuard {
+	if (server == "" || port <= 0) && profile.ConfigContent != "" && (profile.Protocol == config.ProtocolWireGuard || profile.Protocol == config.ProtocolWARP || profile.Category == config.CategoryWireGuardWarp) {
 		_, host, err := parser.ParseWireGuardConf(profile.ConfigContent)
 		if err == nil && host != "" {
 			server = host
@@ -458,7 +487,7 @@ func (a *App) PingProfile(id string) (int, error) {
 		return -1, fmt.Errorf("profile has no server address")
 	}
 
-	latency := parser.TCPPing(server, port, 3*time.Second)
+	latency := parser.SmartPing(server, port, profile.Protocol, 3*time.Second)
 	profile.LatencyMs = latency
 	_ = a.store.UpdateProfile(profile)
 
@@ -477,8 +506,17 @@ func (a *App) PingAllProfiles(category string) []config.Profile {
 		wg.Add(1)
 		go func(p *config.Profile) {
 			defer wg.Done()
-			if p.Server != "" {
-				p.LatencyMs = parser.TCPPing(p.Server, p.Port, 3*time.Second)
+			server := p.Server
+			port := p.Port
+			if (server == "" || port <= 0) && p.ConfigContent != "" && (p.Protocol == config.ProtocolWireGuard || p.Protocol == config.ProtocolWARP || p.Category == config.CategoryWireGuardWarp) {
+				_, host, err := parser.ParseWireGuardConf(p.ConfigContent)
+				if err == nil && host != "" {
+					server = host
+					p.Server = host
+				}
+			}
+			if server != "" {
+				p.LatencyMs = parser.SmartPing(server, port, p.Protocol, 3*time.Second)
 				_ = a.store.UpdateProfile(*p)
 			}
 		}(&profiles[i])
@@ -698,6 +736,77 @@ func (a *App) GetVersion() string {
 	return AppVersion
 }
 
+// UpdateCheckResult is the result of a GitHub Releases update check
+type UpdateCheckResult struct {
+	HasUpdate      bool   `json:"has_update"`
+	LatestVersion  string `json:"latest_version"`
+	CurrentVersion string `json:"current_version"`
+	ReleaseURL     string `json:"release_url"`
+	ReleaseNotes   string `json:"release_notes"`
+	Error          string `json:"error,omitempty"`
+}
+
+// CheckForUpdates queries GitHub Releases API to compare latest version with current
+func (a *App) CheckForUpdates() UpdateCheckResult {
+	const repoAPI = "https://api.github.com/repos/Rpg-420/NexVPN/releases/latest"
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	req, err := http.NewRequestWithContext(a.ctx, "GET", repoAPI, nil)
+	if err != nil {
+		return UpdateCheckResult{Error: "Failed to build request: " + err.Error(), CurrentVersion: AppVersion}
+	}
+	req.Header.Set("User-Agent", "NexVPN/"+AppVersion)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return UpdateCheckResult{Error: "Network error: " + err.Error(), CurrentVersion: AppVersion}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		// No release found at all — we are on latest
+		return UpdateCheckResult{
+			HasUpdate:      false,
+			LatestVersion:  AppVersion,
+			CurrentVersion: AppVersion,
+			ReleaseURL:     "https://github.com/Rpg-420/NexVPN/releases",
+		}
+	}
+
+	if resp.StatusCode != 200 {
+		return UpdateCheckResult{Error: "GitHub API returned status " + resp.Status, CurrentVersion: AppVersion}
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+		Body    string `json:"body"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return UpdateCheckResult{Error: "Failed to parse response: " + err.Error(), CurrentVersion: AppVersion}
+	}
+
+	// Normalize tag (strip leading "v")
+	latest := strings.TrimPrefix(release.TagName, "v")
+	current := strings.TrimPrefix(AppVersion, "v")
+
+	notes := release.Body
+	if len(notes) > 300 {
+		notes = notes[:300] + "..."
+	}
+
+	hasUpdate := latest != "" && latest != current
+
+	return UpdateCheckResult{
+		HasUpdate:      hasUpdate,
+		LatestVersion:  latest,
+		CurrentVersion: current,
+		ReleaseURL:     release.HTMLURL,
+		ReleaseNotes:   notes,
+	}
+}
+
 // ============================================================
 // LAN Proxy Sharing & Bridge
 // ============================================================
@@ -910,6 +1019,7 @@ func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
 	reportSteps := make([]RepairStep, 0)
 	for _, s := range steps {
 		cmd := exec.Command(s.prog, s.args...)
+		cmd.SysProcAttr = sysproc.HideWindowAttr()
 		out, err := cmd.CombinedOutput()
 		status := "success"
 		msg := strings.TrimSpace(string(out))

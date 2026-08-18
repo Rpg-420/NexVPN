@@ -92,6 +92,7 @@ type Settings struct {
 	AppRoutingMode              string   `json:"app_routing_mode"` // "all", "proxy_selected", "bypass_selected"
 	SelectedApps                []string `json:"selected_apps"`
 	AutoFailover                bool     `json:"auto_failover"`
+	AutoFailoverEnabled         bool     `json:"auto_failover_enabled"`
 	SubscriptionAutoUpdateHours int      `json:"subscription_auto_update_hours"`
 	MultiHopWarp                bool     `json:"multi_hop_warp"`
 	IPStrategy                  string   `json:"ip_strategy"` // "prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"
@@ -216,7 +217,7 @@ func NewStore() *Store {
 				AmneziaH2:                   2,
 				AmneziaH3:                   3,
 				AmneziaH4:                   4,
-				ShowMiniWidget:              true,
+				ShowMiniWidget:              false,
 			},
 		},
 	}
@@ -759,7 +760,7 @@ func (s *Store) ExportFullBackupJSON() (string, error) {
 	defer s.mu.RUnlock()
 
 	bundle := FullBackupBundle{
-		Version:      "1.3.1",
+		Version:      "1.3.3",
 		ExportedAt:   time.Now(),
 		Profiles:     s.data.Profiles,
 		Settings:     s.data.Settings,

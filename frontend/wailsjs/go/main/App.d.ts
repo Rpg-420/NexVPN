@@ -3,16 +3,27 @@
 import {config} from '../models';
 import {main} from '../models';
 import {core} from '../models';
+import {discovery} from '../models';
 import {parser} from '../models';
 import {sysproxy} from '../models';
 
 export function AddProfile(arg1:config.Profile):Promise<string>;
 
+export function ApplyCleanIPToV2RayProfiles(arg1:string,arg2:number,arg3:boolean):Promise<number>;
+
+export function ApplyCleanIPToWARPProfiles(arg1:string,arg2:number):Promise<number>;
+
+export function ApplyOptimalFragment(arg1:string,arg2:string):Promise<void>;
+
 export function ApplyWarpLicenseKey(arg1:string):Promise<void>;
 
 export function BatchGenerateWarpProfiles(arg1:Array<main.BatchIPRequest>,arg2:boolean):Promise<Array<config.Profile>>;
 
+export function BroadcastProfilesToLAN(arg1:string,arg2:string):Promise<number>;
+
 export function CheckCoreBinaries():Promise<Record<string, core.BinaryInfo>>;
+
+export function CheckForUpdates():Promise<main.UpdateCheckResult>;
 
 export function ClearConnectionHistory():Promise<void>;
 
@@ -23,6 +34,8 @@ export function ClearStaleProxy():Promise<void>;
 export function Connect(arg1:string):Promise<void>;
 
 export function ConnectFastest(arg1:string):Promise<config.Profile>;
+
+export function ConvertConfig(arg1:string,arg2:string):Promise<string>;
 
 export function CreateProxyChain(arg1:Array<string>,arg2:string):Promise<string>;
 
@@ -36,6 +49,8 @@ export function DeleteProfile(arg1:string):Promise<void>;
 
 export function DeleteProfilesByCategory(arg1:string):Promise<void>;
 
+export function DetectCurrentISP():Promise<discovery.ISPRecommendation>;
+
 export function Disconnect():Promise<void>;
 
 export function ExportAllProfiles(arg1:string):Promise<string>;
@@ -44,9 +59,13 @@ export function ExportEncryptedBackup(arg1:string):Promise<string>;
 
 export function ExportFullBackup():Promise<string>;
 
+export function FetchFreeConfigs(arg1:Array<string>):Promise<Array<discovery.FreeConfigItem>>;
+
 export function FetchLiveCleanIPFeed():Promise<Array<main.CleanIPRange>>;
 
 export function FetchSubscriptionInfo(arg1:string):Promise<parser.SubscriptionFetchResult>;
+
+export function FetchTelegramProxies(arg1:Array<string>):Promise<Array<discovery.TelegramProxy>>;
 
 export function FixNetworkIssues():Promise<parser.RepairResult>;
 
@@ -80,6 +99,8 @@ export function GetProfilesByCategory(arg1:string):Promise<Array<config.Profile>
 
 export function GetSettings():Promise<config.Settings>;
 
+export function GetSubscriptionInfo(arg1:string):Promise<parser.SubscriptionUserInfo>;
+
 export function GetSystemInfo():Promise<Record<string, string>>;
 
 export function GetTrafficStats():Promise<core.TrafficStats>;
@@ -90,7 +111,11 @@ export function HideWindow():Promise<void>;
 
 export function ImportEncryptedBackup(arg1:string,arg2:string):Promise<void>;
 
+export function ImportFreeConfigs(arg1:Array<discovery.FreeConfigItem>,arg2:string):Promise<number>;
+
 export function ImportFullBackup(arg1:string,arg2:boolean):Promise<number>;
+
+export function ImportNearbyProfiles(arg1:Array<config.Profile>,arg2:string):Promise<number>;
 
 export function ImportOpenVPNProfile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<string>;
 
@@ -103,6 +128,10 @@ export function ImportURI(arg1:string,arg2:string):Promise<string>;
 export function ImportWireGuardProfile(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function InstallCoreBinary(arg1:string):Promise<void>;
+
+export function LaunchTelegramProxyLink(arg1:string):Promise<void>;
+
+export function ListenForNearbyProfiles(arg1:number):Promise<discovery.SyncPayload>;
 
 export function LookupExternalIP():Promise<parser.IPInfo>;
 
@@ -142,9 +171,15 @@ export function SetProxyMode(arg1:string):Promise<void>;
 
 export function SetTitle(arg1:string):Promise<void>;
 
+export function SetTrayLanguage(arg1:string):Promise<void>;
+
 export function ShowWindow():Promise<void>;
 
 export function StartCleanIPScan(arg1:Array<string>,arg2:Array<number>):Promise<void>;
+
+export function StartCloudflareDiscoveryScan(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<number>):Promise<void>;
+
+export function StartFragmentDiscoveryScan():Promise<void>;
 
 export function StartMobileRemote(arg1:number):Promise<string>;
 
@@ -154,15 +189,31 @@ export function StartSubscriptionScheduler():Promise<void>;
 
 export function StopCleanIPScan():Promise<void>;
 
+export function StopCloudflareDiscoveryScan():Promise<void>;
+
+export function StopFragmentDiscoveryScan():Promise<void>;
+
 export function StopMobileRemote():Promise<void>;
 
 export function StopRealSpeedTest():Promise<void>;
 
 export function TestAllProfilesBatch(arg1:string):Promise<Array<core.BatchTestResult>>;
 
+export function TestAllProfilesRealDelay(arg1:string):Promise<Array<core.BatchTestResult>>;
+
+export function TestFreeConfigs(arg1:Array<discovery.FreeConfigItem>):Promise<Array<discovery.FreeConfigItem>>;
+
+export function TestTelegramProxies(arg1:Array<discovery.TelegramProxy>):Promise<Array<discovery.TelegramProxy>>;
+
 export function ToggleAllowLan(arg1:boolean):Promise<void>;
 
+export function ToggleAutoFailover(arg1:boolean):Promise<void>;
+
 export function UpdateAllSubscriptions():Promise<number>;
+
+export function UpdateCoreEngine(arg1:string):Promise<string>;
+
+export function UpdateGeoData():Promise<string>;
 
 export function UpdateGeoDatabase():Promise<Record<string, string>>;
 

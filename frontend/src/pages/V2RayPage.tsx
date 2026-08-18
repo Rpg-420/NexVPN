@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Plus,
   Trash2,
@@ -25,6 +25,8 @@ import {
   Download,
   ArrowUpDown,
   Zap,
+  Scan,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
@@ -37,13 +39,15 @@ import {
 } from '../lib/utils'
 import { generateQRCodeSVG } from '../lib/qrcode'
 import EditProfileModal from '../components/EditProfileModal'
+import ScreenQRScannerModal from '../components/ScreenQRScannerModal'
+import ConfigConverterModal from '../components/ConfigConverterModal'
 
 interface Props {
   status: ConnectionStatus
   onStatusChange?: (s: ConnectionStatus) => void
 }
 
-type FilterProtocol = 'all' | 'vless' | 'vmess' | 'trojan' | 'shadowsocks' | 'hysteria2' | 'wireguard' | 'warp'
+type FilterProtocol = 'all' | 'vless' | 'vmess' | 'trojan' | 'shadowsocks' | 'hysteria2' | 'wireguard' | 'warp' | 'tuic'
 type SortMode = 'default' | 'ping_asc' | 'ping_desc' | 'country' | 'name'
 
 export default function V2RayPage({ status, onStatusChange }: Props) {
@@ -74,11 +78,16 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
   }
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showScreenQRModal, setShowScreenQRModal] = useState(false)
+  const [showConverterModal, setShowConverterModal] = useState(false)
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
   const [sharingProfile, setSharingProfile] = useState<Profile | null>(null)
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null)
   const [isPinging, setIsPinging] = useState(false)
+  const [isTestingRealDelay, setIsTestingRealDelay] = useState(false)
   const [isUpdatingSubs, setIsUpdatingSubs] = useState(false)
+  const [subUserInfo, setSubUserInfo] = useState<any | null>(null)
+  const [loadingSubInfo, setLoadingSubInfo] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
@@ -100,6 +109,28 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
     loadProfiles()
   }, [loadProfiles])
 
+  const activeGroupProfiles = useMemo(() => {
+    if (filterGroup === 'all') return []
+    return profiles.filter(p => (p.subscription_name || p.group) === filterGroup)
+  }, [profiles, filterGroup])
+
+  const activeSubUrl = useMemo(() => {
+    const found = activeGroupProfiles.find(p => p.subscription_url)
+    return found ? found.subscription_url : null
+  }, [activeGroupProfiles])
+
+  useEffect(() => {
+    if (activeSubUrl) {
+      setLoadingSubInfo(true)
+      api.getSubscriptionInfo(activeSubUrl)
+        .then(info => setSubUserInfo(info))
+        .catch(() => setSubUserInfo(null))
+        .finally(() => setLoadingSubInfo(false))
+    } else {
+      setSubUserInfo(null)
+    }
+  }, [activeSubUrl])
+
   const qrImageUrl = sharingProfile
     ? generateQRCodeSVG(sharingProfile.raw_uri || sharingProfile.config_content || sharingProfile.name)
     : ''
@@ -114,6 +145,21 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
       console.error('Ping all error:', err)
     } finally {
       setIsPinging(false)
+    }
+  }
+
+  const handleRealDelayAll = async () => {
+    setIsTestingRealDelay(true)
+    try {
+      const results = await api.testAllProfilesRealDelay('v2ray')
+      if (Array.isArray(results)) {
+        await loadProfiles()
+        showToast(t('saved_successfully'))
+      }
+    } catch (err) {
+      console.error('Real delay error:', err)
+    } finally {
+      setIsTestingRealDelay(false)
     }
   }
 
@@ -332,13 +378,31 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
       )}
 
       {/* Header & Main Actions */}
-      <div className="page-header flex items-center justify-between flex-wrap gap-3">
+      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 bg-slate-900/90 backdrop-blur-xl py-3 -mx-2 px-4 rounded-2xl border border-white/5 shadow-lg shadow-black/20">
         <div>
           <h1 className="page-title">{t('v2ray_title')}</h1>
           <p className="page-subtitle">{t('v2ray_subtitle')}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={() => setShowScreenQRModal(true)}
+            title="Scan QR Code from Screen or Image"
+          >
+            <Scan size={14} className="text-cyan-400" />
+            <span>{t('screen_qr_title') || 'Scan QR'}</span>
+          </button>
+
+          <button
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={() => setShowConverterModal(true)}
+            title="Universal Config Converter"
+          >
+            <ArrowRightLeft size={14} className="text-amber-400" />
+            <span>{t('config_converter_title') || 'Converter'}</span>
+          </button>
+
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setShowImportModal(true)}
@@ -366,7 +430,7 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
               onClick={() => setFilterGroup('all')}
               className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
                 filterGroup === 'all'
-                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
                   : 'bg-slate-800/80 text-slate-400 hover:text-white border border-white/5'
               }`}
             >
@@ -421,6 +485,49 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
           )}
         </div>
 
+        {/* Subscription Live Quota & Expiry Banner */}
+        {subUserInfo && (
+          <div className="p-3.5 bg-gradient-to-r from-purple-950/40 via-slate-900/60 to-indigo-950/40 border border-purple-500/30 rounded-2xl space-y-2 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-purple-300 flex items-center gap-1.5">
+                  <Activity size={13} className="text-purple-400" />
+                  <span>حجم مصرفی اشتراک:</span>
+                </span>
+                <span className="font-mono font-bold text-white">
+                  {(subUserInfo.used_bytes / (1024 * 1024 * 1024)).toFixed(1)} GB / {(subUserInfo.total_bytes / (1024 * 1024 * 1024)).toFixed(0)} GB
+                </span>
+                <span className="text-[11px] text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full font-bold">
+                  {subUserInfo.percent_used}%
+                </span>
+              </div>
+
+              {subUserInfo.expire_date > 0 && (
+                <div className="text-slate-400 font-mono text-[11px] flex items-center gap-1">
+                  <span>انقضا:</span>
+                  <span className="text-amber-300 font-bold">
+                    {new Date(subUserInfo.expire_date * 1000).toLocaleDateString('fa-IR')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Quota Progress bar */}
+            <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-white/5">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  subUserInfo.percent_used > 85
+                    ? 'bg-rose-500 shadow-md shadow-rose-500/50'
+                    : subUserInfo.percent_used > 60
+                    ? 'bg-amber-500'
+                    : 'bg-gradient-to-r from-purple-500 to-indigo-400'
+                }`}
+                style={{ width: `${Math.min(100, subUserInfo.percent_used)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Search, Smart Sorting, and Automation Toolbar */}
         <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-white/5">
           <div className="flex items-center gap-2 flex-wrap flex-1">
@@ -453,6 +560,17 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Real Delay HTTP URL Test */}
+            <button
+              className="btn btn-secondary btn-sm text-xs text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/10"
+              onClick={handleRealDelayAll}
+              disabled={isTestingRealDelay}
+              title="Real HTTP/204 URL Delay Test"
+            >
+              <Activity size={13} className={isTestingRealDelay ? 'animate-spin text-cyan-400' : 'text-cyan-400'} />
+              <span>{isTestingRealDelay ? 'Testing...' : '⚡ URL Test'}</span>
+            </button>
+
             {/* Ping All */}
             <button
               className="btn btn-secondary btn-sm text-xs"
@@ -492,16 +610,6 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
             >
               <Download size={13} className="text-blue-400" />
               <span>{t('copy_for_mobile')}</span>
-            </button>
-
-            {/* Telegram 1-Click Proxy */}
-            <button
-              className="btn btn-secondary btn-sm text-xs"
-              onClick={handleOpenTelegram}
-              title="Telegram"
-            >
-              <Send size={13} className="text-sky-400" />
-              <span>Telegram</span>
             </button>
 
             {/* Update Subscriptions */}
@@ -754,6 +862,19 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
           </div>
         </div>
       )}
+
+      {/* Screen QR Code Scanner Modal */}
+      <ScreenQRScannerModal
+        isOpen={showScreenQRModal}
+        onClose={() => setShowScreenQRModal(false)}
+        onProfileImported={loadProfiles}
+      />
+
+      {/* Universal Config Converter Modal */}
+      <ConfigConverterModal
+        isOpen={showConverterModal}
+        onClose={() => setShowConverterModal(false)}
+      />
     </div>
   )
 }

@@ -117,11 +117,17 @@ func (b *SingBoxConfigBuilder) WithRoutingRules(settings config.Settings) *SingB
 		{"ip_cidr": []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"}, "outbound": "direct"},
 	}
 
-	// Domestic Iran bypass
+	// Domestic Iran & Zero-Disconnect Banking bypass
 	if settings.RoutingMode != "global" {
 		rules = append(rules,
 			map[string]interface{}{"domain_suffix": []string{".ir"}, "outbound": "direct"},
-			map[string]interface{}{"domain_keyword": []string{"telewebion", "digikala", "snapp", "shaparak", "divar", "torob", "aparat", "varzesh3", "bank", "bmi.ir", "sep.ir"}, "outbound": "direct"},
+			map[string]interface{}{"domain_keyword": []string{
+				"telewebion", "digikala", "snapp", "shaparak", "divar", "torob", "aparat",
+				"varzesh3", "bank", "bmi.ir", "sep.ir", "asanpardakht", "zarinpal",
+				"sadadpsp", "pec.shaparak", "behpardakht", "irankish", "pasargad",
+				"mellat", "tejarat", "saman", "melli", "parsian", "nobitex", "wallex",
+			}, "outbound": "direct"},
+			map[string]interface{}{"geoip": []string{"ir"}, "outbound": "direct"},
 		)
 	}
 

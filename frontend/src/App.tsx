@@ -15,20 +15,22 @@ import Dashboard from './pages/Dashboard'
 import V2RayPage from './pages/V2RayPage'
 import WarpWireGuardPage from './pages/WarpWireGuardPage'
 import OpenVPNPage from './pages/OpenVPNPage'
+import DiscoveryHub from './pages/DiscoveryHub'
 import SettingsPage from './pages/Settings'
 import Logs from './pages/Logs'
 import { NetworkDoctorModal } from './components/NetworkDoctorModal'
 import { VisualAppSelectorModal } from './components/VisualAppSelectorModal'
-import { FloatingMiniWidget } from './components/FloatingMiniWidget'
+import FloatingMiniWidget from './components/FloatingMiniWidget'
 import AboutModal from './components/AboutModal'
+import GlobalContextMenu from './components/GlobalContextMenu'
 import { api } from './lib/api'
 import { t, getLanguage, setLanguage, onLanguageChange } from './lib/i18n'
 import { initTheme, onThemeChange, getTheme, applyTheme, THEMES } from './lib/theme'
 import { handleGlobalStatusNotification } from './lib/notification'
 import type { ConnectionStatus, TrafficStats, Settings } from './types'
-import { Info } from 'lucide-react'
+import { Info, Compass } from 'lucide-react'
 
-type NavTab = 'dashboard' | 'v2ray' | 'warp' | 'openvpn' | 'settings' | 'logs'
+type NavTab = 'dashboard' | 'v2ray' | 'warp' | 'openvpn' | 'discovery' | 'settings' | 'logs'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
@@ -39,6 +41,7 @@ export default function App() {
   const [isDoctorOpen, setIsDoctorOpen] = useState(false)
   const [isAppSelectorOpen, setIsAppSelectorOpen] = useState(false)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>('1.3.3')
   const [stats, setStats] = useState<TrafficStats>({
     bytes_received: 0,
     bytes_sent: 0,
@@ -50,6 +53,11 @@ export default function App() {
 
   useEffect(() => {
     initTheme()
+    api.setTrayLanguage(getLanguage()).catch(() => {})
+
+    api.getVersion().then(v => {
+      if (v) setAppVersion(v)
+    }).catch(() => {})
 
     api.getSettings().then(s => {
       if (s) {
@@ -185,6 +193,16 @@ export default function App() {
           </button>
 
           <button
+            id="nav-discovery"
+            className={`nav-item${activeTab === 'discovery' ? ' active' : ''}`}
+            onClick={() => setActiveTab('discovery')}
+            title={t('nav_discovery')}
+          >
+            <Compass size={18} className={activeTab === 'discovery' ? 'text-indigo-400 animate-spin-slow' : 'text-indigo-400/80'} />
+            <span className="font-semibold">{t('nav_discovery')}</span>
+          </button>
+
+          <button
             id="nav-settings"
             className={`nav-item${activeTab === 'settings' ? ' active' : ''}`}
             onClick={() => setActiveTab('settings')}
@@ -271,7 +289,7 @@ export default function App() {
               />
               <span className="font-semibold text-slate-300 truncate">{t('engine_active')}</span>
             </div>
-            <span className="text-[10px] text-slate-400 font-mono">v1.3.2</span>
+            <span className="text-[10px] text-slate-400 font-mono">v{appVersion}</span>
           </div>
         </div>
       </aside>
@@ -287,17 +305,23 @@ export default function App() {
           />
         )}
         {activeTab === 'v2ray' && <V2RayPage status={status} onStatusChange={setStatus} />}
-        {activeTab === 'warp' && <WarpWireGuardPage status={status} onStatusChange={setStatus} />}
+        {activeTab === 'warp' && <WarpWireGuardPage status={status} onStatusChange={setStatus} onNavigateTab={setActiveTab} />}
         {activeTab === 'openvpn' && <OpenVPNPage status={status} onStatusChange={setStatus} />}
+        {activeTab === 'discovery' && <DiscoveryHub status={status} onStatusChange={setStatus} />}
         {activeTab === 'settings' && <SettingsPage onSettingsSaved={setSettings} />}
         {activeTab === 'logs' && <Logs />}
       </main>
 
       {/* Floating Mini Widget */}
-      {settings?.show_mini_widget !== false && (
+      {settings && settings.show_mini_widget === true && (
         <FloatingMiniWidget
           status={status}
           stats={stats}
+          onCloseWidget={async () => {
+            const updated = { ...settings, show_mini_widget: false }
+            setSettings(updated)
+            await api.saveSettings(updated)
+          }}
           onToggleConnect={async () => {
             if (isConnected || isConnecting) {
               await api.disconnect()
@@ -321,6 +345,9 @@ export default function App() {
 
       {/* About Modal */}
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+
+      {/* Global Right-Click Context Menu */}
+      <GlobalContextMenu />
     </div>
   )
 }

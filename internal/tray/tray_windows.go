@@ -4,8 +4,10 @@ package tray
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -59,14 +61,13 @@ const (
 	ICON_SMALL = 0
 	ICON_BIG   = 1
 
-	GCLP_HICON   = int32(-14)
-	GCLP_HICONSM = int32(-34)
-
 	WM_LBUTTONUP     = 0x0202
 	WM_LBUTTONDBLCLK = 0x0203
 	WM_RBUTTONUP     = 0x0205
 
 	MF_STRING       = 0x00000000
+	MF_GRAYED       = 0x00000001
+	MF_DISABLED     = 0x00000002
 	MF_SEPARATOR    = 0x00000800
 	TPM_RETURNCMD   = 0x0100
 	TPM_RIGHTBUTTON = 0x0002
@@ -76,9 +77,12 @@ const (
 
 	IDI_APPLICATION = 32512
 
-	CMD_SHOW       = 1001
-	CMD_DISCONNECT = 1002
-	CMD_EXIT       = 1003
+	CMD_STATUS          = 1000
+	CMD_SHOW            = 1001
+	CMD_TOGGLE_CONNECT  = 1002
+	CMD_CONNECT_FASTEST = 1003
+	CMD_PANIC_WIPE      = 1004
+	CMD_EXIT            = 1005
 )
 
 type POINT struct {
@@ -127,14 +131,104 @@ type NOTIFYICONDATAW struct {
 }
 
 var (
-	activeNID      *NOTIFYICONDATAW
-	trayHWnd       uintptr
-	disconnectFunc func()
+	trayMu             sync.RWMutex
+	activeNID          *NOTIFYICONDATAW
+	trayHWnd           uintptr
+	isConnected        bool
+	profileName        string
+	latencyMs          int
+	currentLanguage    string = "fa"
+	toggleConnectFunc  func()
+	fastConnectFunc    func()
+	panicWipeFunc      func()
+	showFunc           func()
+	exitFunc           func()
 )
 
-// SetDisconnectHandler registers a callback invoked when Disconnect is clicked from tray menu
+// SetToggleConnectHandler registers a callback for toggling connection (connect / disconnect)
+func SetToggleConnectHandler(fn func()) {
+	trayMu.Lock()
+	toggleConnectFunc = fn
+	trayMu.Unlock()
+}
+
+// SetFastConnectHandler registers a callback for connecting to the fastest profile
+func SetFastConnectHandler(fn func()) {
+	trayMu.Lock()
+	fastConnectFunc = fn
+	trayMu.Unlock()
+}
+
+// SetPanicWipeHandler registers a callback for panic disconnecting and wiping proxy
+func SetPanicWipeHandler(fn func()) {
+	trayMu.Lock()
+	panicWipeFunc = fn
+	trayMu.Unlock()
+}
+
+// SetDisconnectHandler backward-compatibility helper
 func SetDisconnectHandler(fn func()) {
-	disconnectFunc = fn
+	SetToggleConnectHandler(fn)
+}
+
+// SetShowHandler registers a callback invoked when Show or left click is triggered
+func SetShowHandler(fn func()) {
+	trayMu.Lock()
+	showFunc = fn
+	trayMu.Unlock()
+}
+
+// SetExitHandler registers a callback invoked when Exit is clicked from tray menu
+func SetExitHandler(fn func()) {
+	trayMu.Lock()
+	exitFunc = fn
+	trayMu.Unlock()
+}
+
+// UpdateTrayState syncs the current connection state and updates tooltip
+func UpdateTrayState(connected bool, profile string, latency int) {
+	trayMu.Lock()
+	isConnected = connected
+	profileName = profile
+	latencyMs = latency
+	lang := currentLanguage
+	trayMu.Unlock()
+
+	tip := "NexVPN Pro - Disconnected"
+	if lang == "fa" {
+		tip = "نکس وی‌پی‌ان پرو - غیرفعال"
+		if connected {
+			if latency > 0 {
+				tip = fmt.Sprintf("نکس وی‌پی‌ان: متصل به %s (%dms)", profile, latency)
+			} else {
+				tip = fmt.Sprintf("نکس وی‌پی‌ان: متصل به %s", profile)
+			}
+		}
+	} else {
+		if connected {
+			if latency > 0 {
+				tip = fmt.Sprintf("NexVPN: Connected to %s (%dms)", profile, latency)
+			} else {
+				tip = fmt.Sprintf("NexVPN: Connected to %s", profile)
+			}
+		}
+	}
+
+	UpdateTooltip(tip)
+}
+
+// SetTrayLanguage changes the active display language in tray menu
+func SetTrayLanguage(lang string) {
+	trayMu.Lock()
+	if lang == "en" || lang == "fa" {
+		currentLanguage = lang
+	}
+	conn := isConnected
+	prof := profileName
+	lat := latencyMs
+	trayMu.Unlock()
+
+	UpdateTrayState(conn, prof, lat)
 }
 
 func getBestHIcon(width, height int32) uintptr {
@@ -203,15 +297,75 @@ func showContextMenu(hWnd uintptr) {
 	}
 	defer destroyMenu.Call(hMenu)
 
-	sShow, _ := syscall.UTF16PtrFromString("🛡️ نمایش برنامه (Show NexVPN)")
-	sDisc, _ := syscall.UTF16PtrFromString("🔴 قطع اتصال (Disconnect)")
-	sExit, _ := syscall.UTF16PtrFromString("🚪 خروج (Exit NexVPN)")
+	trayMu.RLock()
+	conn := isConnected
+	pName := profileName
+	lat := latencyMs
+	lang := currentLanguage
+	trayMu.RUnlock()
 
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_SHOW), uintptr(unsafe.Pointer(sShow)))
+	var sStatus, sAction, sShow, sPanic, sExit string
+
+	if lang == "en" {
+		if conn {
+			if lat > 0 {
+				sStatus = fmt.Sprintf("🟢 Connected: %s (%dms)", pName, lat)
+			} else if pName != "" {
+				sStatus = fmt.Sprintf("🟢 Connected: %s", pName)
+			} else {
+				sStatus = "🟢 Connected (Protected)"
+			}
+			sAction = "🔴 Disconnect"
+		} else {
+			sStatus = "⚪ Status: Disconnected"
+			sAction = "⚡ Fast Connect (Best Server)"
+		}
+		sShow = "🛡️ Show NexVPN"
+		sPanic = "🚨 Emergency Panic Wipe"
+		sExit = "🚪 Exit NexVPN"
+	} else {
+		// Persian (fa)
+		if conn {
+			if lat > 0 {
+				sStatus = fmt.Sprintf("🟢 متصل به: %s (%dms)", pName, lat)
+			} else if pName != "" {
+				sStatus = fmt.Sprintf("🟢 متصل به: %s", pName)
+			} else {
+				sStatus = "🟢 وضعیت: متصل و ایمن"
+			}
+			sAction = "🔴 قطع اتصال"
+		} else {
+			sStatus = "⚪ وضعیت: قطع اتصال"
+			sAction = "⚡ اتصال سریع به بهترین سرور"
+		}
+		sShow = "🛡️ نمایش برنامه"
+		sPanic = "🚨 پاکسازی و قطع اضطراری"
+		sExit = "🚪 خروج از برنامه"
+	}
+
+	ptrStatus, _ := syscall.UTF16PtrFromString(sStatus)
+	ptrAction, _ := syscall.UTF16PtrFromString(sAction)
+	ptrShow, _ := syscall.UTF16PtrFromString(sShow)
+	ptrPanic, _ := syscall.UTF16PtrFromString(sPanic)
+	ptrExit, _ := syscall.UTF16PtrFromString(sExit)
+
+	// Status Header (Disabled item)
+	appendMenuW.Call(hMenu, uintptr(MF_STRING|MF_GRAYED|MF_DISABLED), uintptr(CMD_STATUS), uintptr(unsafe.Pointer(ptrStatus)))
 	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_DISCONNECT), uintptr(unsafe.Pointer(sDisc)))
+
+	// Primary Action (Connect / Disconnect)
+	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_CONNECT), uintptr(unsafe.Pointer(ptrAction)))
 	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_EXIT), uintptr(unsafe.Pointer(sExit)))
+
+	// Show Window
+	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_SHOW), uintptr(unsafe.Pointer(ptrShow)))
+
+	// Panic Wipe
+	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_PANIC_WIPE), uintptr(unsafe.Pointer(ptrPanic)))
+	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
+
+	// Exit
+	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_EXIT), uintptr(unsafe.Pointer(ptrExit)))
 
 	var pt POINT
 	getCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
@@ -229,18 +383,45 @@ func showContextMenu(hWnd uintptr) {
 	switch cmd {
 	case CMD_SHOW:
 		ShowMainWindow()
-	case CMD_DISCONNECT:
-		if disconnectFunc != nil {
-			go disconnectFunc()
+	case CMD_TOGGLE_CONNECT:
+		trayMu.RLock()
+		isConn := isConnected
+		togFn := toggleConnectFunc
+		fastFn := fastConnectFunc
+		trayMu.RUnlock()
+
+		if isConn {
+			if togFn != nil {
+				go togFn()
+			}
+		} else {
+			if fastFn != nil {
+				go fastFn()
+			} else if togFn != nil {
+				go togFn()
+			}
+		}
+	case CMD_PANIC_WIPE:
+		trayMu.RLock()
+		pFn := panicWipeFunc
+		trayMu.RUnlock()
+		if pFn != nil {
+			go pFn()
 		}
 	case CMD_EXIT:
+		trayMu.RLock()
+		eFn := exitFunc
+		trayMu.RUnlock()
+		if eFn != nil {
+			go eFn()
+		}
 		RemoveSystemTray()
+		time.Sleep(150 * time.Millisecond)
 		os.Exit(0)
 	}
 }
 
 // ApplyMainWindowIcon continuously searches for the Wails desktop window on launch
-// and forcefully sets the native Windows taskbar icon via WM_SETICON (big and small)
 func ApplyMainWindowIcon() {
 	go func() {
 		hBig := getBestHIcon(256, 256)
@@ -340,10 +521,14 @@ func InitSystemTray(tooltip string) {
 
 // ShowMainWindow finds the NexVPN window and brings it to the foreground
 func ShowMainWindow() {
+	if showFunc != nil {
+		showFunc()
+	}
 	wndTitle, _ := syscall.UTF16PtrFromString("NexVPN")
 	hWnd, _, _ := findWindowW.Call(0, uintptr(unsafe.Pointer(wndTitle)))
 	if hWnd != 0 {
 		showWindow.Call(hWnd, uintptr(SW_RESTORE))
+		showWindow.Call(hWnd, uintptr(SW_SHOW))
 		setForegroundWin.Call(hWnd)
 	}
 }

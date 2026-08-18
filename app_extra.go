@@ -18,6 +18,7 @@ import (
 	"nexvpn/internal/core"
 	"nexvpn/internal/parser"
 	"nexvpn/internal/sysproxy"
+	"nexvpn/internal/tray"
 )
 
 var (
@@ -29,12 +30,18 @@ var (
 
 // ShowWindow brings the window to the front
 func (a *App) ShowWindow() {
-	runtime.WindowShow(a.ctx)
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+		runtime.WindowUnminimise(a.ctx)
+	}
+	tray.ShowMainWindow()
 }
 
 // HideWindow hides the window to the system tray
 func (a *App) HideWindow() {
-	runtime.WindowHide(a.ctx)
+	if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+	}
 }
 
 // SetTitle sets the window title
@@ -43,9 +50,16 @@ func (a *App) SetTitle(title string) {
 }
 
 func (a *App) broadcastStatus(status core.ConnectionStatus) {
+	tray.UpdateTrayState(status.State == "connected", status.ProfileName, 0)
 	if a.ctx != nil {
 		runtime.EventsEmit(a.ctx, "status:changed", status)
 	}
+}
+
+// SetTrayLanguage updates the active language in the system tray menu
+func (a *App) SetTrayLanguage(lang string) error {
+	tray.SetTrayLanguage(lang)
+	return nil
 }
 
 func (a *App) broadcastLog(entry core.LogEntry) {
@@ -557,6 +571,71 @@ func (a *App) UpdateCoreEngine(coreKey string) (string, error) {
 // UpdateGeoData updates GeoIP and GeoSite routing databases
 func (a *App) UpdateGeoData() (string, error) {
 	return core.UpdateGeoData()
+}
+
+// ConvertConfig converts between various config formats (Clash YAML, Sing-box JSON, Base64 sub, Raw links)
+func (a *App) ConvertConfig(rawInput, targetFormat string) (string, error) {
+	return parser.ConvertRawInputToFormat(rawInput, targetFormat)
+}
+
+// TestAllProfilesRealDelay tests real HTTP internet roundtrip latency across all profiles
+func (a *App) TestAllProfilesRealDelay(category string) []core.BatchTestResult {
+	if a.store == nil {
+		return nil
+	}
+
+	var profiles []config.Profile
+	if category == "" || category == "all" {
+		profiles = a.store.GetProfiles()
+	} else {
+		profiles = a.store.GetProfilesByCategory(config.ProfileCategory(category))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	results := core.BatchTestProfilesRealDelay(ctx, profiles, 20, 3*time.Second, func(p core.BatchTestProgress) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "batch_test:real_progress", p)
+		}
+	})
+
+	// Update latencies in store
+	for _, r := range results {
+		if prof, err := a.store.GetProfile(r.ProfileID); err == nil {
+			prof.LatencyMs = r.LatencyMs
+			_ = a.store.UpdateProfile(prof)
+		}
+	}
+
+	return results
+}
+
+// ToggleAutoFailover enables or disables smart zero-downtime auto-reconnect
+func (a *App) ToggleAutoFailover(enabled bool) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	settings := a.store.GetSettings()
+	settings.AutoFailover = enabled
+	settings.AutoFailoverEnabled = enabled
+	return a.store.SaveSettings(settings)
+}
+
+// GetSubscriptionInfo fetches subscription metadata and user quota information
+func (a *App) GetSubscriptionInfo(subUrl string) (*parser.SubscriptionUserInfo, error) {
+	subUrl = strings.TrimSpace(subUrl)
+	if subUrl == "" {
+		return nil, fmt.Errorf("empty subscription URL")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	res, err := parser.FetchSubscriptionWithUserInfo(ctx, subUrl)
+	if err != nil {
+		return nil, err
+	}
+	return res.UserInfo, nil
 }
 
 

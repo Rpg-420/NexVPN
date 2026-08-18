@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { X, Wifi, Smartphone, Tv, Gamepad2, Copy, Check, Shield } from 'lucide-react'
+import { X, Wifi, Smartphone, Tv, Gamepad2, Copy, Check, Shield, QrCode } from 'lucide-react'
 import { api } from '../lib/api'
 import { sound } from '../lib/sound'
 import { t } from '../lib/i18n'
+import { generateQRCodeSVG } from '../lib/qrcode'
 
 interface Props {
   isOpen: boolean
@@ -14,6 +15,7 @@ export default function LANShareModal({ isOpen, onClose }: Props) {
   const [allowLan, setAllowLan] = useState(true)
   const [copiedType, setCopiedType] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'iphone' | 'android' | 'tv' | 'console'>('iphone')
+  const [showQR, setShowQR] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -182,8 +184,32 @@ export default function LANShareModal({ isOpen, onClose }: Props) {
           </div>
         </div>
 
+        {/* QR Code Section */}
+        {showQR && (
+          <div className="p-4 bg-slate-950/90 rounded-2xl border border-slate-800 flex flex-col items-center gap-3 animate-in fade-in duration-200">
+            <div
+              className="p-3 bg-white rounded-xl shadow-inner inline-block"
+              dangerouslySetInnerHTML={{
+                __html: generateQRCodeSVG(`http://${localIP}:10809`),
+              }}
+            />
+            <span className="text-[11px] font-mono text-slate-400">
+              Scan with phone camera or proxy app: http://{localIP}:10809
+            </span>
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="flex items-center justify-end pt-2 border-t border-slate-800">
+        <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => setShowQR(q => !q)}
+            className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-slate-300 hover:text-cyan-400"
+          >
+            <QrCode size={13} />
+            <span>{showQR ? 'Hide QR Code' : 'Show Setup QR Code'}</span>
+          </button>
+
           <button className="btn btn-secondary btn-sm text-xs" onClick={onClose}>
             {t('close')}
           </button>

@@ -170,3 +170,47 @@ func TestXrayBinaryConfigCheck(t *testing.T) {
 		t.Fatalf("xray check failed on generated config: %v\nOutput: %s\nConfig:\n%s", err, string(output), cfg)
 	}
 }
+
+func TestWireGuardSingBoxConfigValidation(t *testing.T) {
+	warpProfile, err := GenerateCloudflareWarp("162.159.192.1", 2408)
+	if err != nil {
+		t.Fatalf("GenerateCloudflareWarp failed: %v", err)
+	}
+
+	settings := config.Settings{
+		ProxyMode:   "tun",
+		RoutingMode: "bypass_iran",
+		AmneziaJc:   4,
+		AmneziaJmin: 50,
+		AmneziaJmax: 1000,
+	}
+
+	_, cfg, err := BuildNodeConfigWithOptions(warpProfile, settings)
+	if err != nil {
+		t.Fatalf("BuildNodeConfigWithOptions failed on WARP: %v", err)
+	}
+
+	// Verify unsupported fields were stripped
+	if strings.Contains(cfg, "init_packet_junk_size") || strings.Contains(cfg, "junk_packet_count") {
+		t.Errorf("Config still contains unsupported Amnezia junk packet fields: %s", cfg)
+	}
+
+	// Verify sing-box binary check if present
+	sbBin := filepath.Join("..", "..", "bin", "sing-box.exe")
+	if _, statErr := os.Stat(sbBin); statErr == nil {
+		tmpFile, err := os.CreateTemp("", "sb-wg-check-*.json")
+		if err == nil {
+			defer os.Remove(tmpFile.Name())
+			_, _ = tmpFile.WriteString(cfg)
+			_ = tmpFile.Close()
+
+			binDir, _ := filepath.Abs(filepath.Dir(sbBin))
+			cmd := exec.Command(sbBin, "check", "-c", tmpFile.Name(), "-D", binDir)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sing-box check failed on generated WARP config: %v\nOutput: %s\nConfig:\n%s", err, string(output), cfg)
+			}
+		}
+	}
+}
+

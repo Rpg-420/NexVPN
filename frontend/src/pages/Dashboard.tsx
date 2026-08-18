@@ -37,6 +37,8 @@ import {
   AlertTriangle,
   Search,
   SortAsc,
+  Scan,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { api } from '../lib/api'
@@ -68,6 +70,11 @@ import ProxyChainModal from '../components/ProxyChainModal'
 import MobileRemoteModal from '../components/MobileRemoteModal'
 import FragmentStudioModal from '../components/FragmentStudioModal'
 import GamingModeModal from '../components/GamingModeModal'
+import ScreenQRScannerModal from '../components/ScreenQRScannerModal'
+import ConfigConverterModal from '../components/ConfigConverterModal'
+import SmartISPOptimizerCard from '../components/SmartISPOptimizerCard'
+import NearbySyncModal from '../components/NearbySyncModal'
+import FloatingMiniWidget from '../components/FloatingMiniWidget'
 import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
 
 // ─── Profile Search Selector ─────────────────────────────────────────────────
@@ -143,7 +150,7 @@ function ProfileSearchSelector({
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 w-full rounded-2xl bg-slate-950 border border-slate-700 shadow-2xl shadow-black/60 overflow-hidden">
+        <div className="absolute z-50 bottom-full mb-1.5 w-full rounded-2xl bg-slate-950/95 backdrop-blur-xl border border-slate-700 shadow-2xl shadow-black/80 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
           {/* Search + sort row */}
           <div className="flex items-center gap-1.5 p-2 border-b border-slate-800">
             <div className="flex items-center gap-1 flex-1 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1">
@@ -262,6 +269,9 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
   const [showRemoteModal, setShowRemoteModal] = useState(false)
   const [showFragmentStudio, setShowFragmentStudio] = useState(false)
   const [showGamingModal, setShowGamingModal] = useState(false)
+  const [showScreenQRModal, setShowScreenQRModal] = useState(false)
+  const [showConverterModal, setShowConverterModal] = useState(false)
+  const [showNearbyModal, setShowNearbyModal] = useState(false)
   const [showToolsDropdown, setShowToolsDropdown] = useState(false)
   const [currentSettings, setCurrentSettings] = useState<Settings>({} as Settings)
   const tickRef = useRef(0)
@@ -541,8 +551,8 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
           <span>{dashboardToast}</span>
         </div>
       )}
-      {/* Sleek Professional Action Toolbar */}
-      <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-white/5 relative z-20">
+      {/* Sleek Professional Sticky Action Toolbar */}
+      <div className="sticky top-0 z-30 flex items-center justify-between flex-wrap gap-2 py-2.5 px-3 bg-slate-950/85 backdrop-blur-xl border border-slate-800/80 rounded-2xl shadow-lg shadow-black/30">
         {/* Left Side: Real-Time Server / Network Status Tag */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -696,6 +706,30 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                   </button>
 
                   <button
+                    onClick={() => { setShowToolsDropdown(false); setShowScreenQRModal(true) }}
+                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                  >
+                    <Scan size={14} className="text-cyan-400 shrink-0" />
+                    <span className="truncate">{t('screen_qr_title') || 'Scan QR'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowToolsDropdown(false); setShowConverterModal(true) }}
+                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                  >
+                    <ArrowRightLeft size={14} className="text-amber-400 shrink-0" />
+                    <span className="truncate">{t('config_converter_title') || 'Converter'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowToolsDropdown(false); setShowNearbyModal(true) }}
+                    className="col-span-2 flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-purple-300 text-left rtl:text-right transition"
+                  >
+                    <Radio size={14} className="text-purple-400 shrink-0" />
+                    <span className="truncate">{t('nearby_share_title') || 'Nearby Wi-Fi Share (P2P)'}</span>
+                  </button>
+
+                  <button
                     onClick={() => { setShowToolsDropdown(false); setShowEmergencyModal(true) }}
                     className="col-span-2 flex items-center gap-2 p-2 rounded-xl hover:bg-rose-950/40 text-rose-300 text-left rtl:text-right transition border-t border-slate-800 mt-1"
                   >
@@ -722,7 +756,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
       {/* Hero Layout: Connection Orb on Left, Live Chart & Selector on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Connection Core Card */}
-        <div className="lg:col-span-5 card flex flex-col items-center justify-between p-6 text-center relative overflow-hidden">
+        <div className="lg:col-span-5 card flex flex-col items-center justify-between p-6 text-center relative">
           {/* Top Info Header */}
           <div className="w-full flex items-center justify-between text-xs text-muted mb-2">
             <span className="font-semibold uppercase tracking-wider">{t('protocol')}</span>
@@ -860,7 +894,28 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
             </div>
           ) : (
             /* Server Selector with Search, 1-Click Ping All and Mobile QR Exporter */
-            <div className="w-full space-y-2 pt-2 border-t border-white/5">
+            <div className="w-full space-y-2.5 pt-2 border-t border-white/5">
+              {/* Connection Failure Error Diagnostic Banner */}
+              {isError && status.error_msg && (
+                <div className="w-full p-3 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-left rtl:text-right space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+                      <AlertTriangle size={14} className="text-rose-400 shrink-0 animate-pulse" />
+                      <span>{t('connection_failed') || 'خطای اتصال به سرور'}</span>
+                    </div>
+                    <button
+                      onClick={() => setShowEmergencyModal(true)}
+                      className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      🩺 {t('open_doctor') || 'پزشک هوشمند'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-rose-200/90 leading-relaxed font-sans font-medium">
+                    {status.error_msg}
+                  </p>
+                </div>
+              )}
+
               {/* Search filter input */}
               <ProfileSearchSelector
                 profiles={profiles}
@@ -1140,6 +1195,9 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         </div>
       )}
 
+      {/* Smart ISP & Operator AI Recommendation Card (Moved to bottom) */}
+      <SmartISPOptimizerCard />
+
       {/* Mobile QR Code Exporter Modal */}
       {showQRModal && activeProfile && (
         <div className="modal-backdrop animate-fade-in" onClick={() => setShowQRModal(false)}>
@@ -1283,6 +1341,23 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
           setGameMode(updated.game_mode_enabled || false)
           showToast('Gaming Accelerator updated!')
         }}
+      />
+
+      <ScreenQRScannerModal
+        isOpen={showScreenQRModal}
+        onClose={() => setShowScreenQRModal(false)}
+        onProfileImported={loadDashboardData}
+      />
+
+      <ConfigConverterModal
+        isOpen={showConverterModal}
+        onClose={() => setShowConverterModal(false)}
+      />
+
+      <NearbySyncModal
+        isOpen={showNearbyModal}
+        onClose={() => setShowNearbyModal(false)}
+        onProfilesImported={loadDashboardData}
       />
     </div>
   )

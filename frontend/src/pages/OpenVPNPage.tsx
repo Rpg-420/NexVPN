@@ -15,6 +15,7 @@ import {
   Shield,
   Edit3,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
@@ -118,7 +119,7 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
   return (
     <div className="page space-y-5">
       {/* Header */}
-      <div className="page-header flex items-center justify-between flex-wrap gap-3">
+      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 bg-slate-900/90 backdrop-blur-xl py-3 -mx-2 px-4 rounded-2xl border border-white/5 shadow-lg shadow-black/20">
         <div>
           <h1 className="page-title">{t('openvpn_title')}</h1>
           <p className="page-subtitle">{t('openvpn_subtitle')}</p>
@@ -145,6 +146,22 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Connection Failure Error Diagnostic Banner */}
+      {status.state === 'error' && status.error_msg && (
+        <div className="p-3.5 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-left rtl:text-right space-y-1.5 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+            <AlertTriangle size={15} className="text-rose-400 shrink-0 animate-pulse" />
+            <span>{t('connection_failed') || 'خطای اتصال به سرور OpenVPN'}</span>
+          </div>
+          <p className="text-xs text-rose-200/90 leading-relaxed font-sans font-medium">
+            {status.error_msg}
+          </p>
+          <div className="text-[11px] text-rose-300/70 pt-0.5">
+            💡 راهنما: در صورت خطای AUTH_FAILED نام کاربری و پسورد سرور را بررسی کنید. در صورت تایم‌اوت، پورت UDP توسط اپراتور مسدود شده است (از سرورهای TCP 443 یا VLESS استفاده کنید).
+          </div>
+        </div>
+      )}
 
       {/* Pro Engine Optimization Banner */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-slate-900 border border-indigo-500/20 flex items-center justify-between flex-wrap gap-3 text-xs">

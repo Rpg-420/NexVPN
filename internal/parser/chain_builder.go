@@ -142,7 +142,7 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
 				{"tag": "dns-direct", "address": "local", "detour": "direct"},
-				{"tag": "dns-remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy"},
+				{"tag": "dns-remote", "address": "https://1.1.1.1/dns-query", "address_resolver": "dns-direct", "detour": "proxy"},
 			},
 			"rules": []map[string]interface{}{
 				{"outbound": "direct", "server": "dns-direct"},

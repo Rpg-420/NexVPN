@@ -59,7 +59,7 @@ const defaultSettings: Settings = {
   auto_failover: true,
   subscription_auto_update_hours: 12,
   multi_hop_warp: false,
-  show_mini_widget: true,
+  show_mini_widget: false,
   v2ray_core: 'auto',
 }
 
@@ -1025,7 +1025,7 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
                     <label className="toggle">
                       <input
                         type="checkbox"
-                        checked={settings.show_mini_widget !== false}
+                        checked={!!settings.show_mini_widget}
                         onChange={e => update('show_mini_widget', e.target.checked)}
                       />
                       <span className="toggle-slider" />

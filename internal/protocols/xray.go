@@ -1,4 +1,4 @@
-﻿package protocols
+package protocols
 
 import (
 	"bufio"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"nexvpn/internal/config"
+	"nexvpn/internal/sysproc"
 	"nexvpn/internal/sysproxy"
 )
 
@@ -104,6 +105,8 @@ func (a *XrayAdapter) Start(ctx context.Context, configContent string) error {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to start xray process: %w", err)
 	}
+
+	sysproc.AssignCmdToJobObject(cmd)
 
 	a.mu.Lock()
 	a.cmd = cmd
