@@ -1,252 +1,432 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fa" dir="rtl" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexVPN Pro | Next-Generation Internet Freedom</title>
-    <meta name="description" content="A powerful, multi-core, anti-censorship VPN client for Windows, macOS, and Linux. Featuring Aether, MASQUE, V2Ray, OpenVPN, and Smart Network Doctor.">
+    <title>NexVPN Pro | عبور از محدودیت‌ها - Next-Gen Anti-Censorship</title>
+    <meta name="description" content="NexVPN Pro is an advanced multi-protocol VPN and anti-censorship client. | قوی‌ترین کلاینت ضد فیلترینگ چند-هسته‌ای">
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'Vazirmatn', 'sans-serif'],
+                        sans: ['Vazirmatn', 'Inter', 'sans-serif'],
+                        en: ['Inter', 'sans-serif'],
                     },
                     colors: {
-                        brand: {
-                            900: '#0B0F19',
-                            800: '#111827',
-                            700: '#1F2937',
-                            primary: '#00E5FF',
-                            purple: '#9D4EDD',
-                            emerald: '#10B981',
-                        }
+                        dark: '#030712',
+                        card: 'rgba(17, 24, 39, 0.65)',
+                        primary: '#00F0FF',
+                        purple: '#A855F7',
+                        emerald: '#10B981',
                     },
-                    backgroundImage: {
-                        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+                    animation: {
+                        'blob': 'blob 7s infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-20px)' },
+                        }
                     }
                 }
             }
         }
     </script>
     <style>
-        body { background-color: #0B0F19; color: #E5E7EB; scroll-behavior: smooth; }
-        .glass-panel {
-            background: rgba(17, 24, 39, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        body { background-color: #030712; color: #F3F4F6; overflow-x: hidden; }
+        
+        .glass {
+            background: rgba(17, 24, 39, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
+
+        .glass-card {
+            background: linear-gradient(145deg, rgba(31, 41, 55, 0.4) 0%, rgba(17, 24, 39, 0.8) 100%);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card:hover {
+            transform: translateY(-10px);
+            border-color: rgba(168, 85, 247, 0.4);
+            box-shadow: 0 20px 40px -10px rgba(168, 85, 247, 0.15);
+        }
+
         .text-gradient {
-            background-clip: text;
+            background: linear-gradient(to right, #00F0FF, #A855F7);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-image: linear-gradient(90deg, #00E5FF, #9D4EDD);
         }
-        .glow:hover {
-            box-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
+
+        .text-gradient-alt {
+            background: linear-gradient(to right, #A855F7, #10B981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
-        .feature-card {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .feature-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 40px rgba(157, 78, 221, 0.2);
-            border-color: rgba(157, 78, 221, 0.4);
-        }
+
+        /* Language display logic */
+        [lang="fa"] .en-only { display: none !important; }
+        [lang="en"] .fa-only { display: none !important; }
+        
+        [lang="en"] { font-family: 'Inter', sans-serif; }
+        [lang="fa"] { font-family: 'Vazirmatn', sans-serif; }
     </style>
 </head>
-<body class="antialiased selection:bg-brand-purple selection:text-white relative">
+<body class="antialiased relative selection:bg-purple-500/30">
 
-    <!-- Background Effects -->
-    <div class="fixed inset-0 z-[-1] bg-brand-900">
-        <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-brand-purple opacity-20 rounded-full blur-[120px]"></div>
-        <div class="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-brand-primary opacity-10 rounded-full blur-[150px]"></div>
+    <!-- Background Orbs -->
+    <div class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob"></div>
+        <div class="absolute top-[20%] right-[-10%] w-96 h-96 bg-cyan-500/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[-20%] left-[20%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full mix-blend-screen filter blur-[120px] animate-blob animation-delay-4000"></div>
     </div>
 
     <!-- Navigation -->
-    <nav class="fixed w-full z-50 glass-panel border-b-0">
+    <nav class="fixed w-full z-50 glass border-b-0">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-20">
-                <div class="flex-shrink-0 font-bold text-2xl tracking-tighter text-white">
-                    Nex<span class="text-brand-primary">VPN</span>
-                </div>
-                <div class="hidden md:block">
-                    <div class="ml-10 flex items-baseline space-x-8">
-                        <a href="#features" class="hover:text-brand-primary transition px-3 py-2 rounded-md font-medium">Features</a>
-                        <a href="#cores" class="hover:text-brand-purple transition px-3 py-2 rounded-md font-medium">Engines</a>
-                        <a href="#docs" class="hover:text-white transition px-3 py-2 rounded-md font-medium">Documentation</a>
-                        <a href="https://github.com/Rpg-420/NexVPN" class="bg-white/10 hover:bg-white/20 border border-white/20 transition px-5 py-2 rounded-full font-medium">GitHub</a>
+                <div class="flex items-center gap-3 cursor-pointer" onclick="window.scrollTo(0,0)">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-600 flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
+                    <span class="font-black text-2xl tracking-tight text-white en-only">Nex<span class="text-primary">VPN</span></span>
+                    <span class="font-black text-2xl tracking-tight text-white fa-only">نکس<span class="text-primary">وی‌پی‌ان</span></span>
+                </div>
+                
+                <div class="hidden lg:flex items-center space-x-8 rtl:space-x-reverse">
+                    <a href="#features" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide fa-only">ویژگی‌ها</a>
+                    <a href="#engines" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide fa-only">موتورها</a>
+                    <a href="#docs" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide fa-only">مستندات</a>
+                    
+                    <a href="#features" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide en-only">Features</a>
+                    <a href="#engines" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide en-only">Engines</a>
+                    <a href="#docs" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide en-only">Docs</a>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <!-- Language Toggle -->
+                    <button id="langToggle" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition text-gray-300">
+                        <span class="fa-only">English</span>
+                        <span class="en-only">فارسی</span>
+                    </button>
+                    
+                    <a href="https://github.com/Rpg-420/NexVPN" target="_blank" class="hidden sm:flex items-center gap-2 px-5 py-2.5 rounded-full bg-white text-dark hover:bg-gray-200 transition font-bold text-sm shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
+                        <span class="fa-only">گیت‌هاب</span>
+                        <span class="en-only">GitHub</span>
+                    </a>
                 </div>
             </div>
         </div>
     </nav>
 
     <!-- Hero Section -->
-    <main class="pt-32 pb-16 sm:pt-40 sm:pb-24 lg:pb-32 overflow-hidden">
-        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h1 class="text-5xl sm:text-7xl font-extrabold tracking-tight mb-8">
-                Break the limits with <br class="hidden sm:block" />
-                <span class="text-gradient">Multi-Core Routing</span>
+    <main class="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+            
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border-purple-500/30 text-sm text-purple-300 font-medium mb-8 animate-float">
+                <span class="flex h-2 w-2 rounded-full bg-purple-500 shadow-[0_0_8px_#A855F7]"></span>
+                <span class="fa-only">نسخه ۱.۳.۴ منتشر شد! سریع‌تر و پایدارتر از همیشه</span>
+                <span class="en-only">Version 1.3.4 is out! Faster and more stable.</span>
+            </div>
+
+            <!-- Persian Title -->
+            <h1 class="fa-only text-5xl sm:text-6xl md:text-7xl font-black tracking-tight mb-8 leading-[1.15]">
+                اینترنت آزاد و بدون مرز با<br>
+                <span class="text-gradient">معماری چند-هسته‌ای</span>
             </h1>
-            <p class="mt-4 max-w-2xl mx-auto text-xl text-gray-400 mb-10">
-                NexVPN Pro intelligently unifies Aether (MASQUE/gool), Sing-box (V2Ray), and OpenVPN into a single, seamless, and intelligent desktop client. Built for severe internet restrictions.
+            <p class="fa-only mt-4 max-w-3xl mx-auto text-xl md:text-2xl text-gray-400 mb-12 font-medium leading-relaxed">
+                NexVPN Pro ترکیبی قدرتمند از هسته‌های Aether (MASQUE)، Sing-box و OpenVPN است. یک کلاینت فوق‌پیشرفته دسکتاپ که برای دور زدن خشن‌ترین سیستم‌های فیلترینگ (DPI) طراحی شده است.
             </p>
-            <div class="flex justify-center gap-4 flex-col sm:flex-row">
-                <a href="https://github.com/Rpg-420/NexVPN/releases" class="glow px-8 py-4 border border-transparent text-lg font-bold rounded-full text-brand-900 bg-gradient-to-r from-brand-primary to-brand-purple transition-all shadow-lg hover:shadow-brand-primary/50">
-                    Download Latest Release
+
+            <!-- English Title -->
+            <h1 class="en-only text-5xl sm:text-6xl md:text-8xl font-black tracking-tight mb-8 leading-[1.1]">
+                Unrestricted Internet.<br>
+                <span class="text-gradient">Multi-Core Routing.</span>
+            </h1>
+            <p class="en-only mt-4 max-w-3xl mx-auto text-xl md:text-2xl text-gray-400 mb-12 leading-relaxed">
+                NexVPN Pro unifies Aether (MASQUE/gool), Sing-box (V2Ray), and OpenVPN into an ultimate desktop anti-censorship toolkit designed to shatter severe DPI firewalls.
+            </p>
+
+            <div class="flex flex-col sm:flex-row justify-center items-center gap-5">
+                <a href="https://github.com/Rpg-420/NexVPN/releases" class="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 text-white font-bold text-lg hover:scale-105 transition-transform shadow-[0_0_30px_rgba(0,240,255,0.4)] flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    <span class="fa-only">دانلود رایگان برای ویندوز، مک و لینوکس</span>
+                    <span class="en-only">Download for Win, Mac & Linux</span>
                 </a>
-                <a href="#docs" class="px-8 py-4 border border-gray-600 text-lg font-medium rounded-full text-gray-300 hover:bg-gray-800 transition">
-                    Read the Docs
+                <a href="#docs" class="w-full sm:w-auto px-8 py-4 rounded-full glass text-white font-bold text-lg hover:bg-white/10 transition flex items-center justify-center gap-2">
+                    <span class="fa-only">مطالعه مستندات و آموزش‌ها</span>
+                    <span class="en-only">Read the Documentation</span>
+                    <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                 </a>
             </div>
         </div>
     </main>
 
-    <!-- Features Section -->
-    <section id="features" class="py-20 bg-black/40 border-y border-white/5">
+    <!-- Visual Dashboard Showcase -->
+    <div class="max-w-6xl mx-auto px-4 mb-32 relative z-10">
+        <div class="rounded-2xl glass p-3 shadow-2xl border-purple-500/20 transform rotate-1 hover:rotate-0 transition-transform duration-500">
+            <div class="rounded-xl bg-[#0a0a0a] overflow-hidden border border-white/5 relative">
+                <!-- Mac UI Dots -->
+                <div class="absolute top-0 left-0 w-full h-10 bg-white/5 flex items-center px-4 gap-2 rtl:flex-row-reverse border-b border-white/5">
+                    <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                </div>
+                <!-- Fake Terminal Logs -->
+                <div class="p-6 pt-16 font-mono text-sm sm:text-base leading-relaxed text-gray-300">
+                    <div class="text-purple-400">> NexVPN Pro Engine Initialized v1.3.4</div>
+                    <div class="text-blue-400">> [engine] Smart Core: Dispatching to Aether (MASQUE)</div>
+                    <div class="text-gray-400">> [aether] Hunting for clean IP endpoints (budget: 120s)</div>
+                    <div class="text-yellow-400">> [aether] Found 14 clean IPs via thorough scan in 8.2s</div>
+                    <div class="text-cyan-400">> [sysproxy] Applying GNOME D-Bus and Linux netlink routing</div>
+                    <div class="text-emerald-400 font-bold mt-2">> [NexVPN] Connected Successfully (Latency: 45ms, Upload: 1.2MB/s, Download: 8.5MB/s)</div>
+                    <div class="animate-pulse mt-2 block w-2 h-5 bg-white/50"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Overview -->
+    <section id="features" class="py-24 bg-black/40 border-y border-white/5">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">Engineered for Resilience</h2>
-                <p class="mt-4 text-lg text-gray-400">Everything you need to maintain a secure and fast connection.</p>
+            <div class="text-center mb-20">
+                <h2 class="text-4xl md:text-5xl font-black text-white mb-6">
+                    <span class="fa-only">چرا <span class="text-gradient">NexVPN Pro</span> بهترین است؟</span>
+                    <span class="en-only">Why choose <span class="text-gradient">NexVPN Pro</span>?</span>
+                </h2>
+                <p class="text-xl text-gray-400 max-w-2xl mx-auto fa-only">ما تمام ابزارهای مورد نیاز برای حفظ یک اتصال پایدار، امن و بدون قطعی را در یک کلاینت یکپارچه مهندسی کرده‌ایم.</p>
+                <p class="text-xl text-gray-400 max-w-2xl mx-auto en-only">We engineered all the essential tools for a stable, secure, and drop-free connection into one seamless client.</p>
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <!-- Feature 1 -->
-                <div class="feature-card glass-panel rounded-2xl p-8">
-                    <div class="w-12 h-12 rounded-lg bg-brand-primary/20 flex items-center justify-center mb-6">
-                        <svg class="w-6 h-6 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Doctor -->
+                <div class="glass-card rounded-2xl p-8">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center mb-6 border border-cyan-500/30 text-cyan-400">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-3 text-white">Smart Network Doctor</h3>
-                    <p class="text-gray-400 leading-relaxed">Automatically diagnoses and repairs frozen network adapters, flushes DNS caches, and cleans abandoned proxy configurations across Windows, macOS, and Linux.</p>
+                    <h3 class="text-2xl font-bold mb-4 text-white fa-only">پزشک هوشمند شبکه</h3>
+                    <h3 class="text-2xl font-bold mb-4 text-white en-only">Smart Network Doctor</h3>
+                    
+                    <p class="text-gray-400 leading-relaxed fa-only">
+                        آیا اینترنت شما بعد از قطع VPN دچار مشکل می‌شود؟ پزشک هوشمند ما به طور خودکار آداپتورهای گیرکرده را ریست می‌کند، کش DNS را پاک می‌کند و پروکسی‌های رها شده سیستم را تمیز می‌کند.
+                    </p>
+                    <p class="text-gray-400 leading-relaxed en-only">
+                        Experiencing drops after disconnecting? Our Smart Doctor automatically resets frozen network adapters, flushes DNS caches, and cleans abandoned system proxies instantly.
+                    </p>
                 </div>
-                <!-- Feature 2 -->
-                <div class="feature-card glass-panel rounded-2xl p-8">
-                    <div class="w-12 h-12 rounded-lg bg-brand-purple/20 flex items-center justify-center mb-6">
-                        <svg class="w-6 h-6 text-brand-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+
+                <!-- Split Tunneling -->
+                <div class="glass-card rounded-2xl p-8">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-6 border border-purple-500/30 text-purple-400">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-3 text-white">Process-based Split Tunneling</h3>
-                    <p class="text-gray-400 leading-relaxed">Intercept connections at the process level. Bypass the VPN for local banking or gaming apps simply by selecting their executable file.</p>
+                    <h3 class="text-2xl font-bold mb-4 text-white fa-only">تونل‌زنی تفکیک‌شده اپلیکیشن‌ها</h3>
+                    <h3 class="text-2xl font-bold mb-4 text-white en-only">App Split Tunneling</h3>
+                    
+                    <p class="text-gray-400 leading-relaxed fa-only">
+                        ترافیک برنامه‌های داخلی (مثل همراه‌بانک‌ها یا بازی‌های آنلاین) را از VPN جدا کنید. NexVPN ترافیک را دقیقاً در سطح پروسس (فایل اجرایی) رهگیری و تفکیک می‌کند.
+                    </p>
+                    <p class="text-gray-400 leading-relaxed en-only">
+                        Bypass the VPN for local apps like banking or gaming. NexVPN intercepts and routes traffic precisely at the process (executable) level for flawless execution.
+                    </p>
                 </div>
-                <!-- Feature 3 -->
-                <div class="feature-card glass-panel rounded-2xl p-8">
-                    <div class="w-12 h-12 rounded-lg bg-brand-emerald/20 flex items-center justify-center mb-6">
-                        <svg class="w-6 h-6 text-brand-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+
+                <!-- OS Integration -->
+                <div class="glass-card rounded-2xl p-8">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/20 flex items-center justify-center mb-6 border border-emerald-500/30 text-emerald-400">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"></path></svg>
                     </div>
-                    <h3 class="text-xl font-bold mb-3 text-white">Native OS Integration</h3>
-                    <p class="text-gray-400 leading-relaxed">Passwordless Linux Polkit execution with `setcap` netlink routing. Deep Wintun registry integration on Windows, and LaunchAgent auto-start on macOS.</p>
+                    <h3 class="text-2xl font-bold mb-4 text-white fa-only">یکپارچگی عمیق با سیستم‌عامل</h3>
+                    <h3 class="text-2xl font-bold mb-4 text-white en-only">Deep OS Integration</h3>
+                    
+                    <p class="text-gray-400 leading-relaxed fa-only">
+                        اجرای بدون پسورد از طریق Polkit و مسیریابی netlink در لینوکس. مدیریت هوشمند رجیستری و Wintun در ویندوز. استارت‌آپ اتوماتیک LaunchAgent و کیل‌سوئیچ pfctl در مک.
+                    </p>
+                    <p class="text-gray-400 leading-relaxed en-only">
+                        Passwordless Polkit execution and netlink routing on Linux. Smart Registry and Wintun management on Windows. LaunchAgent autostart and pfctl Kill Switch on macOS.
+                    </p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Cores Section -->
-    <section id="cores" class="py-20">
+    <!-- Engines Section -->
+    <section id="engines" class="py-24 relative overflow-hidden">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[500px] bg-gradient-to-r from-cyan-500/5 to-purple-500/5 blur-[100px] -z-10"></div>
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col lg:flex-row gap-12 items-center">
-                <div class="lg:w-1/2">
-                    <h2 class="text-3xl font-bold mb-6">Three Engines. One App.</h2>
-                    <p class="text-gray-400 mb-8 text-lg">NexVPN doesn't lock you into a single protocol. It dynamically dispatches your connection to the most powerful engines available in the censorship evasion landscape.</p>
+            <div class="flex flex-col lg:flex-row items-center gap-16">
+                
+                <div class="lg:w-1/2 space-y-10">
+                    <div>
+                        <h2 class="text-4xl font-black text-white mb-6">
+                            <span class="fa-only">یک نرم‌افزار، <span class="text-gradient-alt">سـه مـوتـور</span> قدرتمند.</span>
+                            <span class="en-only">One App. <span class="text-gradient-alt">Three Powerful</span> Engines.</span>
+                        </h2>
+                        <p class="text-xl text-gray-400 leading-relaxed fa-only">شما محدود به یک پروتکل نیستید. NexVPN موتورهای برتر جهان را در خود جای داده و به طور هوشمند ترافیک را هدایت می‌کند.</p>
+                        <p class="text-xl text-gray-400 leading-relaxed en-only">You are not limited to one protocol. NexVPN embeds the world's top routing engines and dynamically dispatches your traffic.</p>
+                    </div>
                     
-                    <ul class="space-y-6">
-                        <li class="flex items-start">
-                            <div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-brand-primary shadow-[0_0_10px_#00E5FF]"></div></div>
-                            <div class="ml-4">
-                                <h4 class="text-xl font-bold text-white">Aether Core (MASQUE)</h4>
-                                <p class="mt-1 text-gray-400">HTTP/3 over UDP tunneling with adaptive IP scanners (Turbo to Ironclad) for hunting clean Cloudflare endpoints (gool/warp-in-warp).</p>
-                            </div>
-                        </li>
-                        <li class="flex items-start">
-                            <div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-brand-purple shadow-[0_0_10px_#9D4EDD]"></div></div>
-                            <div class="ml-4">
-                                <h4 class="text-xl font-bold text-white">Sing-box Core</h4>
-                                <p class="mt-1 text-gray-400">The industry standard for VLESS Reality, Trojan, Hysteria2, and high-performance WireGuard. Features full-system TUN and Smart DNS.</p>
-                            </div>
-                        </li>
-                        <li class="flex items-start">
-                            <div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-brand-emerald shadow-[0_0_10px_#10B981]"></div></div>
-                            <div class="ml-4">
-                                <h4 class="text-xl font-bold text-white">OpenVPN Core</h4>
-                                <p class="mt-1 text-gray-400">Native Layer-3 routing for classic configurations, perfectly integrated with the cross-platform Kill Switch firewall chains.</p>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-                <div class="lg:w-1/2 w-full">
-                    <div class="relative rounded-2xl overflow-hidden glass-panel p-2 shadow-2xl border border-white/10">
-                        <div class="bg-gray-900 rounded-xl p-4 font-mono text-sm text-green-400 h-[400px] overflow-y-hidden relative flex flex-col justify-end">
-                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent z-10"></div>
-                            <div class="opacity-70 space-y-2">
-                                <p>> [engine] Smart Core: Selected Aether Core (MASQUE Engine)</p>
-                                <p>> [aether] Starting adaptive MASQUE IP scanner (balanced)...</p>
-                                <p>> [aether] Found 14 clean IP endpoints in 12.3s</p>
-                                <p>> [engine] Starting Sing-box TUN router detour (SOCKS port: 10808)</p>
-                                <p>> [sysproxy] Applying GNOME D-Bus and Linux netlink routing</p>
-                                <p class="text-brand-primary font-bold">> [NexVPN] Connected Successfully (Latency: 45ms)</p>
-                            </div>
+                    <div class="space-y-6 relative before:absolute before:inset-y-0 before:w-0.5 before:bg-gradient-to-b before:from-cyan-500 before:via-purple-500 before:to-emerald-500 before:left-3 rtl:before:right-3 rtl:before:left-auto">
+                        
+                        <div class="relative pl-10 rtl:pr-10 rtl:pl-0">
+                            <div class="absolute w-6 h-6 rounded-full bg-cyan-500 shadow-[0_0_15px_#00F0FF] left-0 rtl:right-0 mt-1 border-4 border-dark"></div>
+                            <h4 class="text-2xl font-bold text-white">Aether (MASQUE / gool)</h4>
+                            <p class="mt-2 text-gray-400 fa-only">موتور پرچمدار ضد سانسور بر بستر HTTP/3 با قابلیت تونل‌های تودرتو (WARP-in-WARP) و ۵ حالت اسکنر فوق‌هوشمند.</p>
+                            <p class="mt-2 text-gray-400 en-only">Flagship anti-censorship engine over HTTP/3 featuring WARP-in-WARP nested tunnels and 5 intelligent IP scanner modes.</p>
+                        </div>
+
+                        <div class="relative pl-10 rtl:pr-10 rtl:pl-0">
+                            <div class="absolute w-6 h-6 rounded-full bg-purple-500 shadow-[0_0_15px_#A855F7] left-0 rtl:right-0 mt-1 border-4 border-dark"></div>
+                            <h4 class="text-2xl font-bold text-white">Sing-box (V2Ray / WireGuard)</h4>
+                            <p class="mt-2 text-gray-400 fa-only">استاندارد جهانی برای اتصالات VLESS، Trojan، Hysteria2 و وایرگارد. مجهز به مسیریابی کامل TUN و Smart DNS.</p>
+                            <p class="mt-2 text-gray-400 en-only">Global standard for VLESS, Trojan, Hysteria2, and WireGuard. Features full-system TUN routing and Smart DNS.</p>
+                        </div>
+
+                        <div class="relative pl-10 rtl:pr-10 rtl:pl-0">
+                            <div class="absolute w-6 h-6 rounded-full bg-emerald-500 shadow-[0_0_15px_#10B981] left-0 rtl:right-0 mt-1 border-4 border-dark"></div>
+                            <h4 class="text-2xl font-bold text-white">OpenVPN Core</h4>
+                            <p class="mt-2 text-gray-400 fa-only">مسیریابی اصیل لایه ۳ برای پیکربندی‌های کلاسیک با اتصال کامل به فایروال سیستم برای جلوگیری از نشت دیتا (Kill Switch).</p>
+                            <p class="mt-2 text-gray-400 en-only">Native Layer-3 routing for classic configs, perfectly integrated with system firewalls for zero data leaks (Kill Switch).</p>
                         </div>
                     </div>
                 </div>
+
+                <div class="lg:w-1/2 w-full">
+                    <div class="relative">
+                        <!-- Abstract Core Illustration -->
+                        <div class="w-full aspect-square max-w-md mx-auto relative">
+                            <div class="absolute inset-0 border-2 border-dashed border-white/10 rounded-full animate-[spin_60s_linear_infinite]"></div>
+                            <div class="absolute inset-4 border-2 border-dashed border-cyan-500/30 rounded-full animate-[spin_40s_linear_reverse_infinite]"></div>
+                            <div class="absolute inset-12 border-2 border-solid border-purple-500/20 rounded-full flex items-center justify-center">
+                                <div class="w-32 h-32 bg-gradient-to-tr from-cyan-400 to-purple-500 rounded-full blur-[20px] animate-pulse"></div>
+                                <div class="absolute text-3xl font-black text-white mix-blend-overlay">CORE</div>
+                            </div>
+                            
+                            <!-- Satellites -->
+                            <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-2xl glass flex items-center justify-center font-bold text-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.2)]">ATHR</div>
+                            <div class="absolute bottom-1/4 -left-8 w-16 h-16 rounded-2xl glass flex items-center justify-center font-bold text-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.2)]">SBOX</div>
+                            <div class="absolute bottom-1/4 -right-8 w-16 h-16 rounded-2xl glass flex items-center justify-center font-bold text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)]">OVPN</div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </section>
 
-    <!-- Documentation Section -->
-    <section id="docs" class="py-20 bg-brand-800/50 border-t border-white/5">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-12">
-                <h2 class="text-3xl font-bold mb-4">Official Documentation</h2>
-                <p class="text-gray-400">Everything you need to install, configure, and develop on NexVPN.</p>
+    <!-- Documentation & Resources Section -->
+    <section id="docs" class="py-24 bg-white/[0.02] border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-black text-white mb-6">
+                    <span class="fa-only">مستندات و آموزش‌ها</span>
+                    <span class="en-only">Official Documentation</span>
+                </h2>
+                <p class="text-xl text-gray-400 max-w-2xl mx-auto fa-only">هر آنچه برای نصب، استفاده و توسعه نرم‌افزار NexVPN نیاز دارید، با دقت مستند شده است.</p>
+                <p class="text-xl text-gray-400 max-w-2xl mx-auto en-only">Everything you need to install, configure, and develop on NexVPN is meticulously documented.</p>
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- User Guides -->
-                <div class="glass-panel p-8 rounded-2xl border border-white/10 hover:border-brand-primary/50 transition">
-                    <h3 class="text-2xl font-bold mb-4 text-white">📖 User Guides</h3>
-                    <p class="text-gray-400 mb-6">Learn how to import profiles, use the Network Doctor, setup Split Tunneling, and execute Linux Polkit setup (`install_linux.sh`).</p>
-                    <div class="flex flex-col space-y-3">
-                        <a href="user-guide-en.html" class="text-brand-primary hover:underline flex items-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Read in English
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                <!-- Users -->
+                <div class="glass-card p-10 rounded-3xl group">
+                    <h3 class="text-3xl font-bold mb-4 text-white group-hover:text-cyan-400 transition-colors">
+                        <span class="fa-only">📖 راهنمای کاربران</span>
+                        <span class="en-only">📖 User Guides</span>
+                    </h3>
+                    <p class="text-gray-400 mb-8 text-lg fa-only">آموزش وارد کردن پروفایل، کار با پزشک شبکه، تونل‌زنی اسپلیت و رفع خطاهای اتصال در لینوکس (Polkit).</p>
+                    <p class="text-gray-400 mb-8 text-lg en-only">Learn to import profiles, use the Network Doctor, setup Split Tunneling, and solve Linux Polkit issues.</p>
+                    
+                    <div class="flex flex-col gap-4">
+                        <a href="user-guide-fa.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/50 transition font-bold text-cyan-300 fa-only">
+                            مطالعه آموزش به زبان فارسی
+                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                         </a>
-                        <a href="user-guide-fa.html" class="text-brand-primary hover:underline flex items-center" dir="rtl">
-                            <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> مطالعه راهنمای فارسی
+                        <a href="user-guide-en.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/50 transition font-bold text-cyan-300">
+                            Read User Guide (English)
+                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                         </a>
                     </div>
                 </div>
 
-                <!-- Dev Guides -->
-                <div class="glass-panel p-8 rounded-2xl border border-white/10 hover:border-brand-purple/50 transition">
-                    <h3 class="text-2xl font-bold mb-4 text-white">💻 Developer Guides</h3>
-                    <p class="text-gray-400 mb-6">Explore the Go backend architecture, the React frontend, how to add new Protocol Adapters, and system-level manipulations.</p>
-                    <div class="flex flex-col space-y-3">
-                        <a href="developer-guide-en.html" class="text-brand-purple hover:underline flex items-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg> Read in English
+                <!-- Developers -->
+                <div class="glass-card p-10 rounded-3xl group">
+                    <h3 class="text-3xl font-bold mb-4 text-white group-hover:text-purple-400 transition-colors">
+                        <span class="fa-only">💻 مستندات توسعه‌دهندگان</span>
+                        <span class="en-only">💻 Developer Guides</span>
+                    </h3>
+                    <p class="text-gray-400 mb-8 text-lg fa-only">بررسی معماری بک‌اند Go، فرانت‌اند React، نحوه اضافه کردن هسته جدید به برنامه و دستکاری سیستم‌عامل.</p>
+                    <p class="text-gray-400 mb-8 text-lg en-only">Explore the Go backend architecture, React frontend, and how to add new Protocol Adapters natively.</p>
+                    
+                    <div class="flex flex-col gap-4">
+                        <a href="developer-guide-fa.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/50 transition font-bold text-purple-300 fa-only">
+                            مطالعه مستندات فنی (فارسی)
+                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                         </a>
-                        <a href="developer-guide-fa.html" class="text-brand-purple hover:underline flex items-center" dir="rtl">
-                            <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 4l-4 16m-4-4l-4-4 4-4m8 8l4-4-4-4"></path></svg> مطالعه مستندات فارسی
+                        <a href="developer-guide-en.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/50 transition font-bold text-purple-300">
+                            Read Tech Docs (English)
+                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                         </a>
                     </div>
                 </div>
+
             </div>
-
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="border-t border-white/10 bg-black pt-12 pb-8">
+    <footer class="border-t border-white/10 bg-[#030712] pt-16 pb-8">
         <div class="max-w-7xl mx-auto px-4 text-center">
-            <h2 class="text-2xl font-bold text-white tracking-tighter mb-4">Nex<span class="text-brand-primary">VPN</span> Pro</h2>
-            <p class="text-gray-500 mb-6 max-w-lg mx-auto">Open-source circumvention tool built for absolute internet freedom. Released under the MIT License.</p>
-            <div class="flex justify-center space-x-6 text-gray-400">
-                <a href="https://github.com/Rpg-420/NexVPN" class="hover:text-white transition">GitHub Repository</a>
-                <a href="https://github.com/Rpg-420/NexVPN/releases" class="hover:text-white transition">Releases</a>
-                <a href="https://github.com/Rpg-420/NexVPN/issues" class="hover:text-white transition">Report an Issue</a>
+            <h2 class="text-3xl font-black text-white tracking-tighter mb-4">Nex<span class="text-primary">VPN</span> Pro</h2>
+            <p class="text-gray-500 mb-8 max-w-lg mx-auto fa-only">پروژه‌ای متن‌باز و رایگان برای گردش آزاد اطلاعات. منتشر شده تحت لایسنس MIT.</p>
+            <p class="text-gray-500 mb-8 max-w-lg mx-auto en-only">An open-source circumvention tool built for absolute internet freedom. Released under the MIT License.</p>
+            
+            <div class="flex flex-wrap justify-center gap-6 text-gray-400 font-medium">
+                <a href="https://github.com/Rpg-420/NexVPN" class="hover:text-white hover:underline transition">GitHub</a>
+                <a href="https://github.com/Rpg-420/NexVPN/releases" class="hover:text-white hover:underline transition">Releases & Downloads</a>
+                <a href="https://github.com/Rpg-420/NexVPN/issues" class="hover:text-white hover:underline transition">Report Issue</a>
             </div>
-            <p class="mt-8 text-sm text-gray-600">© 2026 NexVPN Project. All rights reserved.</p>
+            <p class="mt-12 text-sm text-gray-600">© 2026 NexVPN Project. Open Source.</p>
         </div>
     </footer>
 
+    <!-- Interactive Scripts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const html = document.documentElement;
+            const toggleBtn = document.getElementById('langToggle');
+
+            // Default to Persian based on HTML attribute
+            
+            toggleBtn.addEventListener('click', () => {
+                if (html.lang === 'fa') {
+                    // Switch to English
+                    html.lang = 'en';
+                    html.dir = 'ltr';
+                } else {
+                    // Switch to Persian
+                    html.lang = 'fa';
+                    html.dir = 'rtl';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
