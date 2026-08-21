@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexVPN Pro Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for parsing Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Vazirmatn', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            900: '#0B0F19',
+                            primary: '#00E5FF',
+                            purple: '#9D4EDD',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0B0F19; color: #E5E7EB; }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Markdown Styling */
+        #content h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; color: white; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; }
+        #content h2 { font-size: 1.8rem; font-weight: 700; margin-top: 2.5rem; margin-bottom: 1rem; color: #00E5FF; }
+        #content h3 { font-size: 1.4rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; color: #9D4EDD; }
+        #content p { margin-bottom: 1.25rem; line-height: 1.7; color: #D1D5DB; }
+        #content ul, #content ol { margin-left: 1.5rem; margin-bottom: 1.25rem; }
+        #content li { margin-bottom: 0.5rem; color: #D1D5DB; }
+        #content a { color: #00E5FF; text-decoration: underline; text-underline-offset: 4px; }
+        #content a:hover { color: #9D4EDD; }
+        #content pre { background: #111827; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1.5rem; border: 1px solid rgba(255,255,255,0.1); }
+        #content code { font-family: monospace; font-size: 0.9em; background: rgba(255,255,255,0.1); padding: 0.15rem 0.3rem; border-radius: 0.25rem; }
+        #content pre code { background: transparent; padding: 0; }
+        #content blockquote { border-left: 4px solid #9D4EDD; padding-left: 1rem; margin-left: 0; color: #9CA3AF; font-style: italic; background: rgba(157, 78, 221, 0.05); padding: 1rem; border-radius: 0 0.5rem 0.5rem 0; margin-bottom: 1.5rem; }
+        
+        /* RTL support for Persian */
+        .rtl { direction: rtl; text-align: right; }
+        .rtl ul, .rtl ol { margin-right: 1.5rem; margin-left: 0; }
+        .rtl blockquote { border-right: 4px solid #9D4EDD; border-left: none; padding-right: 1rem; padding-left: 0; border-radius: 0.5rem 0 0 0.5rem; }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-purple selection:text-white">
+    
+    <nav class="fixed w-full z-50 glass-panel border-b-0">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <a href="index.html" class="flex-shrink-0 font-bold text-xl tracking-tighter text-white hover:opacity-80 transition">
+                    &larr; Back to Home
+                </a>
+                <div class="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-purple">
+                    NexVPN Docs
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="pt-24 pb-16 min-h-screen">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="glass-panel p-8 sm:p-12 rounded-2xl shadow-2xl">
+                <div id="loading" class="text-center py-20 text-gray-400">Loading documentation...</div>
+                <div id="error" class="text-center py-20 text-red-400 hidden">Failed to load document.</div>
+                <div id="content" class="hidden"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const file = urlParams.get('file');
+            
+            const contentDiv = document.getElementById('content');
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+
+            if (!file) {
+                loadingDiv.classList.add('hidden');
+                errorDiv.innerText = 'No file specified.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            // Set RTL if it's a Persian doc
+            if (file.includes('_FA')) {
+                contentDiv.classList.add('rtl');
+                document.documentElement.lang = 'fa';
+                document.documentElement.dir = 'rtl';
+            }
+
+            try {
+                const response = await fetch(file);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const markdown = await response.text();
+                
+                contentDiv.innerHTML = marked.parse(markdown);
+                loadingDiv.classList.add('hidden');
+                contentDiv.classList.remove('hidden');
+            } catch (error) {
+                loadingDiv.classList.add('hidden');
+                errorDiv.classList.remove('hidden');
+                console.error('Error fetching markdown:', error);
+            }
+        });
+    </script>
+</body>
+</html>
