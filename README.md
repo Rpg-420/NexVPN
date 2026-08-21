@@ -1,94 +1,93 @@
-# NexVPN Pro
-
-![NexVPN Pro Banner](https://raw.githubusercontent.com/NexVPN/NexVPN/main/build/appicon.png)
-
-**NexVPN Pro** is a next-generation, cross-platform, multi-protocol circumvention client and VPN engine designed for maximum resilience against Deep Packet Inspection (DPI) and severe network restrictions. Powered by Wails, React, and Go, NexVPN unifies the world's most advanced routing and obfuscation cores into a single, seamless, and intelligent interface.
-
----
-
-## 🌟 Key Features
-
-### 🧠 Smart Multi-Core Engine
-NexVPN does not rely on a single protocol. It intelligently dispatches connections to the most suitable underlying core:
-- **Aether Core**: Our flagship user-space engine built for extreme censorship. Supports **MASQUE** (HTTP/3 over UDP/TCP) and **gool** (Cloudflare WARP-in-WARP nested tunneling). Features multi-staged adaptive scanners (Turbo, Balanced, Thorough, Stealth, Ironclad) for hunting clean IP endpoints.
-- **Sing-box Core**: Universally acclaimed for Xray/V2Ray protocols (VLESS, Trojan, Hysteria2) and high-performance WireGuard tunneling. Supports advanced routing, Reality, and full-system TUN mode.
-- **OpenVPN Core**: Native layer-3 routing with TAP/Wintun integration.
-
-### 🛡️ Cross-Platform System Integration
-NexVPN acts natively on your operating system:
-- **Windows**: Deep Wintun integration, registry-level proxy management, and process-based split tunneling.
-- **Linux**: Passwordless core execution via **Polkit** (`pkexec` and `CAP_NET_ADMIN` support), automated KDE/GNOME D-Bus proxy refreshment, and native `netlink` routing.
-- **macOS**: System proxy bypass configurations, `pfctl` firewall anchors, and native LaunchAgent autostart integration.
-
-### 🩺 Smart Network Doctor & Repair
-Network acting up? NexVPN's cross-platform Network Doctor can diagnose and repair your system automatically. It resets frozen network adapters, clears DNS caches (via `ipconfig`, `resolvectl`, or `dscacheutil`), cleans abandoned proxy environments, and force-kills orphaned engine processes.
-
-### 🎯 Process-Based Split Tunneling
-Route only the apps you want through the VPN. NexVPN intercepts connections and dynamically routes traffic based on the originating process executable, allowing you to bypass domestic apps while tunneling international traffic.
-
-### 🔒 Native Kill Switch
-Prevents accidental data leaks by modifying system firewalls (`netsh` on Windows, `iptables` chains on Linux, `pfctl` on macOS) to drop outbound traffic if the core engine drops unexpectedly.
+<div align="center">
+  <img src="frontend/src/assets/images/logo.png" alt="NexVPN Logo" width="120" height="120">
+  <h1>NexVPN Pro</h1>
+  <p><b>Next-Generation Multi-Core Anti-Censorship Client</b></p>
+  <p>
+    <a href="https://github.com/Rpg-420/NexVPN/releases/latest"><img src="https://img.shields.io/github/v/release/Rpg-420/NexVPN?style=for-the-badge&color=00F0FF" alt="Latest Release"></a>
+    <a href="https://github.com/Rpg-420/NexVPN/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Rpg-420/NexVPN?style=for-the-badge&color=A855F7" alt="License"></a>
+    <img src="https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-10B981?style=for-the-badge" alt="Platforms">
+  </p>
+  <p>
+    <a href="#features">Features</a> •
+    <a href="#the-three-engines">Engines</a> •
+    <a href="#installation">Installation</a> •
+    <a href="#documentation">Documentation</a> •
+    <a href="README_FA.md">🇮🇷 توضیحات فارسی</a>
+  </p>
+</div>
 
 ---
 
-## 🚀 Getting Started
+**NexVPN Pro** is not just another proxy client. It is an intelligent, cross-platform circumvention toolkit engineered from the ground up using **Go, Wails, and React**. By dynamically unifying the world's most powerful routing cores into a single desktop application, it guarantees absolute internet freedom against severe Deep Packet Inspection (DPI) firewalls.
 
-### Prerequisites
-- [Go 1.21+](https://golang.org/doc/install)
-- [Node.js 18+](https://nodejs.org/en/download/)
+## ✨ Features
+
+- **🧠 Multi-Core Dispatcher:** Seamlessly switches between Aether (MASQUE), Sing-box, and OpenVPN.
+- **🛡️ Smart Network Doctor:** Detects connection drops and automatically repairs frozen TUN adapters, flushes DNS caches, and cleans abandoned system proxies.
+- **🎯 Process-Based Split Tunneling:** Bypass the VPN for local apps (like banking or gaming) by simply selecting their executable files. Traffic is intercepted at the process level.
+- **⚡ Zero-Leak Kill Switch:** Deep OS integration ensures that if the tunnel drops, your real IP is never exposed.
+- **🖥️ Deep OS Integration:**
+  - **Linux:** Passwordless execution via Polkit and `cap_net_admin` netlink routing.
+  - **Windows:** Deep Registry management and Wintun driver optimization.
+  - **macOS:** LaunchAgent autostart and `pfctl` firewall manipulation.
+
+## 🚀 The Three Engines
+
+NexVPN doesn't lock you into a single protocol. It dynamically routes your traffic through the most effective engine available:
+
+### 1. Aether Core (MASQUE / HTTP3)
+The flagship anti-censorship engine. It utilizes UDP over HTTP/3 with nested **WARP-in-WARP** tunnels. Features a 5-tier adaptive IP scanner (from *Turbo* to *Ironclad*) that aggressively hunts for clean Cloudflare endpoints when the network is under attack.
+
+### 2. Sing-box Core
+The industry standard for modern proxy protocols. It handles **VLESS Reality, Trojan, Hysteria2, and WireGuard**. Features a high-performance Full-System TUN and a built-in Smart DNS router to prevent DNS pollution.
+
+### 3. OpenVPN Core
+Native Layer-3 routing for classic configurations. Integrated perfectly with the app's cross-platform firewall chains for zero data leaks.
+
+---
+
+## 🛠️ Installation
+
+Download the latest pre-compiled binaries for Windows, macOS, or Linux from the [Releases](https://github.com/Rpg-420/NexVPN/releases) page.
+
+> [!IMPORTANT]
+> **Linux Users:** After downloading and extracting, you **must** run the initialization script to grant the app background execution rights without prompting for root passwords on every connection:
+> ```bash
+> sudo ./install_linux.sh
+> ```
+
+## 🏗️ Build from Source
+
+Requirements:
+- [Go](https://golang.org/doc/install) 1.23+
+- [Node.js](https://nodejs.org/) 20+
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation)
 
-### Installation & Build
+```bash
+# Clone the repository
+git clone https://github.com/Rpg-420/NexVPN.git
+cd NexVPN
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/NexVPN/NexVPN.git
-   cd NexVPN
-   ```
+# Install Wails CLI if you haven't already
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-2. **Linux Pre-requisites Setup (Linux Only):**
-   To enable passwordless execution and full TUN mode without repeated root prompts, install the Polkit policies:
-   ```bash
-   sudo ./install_linux.sh
-   ```
+# Build for your operating system
+wails build -clean
+```
+The compiled binary will be located in the `build/bin` directory.
 
-3. **Development Mode:**
-   Run the app in live development mode with hot-reload:
-   ```bash
-   wails dev
-   ```
+## 📚 Documentation
 
-4. **Production Build:**
-   Compile the final executable for your platform:
-   ```bash
-   wails build
-   ```
+We have prepared beautiful, comprehensive documentation for both users and developers. Visit our Official GitHub Pages:
 
----
+- 🌐 **[NexVPN Official Website & Docs](https://Rpg-420.github.io/NexVPN/)**
 
-## 📖 Documentation
-
-For detailed guides, please refer to our GitHub Pages documentation or the internal `docs/` folder:
-- [User Guide (English)](docs/USER_GUIDE.md)
-- [Developer Guide (English)](docs/DEVELOPER_GUIDE.md)
-
-*Persian documentation is also available:*
-- [راهنمای کاربر (فارسی)](docs/USER_GUIDE_FA.md)
-- [راهنمای توسعه‌دهندگان (فارسی)](docs/DEVELOPER_GUIDE_FA.md)
-
----
-
-## 🛠️ Project Architecture
-
-NexVPN relies on a modular architecture:
-- **Frontend (`/frontend`)**: A responsive UI built with React, TypeScript, and Tailwind CSS.
-- **Backend (`/internal`)**: Go-based controllers handling system proxies (`sysproxy`), protocol adapter dispatching (`protocols`), automated binary downlaods (`core`), and system repairs (`parser/doctor`).
-- **Cores (`/bin`)**: Target runtime binaries (e.g., `sing-box`, `aether`, `openvpn`) downloaded on-demand or bundled during the build.
-
----
+Direct Links:
+- 📖 [User Guide (English)](https://Rpg-420.github.io/NexVPN/user-guide-en.html)
+- 💻 [Developer Guide (English)](https://Rpg-420.github.io/NexVPN/developer-guide-en.html)
 
 ## 🤝 Contributing
-We welcome contributions! Whether it's adding new protocol adapters, improving the UI, or fixing system-specific bugs, feel free to submit a Pull Request.
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 ## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is open-source and available under the [MIT License](LICENSE).
