@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Guide (EN) | NexVPN Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'Vazirmatn', 'sans-serif'] },
+                    colors: { brand: { 900: '#0B0F19', primary: '#00E5FF', purple: '#9D4EDD' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0B0F19; color: #E5E7EB; }
+        .glass-panel { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        #content h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; color: white; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; }
+        #content h2 { font-size: 1.8rem; font-weight: 700; margin-top: 2.5rem; margin-bottom: 1rem; color: #00E5FF; }
+        #content h3 { font-size: 1.4rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; color: #9D4EDD; }
+        #content p { margin-bottom: 1.25rem; line-height: 1.7; color: #D1D5DB; }
+        #content ul, #content ol { margin-bottom: 1.25rem; list-style-type: disc; }
+        #content ul, #content ol { margin-left: 1.5rem; }
+        #content li { margin-bottom: 0.5rem; color: #D1D5DB; }
+        #content a { color: #00E5FF; text-decoration: underline; text-underline-offset: 4px; }
+        #content a:hover { color: #9D4EDD; }
+        #content pre { background: #111827; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1.5rem; border: 1px solid rgba(255,255,255,0.1); }
+        #content code { font-family: monospace; font-size: 0.9em; background: rgba(255,255,255,0.1); padding: 0.15rem 0.3rem; border-radius: 0.25rem; }
+        #content pre code { background: transparent; padding: 0; }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-purple selection:text-white">
+    <nav class="fixed w-full z-50 glass-panel border-b-0">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <a href="index.html" class="flex-shrink-0 font-bold text-xl tracking-tighter text-white hover:opacity-80 transition">
+                    &larr; Back to Home
+                </a>
+                <div class="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-purple">
+                    NexVPN Docs
+                </div>
+            </div>
+        </div>
+    </nav>
+    <main class="pt-24 pb-16 min-h-screen">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="glass-panel p-8 sm:p-12 rounded-2xl shadow-2xl">
+                <div id="content"></div>
+            </div>
+        </div>
+    </main>
+    
+    <script type="text/markdown" id="md-content">
+# NexVPN Pro - Developer Guide
+
+NexVPN is built with **Wails**, **React**, and **Go**. The architecture is heavily modularized to support multiple routing engines and cross-platform native integrations.
+
+## Directory Structure
+- \`frontend/\`: The React + TypeScript frontend.
+- \`internal/\`: Go backend logic.
+  - \`config/\`: State, store, and struct definitions.
+  - \`core/\`: The main Dispatcher (\`engine.go\`, \`dispatcher.go\`), auto-start, kill-switch, and binary managers.
+  - \`parser/\`: Split tunneling parser, configuration generators, and the Network Doctor (\`doctor.go\`).
+  - \`protocols/\`: The Protocol Adapters (\`interface.go\`, \`singbox.go\`, \`aether.go\`, \`openvpn.go\`).
+  - \`sysproc/\`: OS-level process manipulation and job object wrappers (Windows).
+  - \`sysproxy/\`: OS-level system proxy modifiers (macOS \`networksetup\`, Windows Registry, Linux \`gsettings\`/D-Bus).
+- \`install_linux.sh\`: Sets up Polkit policies and \`setcap\` for passwordless execution on Linux.
+
+## The Multi-Core Engine Architecture
+NexVPN doesn't hardcode a single core. The \`internal/protocols/interface.go\` defines the \`ProtocolAdapter\` interface:
+\`\`\`go
+type ProtocolAdapter interface {
+    Name() config.Protocol
+    Start(ctx context.Context, configContent string) error
+    Stop() error
+    GetStats() (int64, int64, error)
+    IsRunning() bool
+    SetLogger(fn LoggerFunc)
+    SetOnExit(fn OnExitFunc)
+}
+\`\`\`
+When a user connects, \`engine.go\` resolves the protocol type and dispatches the connection to the appropriate adapter (\`AetherAdapter\`, \`SingBoxAdapter\`, or \`OpenVPNAdapter\`).
+
+## Adding a New Protocol Core
+1. **Create the Adapter**: Create \`internal/protocols/mycore.go\` and implement the \`ProtocolAdapter\` interface.
+2. **Register**: Add it to \`internal/protocols/interface.go\` and \`internal/core/dispatcher.go\`.
+3. **Frontend**: Update \`frontend/src/types/index.ts\` to include your new protocol, and create a React UI page to configure it.
+4. **Binary Management**: Add the download URL and checksum logic to \`internal/core/binary_downloader.go\`.
+
+## Linux Polkit Integration
+On Linux, TUN routing and iptables kill-switches typically require root privileges. 
+Instead of prompting the user via \`sudo\` or triggering GNOME password prompts, NexVPN uses:
+1. \`setcap cap_net_admin,cap_net_bind_service=+ep\` to grant capability-based access.
+2. A dynamically generated Polkit Policy (\`/usr/share/polkit-1/actions/dev.nexvpn.policy\`) mapping the exact absolute paths of the binaries to \`<allow_active>yes</allow_active>\`.
+3. Disabling \`DBUS_SYSTEM_BUS_ADDRESS\` inside the Go execution environment so cores (like sing-box) fallback to \`netlink\` instead of triggering NetworkManager D-Bus prompts.
+
+## Building the App
+\`\`\`bash
+# Development (Hot reload)
+wails dev
+
+# Production Build
+wails build -clean -platform windows/amd64,linux/amd64,darwin/arm64
+\`\`\`
+
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const rawMd = document.getElementById('md-content').innerHTML;
+            const cleanMd = rawMd.replace(/\\/g, '\\').replace(/\`/g, '`');
+            document.getElementById('content').innerHTML = marked.parse(cleanMd);
+        });
+    </script>
+</body>
+</html>

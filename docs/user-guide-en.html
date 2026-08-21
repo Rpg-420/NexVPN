@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Guide (EN) | NexVPN Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'Vazirmatn', 'sans-serif'] },
+                    colors: { brand: { 900: '#0B0F19', primary: '#00E5FF', purple: '#9D4EDD' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0B0F19; color: #E5E7EB; }
+        .glass-panel { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        #content h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; color: white; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; }
+        #content h2 { font-size: 1.8rem; font-weight: 700; margin-top: 2.5rem; margin-bottom: 1rem; color: #00E5FF; }
+        #content h3 { font-size: 1.4rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; color: #9D4EDD; }
+        #content p { margin-bottom: 1.25rem; line-height: 1.7; color: #D1D5DB; }
+        #content ul, #content ol { margin-bottom: 1.25rem; list-style-type: disc; }
+        #content ul, #content ol { margin-left: 1.5rem; }
+        #content li { margin-bottom: 0.5rem; color: #D1D5DB; }
+        #content a { color: #00E5FF; text-decoration: underline; text-underline-offset: 4px; }
+        #content a:hover { color: #9D4EDD; }
+        #content pre { background: #111827; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1.5rem; border: 1px solid rgba(255,255,255,0.1); }
+        #content code { font-family: monospace; font-size: 0.9em; background: rgba(255,255,255,0.1); padding: 0.15rem 0.3rem; border-radius: 0.25rem; }
+        #content pre code { background: transparent; padding: 0; }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-purple selection:text-white">
+    <nav class="fixed w-full z-50 glass-panel border-b-0">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <a href="index.html" class="flex-shrink-0 font-bold text-xl tracking-tighter text-white hover:opacity-80 transition">
+                    &larr; Back to Home
+                </a>
+                <div class="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-purple">
+                    NexVPN Docs
+                </div>
+            </div>
+        </div>
+    </nav>
+    <main class="pt-24 pb-16 min-h-screen">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="glass-panel p-8 sm:p-12 rounded-2xl shadow-2xl">
+                <div id="content"></div>
+            </div>
+        </div>
+    </main>
+    
+    <script type="text/markdown" id="md-content">
+# NexVPN Pro - User Guide
+
+Welcome to **NexVPN Pro**, the ultimate multi-protocol, multi-core desktop client for internet freedom.
+
+## Table of Contents
+1. [Core Engines](#core-engines)
+2. [Adding Profiles](#adding-profiles)
+3. [Smart Network Doctor](#smart-network-doctor)
+4. [App Split Tunneling](#app-split-tunneling)
+5. [Cross-Platform Support](#cross-platform-support)
+
+---
+
+## Core Engines
+NexVPN intelligently routes your traffic using three dedicated networking cores:
+
+### 1. Aether Core (MASQUE & gool)
+Aether is our most advanced anti-censorship engine. It specializes in penetrating deep packet inspection (DPI) by wrapping traffic in HTTP/3 (MASQUE) or using nested Cloudflare WARP-in-WARP tunnels (gool).
+- **Scan Modes**: Select between Turbo, Balanced, Thorough, Stealth, and Ironclad depending on your network conditions.
+- **Protocols**: Supports \`masque\` and \`gool\`.
+- **Usage**: Go to the **Aether** tab, click **Add Profile**, select your protocol and scanner, and connect.
+
+### 2. Sing-box Core (V2Ray & WireGuard)
+The industry standard for VLESS, Trojan, Hysteria2, and direct WireGuard/Cloudflare WARP connections.
+- **Smart DNS**: Automatically bypasses DNS poisoning.
+- **Multi-Queue TUN**: Provides high-performance full-system routing.
+
+### 3. OpenVPN Core
+Native Layer-3 routing for classic VPN configurations (\`.ovpn\` files).
+
+---
+
+## Adding Profiles
+- **Clipboard/URI**: Copy any \`vless://\`, \`vmess://\`, or \`trojan://\` link and click the **+** (Import from Clipboard) button in the V2Ray tab.
+- **Subscription**: Paste a subscription URL in the Discovery Hub to automatically fetch and update node lists.
+- **Cloudflare WARP**: Go to the WARP tab to generate a custom WARP profile with Clean IPs.
+- **Aether Profile**: Go to the Aether tab and create a custom MASQUE or gool profile.
+
+---
+
+## Smart Network Doctor
+If you experience "No Internet" or proxy errors after a disconnection, the **Smart Network Doctor** can fix it instantly:
+- Click the **Network Doctor** button in the sidebar.
+- It will automatically:
+  - Flush DNS Caches (\`ipconfig\`, \`resolvectl\`, \`dscacheutil\`).
+  - Clear abandoned system proxies.
+  - Reset frozen Wintun/TUN adapters.
+  - Kill orphaned core processes (\`aether\`, \`sing-box\`, \`openvpn\`).
+
+## Linux Polkit Setup (Important)
+If you are using NexVPN on Linux, you must run the provided initialization script to configure background capabilities and passwordless execution. If you skip this step, NetworkManager or Polkit will repeatedly ask for your root password when connecting.
+
+1. Open your terminal in the NexVPN installation folder.
+2. Run the script with sudo:
+   \`\`\`bash
+   sudo ./install_linux.sh
+   \`\`\`
+3. It will automatically assign \`cap_net_admin\` capabilities and install Polkit policies.
+
+---
+
+## App Split Tunneling
+Bypass the VPN for local/domestic apps (like local banking or gaming apps):
+1. Open **App Split Tunneling**.
+2. Add the applications you want to bypass (e.g., \`chrome.exe\` on Windows, or \`spotify\` on macOS/Linux).
+3. The routing engine will automatically route these apps outside the VPN tunnel.
+
+---
+
+## Cross-Platform Support
+- **Windows**: Full Wintun integration and registry proxy management.
+- **Linux**: Passwordless core execution (via Polkit). Run \`sudo ./install_linux.sh\` once after installation to enable seamless TUN connectivity. KDE/GNOME proxies are updated instantly via D-Bus.
+- **macOS**: Native pfctl Kill Switch, System Settings proxy configuration, and LaunchAgent auto-start integration.
+
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const rawMd = document.getElementById('md-content').innerHTML;
+            const cleanMd = rawMd.replace(/\\/g, '\\').replace(/\`/g, '`');
+            document.getElementById('content').innerHTML = marked.parse(cleanMd);
+        });
+    </script>
+</body>
+</html>
