@@ -47,6 +47,16 @@ If you experience "No Internet" or proxy errors after a disconnection, the **Sma
   - Reset frozen Wintun/TUN adapters.
   - Kill orphaned core processes (`aether`, `sing-box`, `openvpn`).
 
+## Linux Polkit Setup (Important)
+If you are using NexVPN on Linux, you must run the provided initialization script to configure background capabilities and passwordless execution. If you skip this step, NetworkManager or Polkit will repeatedly ask for your root password when connecting.
+
+1. Open your terminal in the NexVPN installation folder.
+2. Run the script with sudo:
+   ```bash
+   sudo ./install_linux.sh
+   ```
+3. It will automatically assign `cap_net_admin` capabilities and install Polkit policies.
+
 ---
 
 ## App Split Tunneling
