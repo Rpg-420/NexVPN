@@ -3,6 +3,7 @@
 package sysproc
 
 import (
+	"fmt"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -64,5 +65,15 @@ func HideWindowAttr() *syscall.SysProcAttr {
 		HideWindow:    true,
 		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
 	}
+}
+
+// KillProcessTree terminates a process tree on Windows without showing console
+func KillProcessTree(pid int) {
+	if pid <= 0 {
+		return
+	}
+	cmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
+	cmd.SysProcAttr = HideWindowAttr()
+	_ = cmd.Run()
 }
 

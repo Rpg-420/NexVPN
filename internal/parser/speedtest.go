@@ -30,16 +30,35 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 	// Test if proxy port is listening; if not, use direct network transport (TUN mode / OpenVPN)
 	var transport *http.Transport
 	isProxyAvailable := false
+
 	if proxyPort > 0 {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort), 400*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			isProxyAvailable = true
+		} else {
+			// Try fallback HTTP proxy port 10809 or SOCKS5 10808 if specified port didn't respond
+			for _, fallbackPort := range []int{10809, 10808} {
+				if fallbackPort == proxyPort {
+					continue
+				}
+				if connFallback, errFB := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", fallbackPort), 200*time.Millisecond); errFB == nil {
+					connFallback.Close()
+					proxyPort = fallbackPort
+					isProxyAvailable = true
+					break
+				}
+			}
 		}
 	}
 
 	if isProxyAvailable {
-		proxyUrl, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		// Format proxy URL properly (http:// for HTTP proxy, socks5:// for SOCKS5)
+		proxyScheme := "http"
+		if proxyPort == 10808 {
+			proxyScheme = "socks5"
+		}
+		proxyUrl, _ := url.Parse(fmt.Sprintf("%s://127.0.0.1:%d", proxyScheme, proxyPort))
 		transport = &http.Transport{
 			Proxy: http.ProxyURL(proxyUrl),
 			DialContext: (&net.Dialer{

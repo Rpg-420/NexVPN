@@ -9,10 +9,11 @@ import (
 )
 
 func setSystemProxyPlatform(host string, port int) error {
-	if host == "" {
-		host = "127.0.0.1"
+	httpPort := port
+	if httpPort <= 0 {
+		httpPort = 10809
 	}
-	return setFullSystemProxyPlatform(port, port)
+	return setFullSystemProxyPlatform(httpPort, 10808)
 }
 
 func setFullSystemProxyPlatform(httpPort int, socksPort int) error {
@@ -38,6 +39,7 @@ func setFullSystemProxyPlatform(httpPort int, socksPort int) error {
 	_ = exec.Command("kwriteconfig5", "--file", "kioslaurc", "--group", "Proxy Settings", "--key", "httpProxy", fmt.Sprintf("http://127.0.0.1:%d", httpPort)).Run()
 	_ = exec.Command("kwriteconfig5", "--file", "kioslaurc", "--group", "Proxy Settings", "--key", "httpsProxy", fmt.Sprintf("http://127.0.0.1:%d", httpPort)).Run()
 	_ = exec.Command("kwriteconfig5", "--file", "kioslaurc", "--group", "Proxy Settings", "--key", "socksProxy", fmt.Sprintf("socks5://127.0.0.1:%d", socksPort)).Run()
+	_ = exec.Command("dbus-send", "--type=signal", "/KIO/Scheduler", "org.kde.KIO.Scheduler.reparseConfiguration", "string:").Run()
 
 	// 3. Linux Shell Environment Variables
 	httpURL := fmt.Sprintf("http://127.0.0.1:%d", httpPort)
@@ -60,6 +62,7 @@ func clearSystemProxyPlatform() error {
 
 	// KDE
 	_ = exec.Command("kwriteconfig5", "--file", "kioslaurc", "--group", "Proxy Settings", "--key", "ProxyType", "0").Run()
+	_ = exec.Command("dbus-send", "--type=signal", "/KIO/Scheduler", "org.kde.KIO.Scheduler.reparseConfiguration", "string:").Run()
 
 	// Env
 	_ = os.Unsetenv("HTTP_PROXY")

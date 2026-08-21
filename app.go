@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	sysruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -125,10 +126,24 @@ func (a *App) startup(ctx context.Context) {
 	a.StartSubscriptionScheduler()
 
 	// Auto-connect if enabled
-	if settings.AutoConnect && settings.LastProfileID != "" {
+	if settings.AutoConnect {
 		go func() {
 			time.Sleep(1 * time.Second)
-			_ = a.Connect(settings.LastProfileID)
+			targetID := settings.LastProfileID
+			if targetID != "" {
+				if _, err := a.store.GetProfile(targetID); err != nil {
+					targetID = ""
+				}
+			}
+			if targetID == "" {
+				profiles := a.store.GetProfiles()
+				if len(profiles) > 0 {
+					targetID = profiles[0].ID
+				}
+			}
+			if targetID != "" {
+				_ = a.Connect(targetID)
+			}
 		}()
 	}
 }
@@ -404,9 +419,21 @@ func (a *App) ExportAllProfiles(category string) string {
 
 // OpenTelegramProxy launches Telegram with the local SOCKS5 proxy URL
 func (a *App) OpenTelegramProxy() error {
-	cmd := exec.Command("cmd", "/c", "start", "tg://socks?server=127.0.0.1&port=10808")
-	cmd.SysProcAttr = sysproc.HideWindowAttr()
-	return cmd.Start()
+	tgURL := "tg://socks?server=127.0.0.1&port=10808"
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, tgURL)
+		return nil
+	}
+	switch goos := sysruntime.GOOS; goos {
+	case "windows":
+		cmd := exec.Command("cmd", "/c", "start", tgURL)
+		cmd.SysProcAttr = sysproc.HideWindowAttr()
+		return cmd.Start()
+	case "darwin":
+		return exec.Command("open", tgURL).Start()
+	default:
+		return exec.Command("xdg-open", tgURL).Start()
+	}
 }
 
 // ImportOpenVPNProfile imports an OpenVPN .ovpn profile with optional auth credentials
@@ -923,7 +950,7 @@ func (a *App) RunProtocolRadar() (*RadarReport, error) {
 			desc     string
 		}) {
 			defer wg.Done()
-			lat := parser.TCPPing(target.host, target.port, 2500*time.Millisecond)
+			lat := parser.SmartPing(target.host, target.port, config.Protocol(target.protocol), 2500*time.Millisecond)
 			status := "excellent"
 			loss := 0
 			if lat <= 0 {
@@ -1003,17 +1030,44 @@ type EmergencyRepairReport struct {
 	Timestamp     string       `json:"timestamp"`
 }
 
-// RunEmergencyNetworkRepair runs automated diagnostic and repair commands for Windows networking
+// RunEmergencyNetworkRepair runs automated diagnostic and repair commands for networking
 func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
-	steps := []struct {
+	var steps []struct {
 		name string
 		prog string
 		args []string
-	}{
-		{"Flush Windows DNS Cache (ipconfig /flushdns)", "ipconfig", []string{"/flushdns"}},
-		{"Reset Winsock Catalog & Network Sockets", "netsh", []string{"winsock", "reset"}},
-		{"Reset Windows TCP/IP Protocol Stack", "netsh", []string{"int", "ip", "reset"}},
-		{"Clear Routing Table & ARP Cache", "arp", []string{"-d", "*"}},
+	}
+
+	switch sysruntime.GOOS {
+	case "windows":
+		steps = []struct {
+			name string
+			prog string
+			args []string
+		}{
+			{"Flush Windows DNS Cache (ipconfig /flushdns)", "ipconfig", []string{"/flushdns"}},
+			{"Reset Winsock Catalog & Network Sockets", "netsh", []string{"winsock", "reset"}},
+			{"Reset Windows TCP/IP Protocol Stack", "netsh", []string{"int", "ip", "reset"}},
+			{"Clear Routing Table & ARP Cache", "arp", []string{"-d", "*"}},
+		}
+	case "darwin":
+		steps = []struct {
+			name string
+			prog string
+			args []string
+		}{
+			{"Flush macOS DNS Cache (dscacheutil)", "dscacheutil", []string{"-flushcache"}},
+			{"Reset DNS Responder (killall mDNSResponder)", "killall", []string{"-HUP", "mDNSResponder"}},
+		}
+	default: // linux
+		steps = []struct {
+			name string
+			prog string
+			args []string
+		}{
+			{"Flush Systemd DNS Cache (resolvectl)", "resolvectl", []string{"flush-caches"}},
+			{"Clear ARP Neighbor Cache (ip neigh)", "ip", []string{"neigh", "flush", "all"}},
+		}
 	}
 
 	reportSteps := make([]RepairStep, 0)
@@ -1024,9 +1078,7 @@ func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
 		status := "success"
 		msg := strings.TrimSpace(string(out))
 		if err != nil {
-			// Fix: properly mark failed steps as error (not success)
 			if s.prog == "arp" {
-				// arp -d * always exits non-zero on Windows — treat as success
 				status = "success"
 			} else {
 				status = "error"
@@ -1046,11 +1098,11 @@ func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
 		})
 	}
 
-	// Clear registry proxy stubs
+	// Clear system proxy
 	_ = sysproxy.ClearSystemProxy()
 	reportSteps = append(reportSteps, RepairStep{
-		Name:    "Reset Windows WinINet Proxy Registry Keys",
-		Command: "Registry: ProxyEnable=0",
+		Name:    "Reset System Proxy Settings",
+		Command: "SystemProxy: Clear",
 		Status:  "success",
 		Message: "System proxy settings cleaned and restored to default standard direct state.",
 	})
@@ -1195,8 +1247,29 @@ func (a *App) ImportEncryptedBackup(payload string, password string) error {
 		return fmt.Errorf("invalid backup data structure: %w", err)
 	}
 
-	for _, p := range backup.Profiles {
-		_, _ = a.store.AddProfile(p)
+	if len(backup.Profiles) > 0 {
+		existingMap := make(map[string]bool)
+		for _, ep := range a.store.GetProfiles() {
+			if ep.ID != "" {
+				existingMap[ep.ID] = true
+			}
+			if ep.RawURI != "" {
+				existingMap[ep.RawURI] = true
+			}
+		}
+		var newProfiles []config.Profile
+		for _, p := range backup.Profiles {
+			if p.ID != "" && existingMap[p.ID] {
+				continue
+			}
+			if p.RawURI != "" && existingMap[p.RawURI] {
+				continue
+			}
+			newProfiles = append(newProfiles, p)
+		}
+		if len(newProfiles) > 0 {
+			_, _ = a.store.AddProfileBatch(newProfiles)
+		}
 	}
 	return a.store.SaveSettings(backup.Settings)
 }

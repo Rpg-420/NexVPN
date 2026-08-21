@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"nexvpn/internal/sysproc"
+	"nexvpn/internal/sysproxy"
 )
 
 func hiddenCmd(prog string, args ...string) *exec.Cmd {
@@ -140,19 +142,34 @@ func RunNetworkDoctor(ctx context.Context) DoctorReport {
 		addItem(item)
 	}()
 
-	// 4. Check Windows System Proxy Registry Status
+	// 4. Check System Proxy Status
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		item := DiagnosticItem{
 			ID:          "system_proxy",
-			Title:       "Windows System Proxy Registry State",
-			Description: "Ensuring no stale or conflicting proxy settings remain in registry",
+			Title:       "System Proxy Configuration State",
+			Description: "Ensuring no stale or conflicting proxy settings remain active",
 			Status:      "ok",
 			Detail:      "System proxy settings are clean and normal",
 		}
-		out, err := hiddenCmd("reg", "query", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable").CombinedOutput()
-		if err == nil && strings.Contains(string(out), "0x1") {
+		var enabled bool
+		if runtime.GOOS == "windows" {
+			out, err := hiddenCmd("reg", "query", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable").CombinedOutput()
+			enabled = (err == nil && strings.Contains(string(out), "0x1"))
+		} else if runtime.GOOS == "darwin" {
+			out, err := exec.Command("networksetup", "-getwebproxy", "Wi-Fi").Output()
+			enabled = (err == nil && strings.Contains(strings.ToLower(string(out)), "enabled: yes"))
+		} else {
+			out, err := exec.Command("gsettings", "get", "org.gnome.system.proxy", "mode").Output()
+			if err == nil && strings.Contains(string(out), "manual") {
+				enabled = true
+			} else {
+				outKDE, errKDE := exec.Command("kreadconfig5", "--file", "kioslaurc", "--group", "Proxy Settings", "--key", "ProxyType").Output()
+				enabled = (errKDE == nil && strings.TrimSpace(string(outKDE)) == "1")
+			}
+		}
+		if enabled {
 			item.Status = "warning"
 			item.Detail = "System proxy is currently enabled (reset recommended if disconnected)"
 		}
@@ -204,26 +221,41 @@ func RepairNetworkIssues() RepairResult {
 	actions := make([]string, 0)
 
 	// 1. Terminate any orphaned core processes
-	hiddenCmd("taskkill", "/F", "/IM", "sing-box.exe").Run()
-	hiddenCmd("taskkill", "/F", "/IM", "xray.exe").Run()
-	hiddenCmd("taskkill", "/F", "/IM", "openvpn.exe").Run()
-	actions = append(actions, "Cleaned any orphaned core processes (sing-box, xray, openvpn)")
+	if runtime.GOOS == "windows" {
+		_ = hiddenCmd("taskkill", "/F", "/IM", "sing-box.exe").Run()
+		_ = hiddenCmd("taskkill", "/F", "/IM", "xray.exe").Run()
+		_ = hiddenCmd("taskkill", "/F", "/IM", "openvpn.exe").Run()
+		_ = hiddenCmd("taskkill", "/F", "/IM", "aether.exe").Run()
+	} else {
+		_ = exec.Command("pkill", "-9", "-x", "sing-box").Run()
+		_ = exec.Command("pkill", "-9", "-x", "xray").Run()
+		_ = exec.Command("pkill", "-9", "-x", "openvpn").Run()
+		_ = exec.Command("pkill", "-9", "-x", "aether").Run()
+	}
+	actions = append(actions, "Cleaned any orphaned core processes (sing-box, xray, openvpn, aether)")
 
-	// 2. Flush Windows DNS Cache
-	cmdFlush := hiddenCmd("ipconfig", "/flushdns")
-	if err := cmdFlush.Run(); err == nil {
-		actions = append(actions, "Windows DNS cache successfully flushed (ipconfig /flushdns)")
+	// 2. Flush DNS Cache
+	if runtime.GOOS == "windows" {
+		cmdFlush := hiddenCmd("ipconfig", "/flushdns")
+		if err := cmdFlush.Run(); err == nil {
+			actions = append(actions, "Windows DNS cache successfully flushed (ipconfig /flushdns)")
+		}
+	} else if runtime.GOOS == "darwin" {
+		_ = exec.Command("dscacheutil", "-flushcache").Run()
+		_ = exec.Command("killall", "-HUP", "mDNSResponder").Run()
+		actions = append(actions, "macOS DNS cache successfully flushed")
+	} else {
+		if err := exec.Command("resolvectl", "flush-caches").Run(); err == nil {
+			actions = append(actions, "Linux DNS cache successfully flushed (resolvectl flush-caches)")
+		}
 	}
 
-	// 3. Reset dangling System Proxy in Registry
-	cmdRegDisable := hiddenCmd("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
-	if err := cmdRegDisable.Run(); err == nil {
-		actions = append(actions, "Residual system proxy registry settings disabled")
+	// 3. Clear System Proxy
+	if err := sysproxy.ClearSystemProxy(); err == nil {
+		actions = append(actions, "System proxy settings disabled and cleared")
+	} else {
+		actions = append(actions, "Cleared system proxy settings")
 	}
-
-	// 4. Clear IE Proxy Server Key
-	cmdRegClear := hiddenCmd("reg", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyServer", "/f")
-	_ = cmdRegClear.Run()
 
 	return RepairResult{
 		Success: true,

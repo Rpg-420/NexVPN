@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -97,6 +98,9 @@ func TestBuildNodeConfigSmart(t *testing.T) {
 }
 
 func TestSingBoxBinaryConfigCheck(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("skipping Windows binary validation on non-Windows OS")
+	}
 	sbBin := filepath.Join("..", "..", "bin", "sing-box.exe")
 	if _, err := os.Stat(sbBin); os.IsNotExist(err) {
 		t.Skip("sing-box.exe not found in bin, skipping binary validation test")
@@ -131,6 +135,9 @@ func TestSingBoxBinaryConfigCheck(t *testing.T) {
 }
 
 func TestXrayBinaryConfigCheck(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("skipping Windows binary validation on non-Windows OS")
+	}
 	xrayBin := filepath.Join("..", "..", "bin", "xray.exe")
 	if _, err := os.Stat(xrayBin); os.IsNotExist(err) {
 		t.Skip("xray.exe not found in bin, skipping binary validation test")
@@ -195,22 +202,94 @@ func TestWireGuardSingBoxConfigValidation(t *testing.T) {
 		t.Errorf("Config still contains unsupported Amnezia junk packet fields: %s", cfg)
 	}
 
-	// Verify sing-box binary check if present
-	sbBin := filepath.Join("..", "..", "bin", "sing-box.exe")
-	if _, statErr := os.Stat(sbBin); statErr == nil {
-		tmpFile, err := os.CreateTemp("", "sb-wg-check-*.json")
-		if err == nil {
-			defer os.Remove(tmpFile.Name())
-			_, _ = tmpFile.WriteString(cfg)
-			_ = tmpFile.Close()
+	// Verify sing-box binary check if present on Windows
+	if runtime.GOOS == "windows" {
+		sbBin := filepath.Join("..", "..", "bin", "sing-box.exe")
+		if _, statErr := os.Stat(sbBin); statErr == nil {
+			tmpFile, err := os.CreateTemp("", "sb-wg-check-*.json")
+			if err == nil {
+				defer os.Remove(tmpFile.Name())
+				_, _ = tmpFile.WriteString(cfg)
+				_ = tmpFile.Close()
 
-			binDir, _ := filepath.Abs(filepath.Dir(sbBin))
-			cmd := exec.Command(sbBin, "check", "-c", tmpFile.Name(), "-D", binDir)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("sing-box check failed on generated WARP config: %v\nOutput: %s\nConfig:\n%s", err, string(output), cfg)
+				binDir, _ := filepath.Abs(filepath.Dir(sbBin))
+				cmd := exec.Command(sbBin, "check", "-c", tmpFile.Name(), "-D", binDir)
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("sing-box check failed on generated WARP config: %v\nOutput: %s\nConfig:\n%s", err, string(output), cfg)
+				}
 			}
 		}
 	}
 }
+
+func TestTLSFragmentInjection(t *testing.T) {
+	uri := "vless://9cf8b982-263a-44d5-a8c6-111111111111@198.51.100.1:443?security=reality&sni=yahoo.com&fp=chrome&pbk=abcd1234efgh5678abcd1234efgh5678abcd1234efg&sid=12345678&type=tcp#TestNode"
+	outbound, err := ParseOutboundFromURI(uri)
+	if err != nil {
+		t.Fatalf("ParseOutboundFromURI failed: %v", err)
+	}
+
+	settings := config.Settings{
+		FragmentEnabled: true,
+		FragmentSize:    "120-250",
+		FragmentSleep:   "15-30",
+		RoutingMode:     "bypass_iran",
+	}
+
+	sbCfg, err := BuildSingBoxConfigAdvanced(outbound, "tun", "bypass_iran", "198.51.100.1", settings)
+	if err != nil {
+		t.Fatalf("BuildSingBoxConfigAdvanced failed: %v", err)
+	}
+
+	if !strings.Contains(sbCfg, `"fragment"`) || !strings.Contains(sbCfg, "120-250") {
+		t.Fatalf("Sing-box config does not contain injected fragment settings: %s", sbCfg)
+	}
+
+	xrayCfg, err := BuildXrayConfigFromURI(uri, 10809, 10808, "bypass_iran", settings)
+	if err != nil {
+		t.Fatalf("BuildXrayConfigFromURI failed: %v", err)
+	}
+
+	if !strings.Contains(xrayCfg, `"dialerProxy": "fragment"`) || !strings.Contains(xrayCfg, "tlshello") {
+		t.Fatalf("Xray config does not contain injected fragment dialerProxy: %s", xrayCfg)
+	}
+}
+
+func TestChainBuilderConfig(t *testing.T) {
+	p1 := config.Profile{
+		ID:       "p1",
+		Name:     "Hop 1",
+		Protocol: config.ProtocolSingBox,
+		RawURI:   "vless://uuid1@1.1.1.1:443?security=reality&sni=google.com&pbk=key1&fp=chrome",
+		Server:   "1.1.1.1",
+		Port:     443,
+	}
+	p2 := config.Profile{
+		ID:       "p2",
+		Name:     "Hop 2",
+		Protocol: config.ProtocolSingBox,
+		RawURI:   "vless://uuid2@2.2.2.2:443?security=reality&sni=yahoo.com&pbk=key2&fp=chrome",
+		Server:   "2.2.2.2",
+		Port:     443,
+	}
+
+	settings := config.Settings{
+		RoutingMode: "bypass_iran",
+	}
+
+	chained, err := BuildMultiHopChain([]config.Profile{p1, p2}, "Chained-Test", settings)
+	if err != nil {
+		t.Fatalf("BuildMultiHopChain failed: %v", err)
+	}
+
+	if strings.Contains(chained.ConfigContent, "rule_set") {
+		t.Fatalf("Chained config contains invalid undefined rule_set: %s", chained.ConfigContent)
+	}
+
+	if !strings.Contains(chained.ConfigContent, "detour") {
+		t.Fatalf("Chained config missing detour: %s", chained.ConfigContent)
+	}
+}
+
 

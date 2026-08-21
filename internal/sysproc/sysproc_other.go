@@ -3,6 +3,7 @@
 package sysproc
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -16,5 +17,16 @@ func HideWindowAttr() *syscall.SysProcAttr {
 
 // AssignCmdToJobObject is a no-op on non-Windows platforms
 func AssignCmdToJobObject(cmd *exec.Cmd) {
+}
+
+// KillProcessTree terminates process group on non-Windows platforms
+func KillProcessTree(pid int) {
+	if pid <= 0 {
+		return
+	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	if proc, err := os.FindProcess(pid); err == nil {
+		_ = proc.Kill()
+	}
 }
 

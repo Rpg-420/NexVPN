@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	osruntime "runtime"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -101,8 +102,9 @@ func (a *App) OpenProfilesFolder() {
 func (a *App) GetSystemInfo() map[string]string {
 	return map[string]string{
 		"app_version": AppVersion,
-		"go_version":  "1.23.2",
-		"platform":    "windows",
+		"go_version":  osruntime.Version(),
+		"platform":    osruntime.GOOS,
+		"arch":        osruntime.GOARCH,
 	}
 }
 
@@ -190,7 +192,7 @@ func (a *App) StartRealSpeedTest() {
 	speedCancel = cancel
 	speedMu.Unlock()
 
-	port := 10808
+	port := 10809
 	settings := a.store.GetSettings()
 	if settings.ProxyMode == "system_proxy" {
 		port = 10809
@@ -453,6 +455,24 @@ func (a *App) StartMobileRemote(port int) (string, error) {
 		return "", err
 	}
 	return server.GetURL(), nil
+}
+
+// MobileRemoteInfo holds status of the local smartphone web controller
+type MobileRemoteInfo struct {
+	Running bool   `json:"running"`
+	URL     string `json:"url"`
+}
+
+// GetMobileRemoteInfo returns the status and URL of the smartphone remote controller
+func (a *App) GetMobileRemoteInfo() MobileRemoteInfo {
+	if a.engine == nil || a.store == nil {
+		return MobileRemoteInfo{Running: false, URL: ""}
+	}
+	server := core.GetRemoteServer(a.engine, a.store)
+	return MobileRemoteInfo{
+		Running: server.IsRunning(),
+		URL:     server.GetURL(),
+	}
 }
 
 // StopMobileRemote terminates mobile controller server

@@ -91,6 +91,8 @@ export function GetLocalIPAddress():Promise<string>;
 
 export function GetLogs():Promise<Array<core.LogEntry>>;
 
+export function GetMobileRemoteInfo():Promise<main.MobileRemoteInfo>;
+
 export function GetProfileByID(arg1:string):Promise<config.Profile>;
 
 export function GetProfiles():Promise<Array<config.Profile>>;

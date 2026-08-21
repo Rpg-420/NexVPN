@@ -21,6 +21,7 @@ const (
 	ProtocolOpenVPN   Protocol = "openvpn"
 	ProtocolHysteria2 Protocol = "hysteria2"
 	ProtocolWARP      Protocol = "warp"
+	ProtocolAether    Protocol = "aether"
 )
 
 type ProfileCategory string
@@ -29,6 +30,7 @@ const (
 	CategoryV2Ray         ProfileCategory = "v2ray"
 	CategoryWireGuardWarp ProfileCategory = "wireguard_warp"
 	CategoryOpenVPN       ProfileCategory = "openvpn"
+	CategoryAether        ProfileCategory = "aether"
 )
 
 type Profile struct {
@@ -139,11 +141,11 @@ type ConnectionSession struct {
 }
 
 type FullBackupBundle struct {
-	Version      string     `json:"version"`
-	ExportedAt   time.Time  `json:"exported_at"`
-	Profiles     []Profile  `json:"profiles"`
-	Settings     Settings   `json:"settings"`
-	ProfileCount int        `json:"profile_count"`
+	Version      string    `json:"version"`
+	ExportedAt   time.Time `json:"exported_at"`
+	Profiles     []Profile `json:"profiles"`
+	Settings     Settings  `json:"settings"`
+	ProfileCount int       `json:"profile_count"`
 }
 
 type StoreData struct {
@@ -807,4 +809,3 @@ func (s *Store) ImportFullBackupJSON(jsonStr string, overwrite bool) (int, error
 	_ = s.saveUnlocked()
 	return importedCount, nil
 }
-

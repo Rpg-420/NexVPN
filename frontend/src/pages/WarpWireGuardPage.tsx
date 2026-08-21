@@ -91,9 +91,9 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
       await api.generateWarpProfile(selectedCleanIP, customPort)
       await loadProfiles()
       showToast(t('saved_successfully'))
-    } catch (err) {
+    } catch (err: any) {
       console.error('Generate WARP error:', err)
-      alert(t('error'))
+      showToast(err?.message || String(err) || t('error'))
     } finally {
       setIsGeneratingWarp(false)
     }
@@ -105,9 +105,9 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
       await api.generateWarpOnWarpProfile(selectedCleanIP, customPort, '162.159.193.10', 2408)
       await loadProfiles()
       showToast(t('saved_successfully'))
-    } catch (err) {
+    } catch (err: any) {
       console.error('Generate WoW error:', err)
-      alert(t('error'))
+      showToast(err?.message || String(err) || t('error'))
     } finally {
       setIsGeneratingWoW(false)
     }

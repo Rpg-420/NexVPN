@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +42,30 @@ func (d *SmartCoreDispatcher) Decide(profile *config.Profile, settings config.Se
 	routingMode := settings.RoutingMode
 	if routingMode == "" {
 		routingMode = "bypass_iran"
+	}
+
+	// Aether Profile
+	if profile.Protocol == config.ProtocolAether {
+		adapter, err := protocols.NewAdapter(config.ProtocolAether)
+		if err != nil {
+			return nil, fmt.Errorf("aether adapter error: %w", err)
+		}
+
+		wrap := map[string]interface{}{
+			"aether_config": profile.ConfigContent,
+			"settings":      settings,
+			"proxy_mode":    proxyMode,
+			"routing_mode":  routingMode,
+		}
+		wrapBytes, _ := json.Marshal(wrap)
+
+		return &DispatchDecision{
+			CoreProtocol:  config.ProtocolAether,
+			ConfigContent: string(wrapBytes),
+			Adapter:       adapter,
+			CoreName:      "Aether Core",
+			Description:   "Aether user-space censorship circumvention engine (MASQUE / gool)",
+		}, nil
 	}
 
 	// 1. OpenVPN Profile

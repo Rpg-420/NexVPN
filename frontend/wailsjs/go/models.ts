@@ -690,6 +690,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class MobileRemoteInfo {
+	    running: boolean;
+	    url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MobileRemoteInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.running = source["running"];
+	        this.url = source["url"];
+	    }
+	}
 	export class RadarProtocolResult {
 	    name: string;
 	    protocol: string;

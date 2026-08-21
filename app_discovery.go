@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"os/exec"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -167,6 +170,50 @@ func (a *App) StopCloudflareDiscoveryScan() {
 	cfScanMu.Unlock()
 }
 
+func updateURIHostPort(rawURI string, newIP string, newPort int) string {
+	rawURI = strings.TrimSpace(rawURI)
+	if rawURI == "" {
+		return ""
+	}
+	fragment := ""
+	if idx := strings.Index(rawURI, "#"); idx != -1 {
+		fragment = rawURI[idx:]
+		rawURI = rawURI[:idx]
+	}
+
+	u, err := url.Parse(rawURI)
+	if err != nil {
+		return rawURI + fragment
+	}
+
+	portStr := u.Port()
+	if newPort > 0 {
+		portStr = strconv.Itoa(newPort)
+	}
+	if portStr == "" {
+		portStr = "443"
+	}
+
+	u.Host = net.JoinHostPort(newIP, portStr)
+	return u.String() + fragment
+}
+
+func updateWgEndpointInConf(conf string, newIP string, newPort int) string {
+	lines := strings.Split(conf, "\n")
+	portStr := strconv.Itoa(newPort)
+	if newPort <= 0 {
+		portStr = "2408"
+	}
+	newEndpoint := fmt.Sprintf("Endpoint = %s:%s", newIP, portStr)
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(trimmed), "endpoint") {
+			lines[i] = newEndpoint
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ApplyCleanIPToWARPProfiles updates warp endpoint on all wireguard_warp profiles
 func (a *App) ApplyCleanIPToWARPProfiles(ip string, port int) (int, error) {
 	if a.store == nil {
@@ -177,8 +224,18 @@ func (a *App) ApplyCleanIPToWARPProfiles(ip string, port int) (int, error) {
 	updatedCount := 0
 
 	for _, p := range profiles {
+		p.Server = ip
+		if port > 0 {
+			p.Port = port
+		}
 		p.WarpCleanIP = ip
 		p.WarpEndpoint = fmt.Sprintf("%s:%d", ip, port)
+		if p.RawURI != "" {
+			p.RawURI = updateURIHostPort(p.RawURI, ip, port)
+		}
+		if p.ConfigContent != "" && strings.Contains(strings.ToLower(p.ConfigContent), "endpoint") {
+			p.ConfigContent = updateWgEndpointInConf(p.ConfigContent, ip, port)
+		}
 		p.UpdatedAt = time.Now()
 		if err := a.store.UpdateProfile(p); err == nil {
 			updatedCount++
@@ -224,6 +281,9 @@ func (a *App) ApplyCleanIPToV2RayProfiles(ip string, port int, onlyCDN bool) (in
 		p.Server = ip
 		if port > 0 {
 			p.Port = port
+		}
+		if p.RawURI != "" {
+			p.RawURI = updateURIHostPort(p.RawURI, ip, port)
 		}
 		p.UpdatedAt = time.Now()
 		if err := a.store.UpdateProfile(p); err == nil {

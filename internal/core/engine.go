@@ -36,6 +36,12 @@ func CleanupStaleCores() {
 			_ = cmd.Run()
 		}
 		time.Sleep(100 * time.Millisecond)
+	} else {
+		for _, name := range []string{"sing-box", "xray", "openvpn"} {
+			cmd := exec.Command("pkill", "-9", "-x", name)
+			_ = cmd.Run()
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -280,7 +286,7 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 			// Allow time for the Wintun adapter driver to initialize
 			time.Sleep(1200 * time.Millisecond)
 		} else {
-			if !probeProxy(5 * time.Second) {
+			if !probeProxy(150 * time.Second) {
 				cancel()
 				errMsg := "proxy port 10808 did not become available — core may have failed to start"
 				e.AddLog("error", errMsg, "engine")

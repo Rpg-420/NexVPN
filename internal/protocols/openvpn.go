@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +30,7 @@ type OpenVPNAdapter struct {
 	password  string
 	logger    LoggerFunc
 	onExit    OnExitFunc
+	lockFile  string
 }
 
 func NewOpenVPNAdapter() *OpenVPNAdapter {
@@ -108,7 +111,7 @@ func sanitizeOpenVPNConfig(content string) string {
 func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error {
 	ovpnBin, err := findBinary("openvpn")
 	if err != nil {
-		return fmt.Errorf("OpenVPN binary 'openvpn.exe' not found. Please install OpenVPN or place openvpn.exe in bin folder")
+		return fmt.Errorf("OpenVPN binary not found. Please install OpenVPN or place openvpn binary in bin folder")
 	}
 
 	sanitized := sanitizeOpenVPNConfig(configContent)
@@ -179,7 +182,39 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		args = append(args, "--auth-user-pass", credsPath)
 	}
 
-	cmd := exec.CommandContext(ctx, ovpnBin, args...)
+	var cmd *exec.Cmd
+	var lockFilePath string
+
+	u, errUser := user.Current()
+	isRoot := errUser == nil && u.Uid == "0"
+
+	if runtime.GOOS == "linux" && !isRoot && !hasNetCap(ovpnBin) {
+		if _, err := exec.LookPath("pkexec"); err == nil {
+			lockFile, err := os.CreateTemp(ensureNexVPNTempDir(), "openvpn-lock-*.lock")
+			if err == nil {
+				lockFilePath = lockFile.Name()
+				lockFile.Close()
+				script := `
+					lock="$1"
+					shift
+					"$@" &
+					pid=$!
+					while kill -0 $pid 2>/dev/null && [ -f "$lock" ]; do
+						sleep 0.5
+					done
+					kill -9 $pid 2>/dev/null
+					exit 0
+				`
+				pkArgs := append([]string{"sh", "-c", script, "sh", lockFilePath, ovpnBin}, args...)
+				cmd = exec.CommandContext(ctx, "pkexec", pkArgs...)
+			}
+		}
+	}
+	
+	if cmd == nil {
+		cmd = exec.CommandContext(ctx, ovpnBin, args...)
+	}
+
 	cmd.Dir = binDir
 	PrepareHiddenCmd(cmd)
 
@@ -190,6 +225,7 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 	a.running = true
 	a.bytesRx = 0
 	a.bytesTx = 0
+	a.lockFile = lockFilePath
 	a.mu.Unlock()
 
 	connectedCh := make(chan struct{}, 1)
@@ -303,9 +339,11 @@ func (a *OpenVPNAdapter) Stop() error {
 	cmd := a.cmd
 	tmpConfig := a.tmpConfig
 	tmpCreds := a.tmpCreds
+	lockFile := a.lockFile
 	a.cmd = nil
 	a.tmpConfig = ""
 	a.tmpCreds = ""
+	a.lockFile = ""
 	a.running = false
 	// Fix #2: Clear onExit before stopping — prevent false alarm on intentional stop
 	a.onExit = nil
@@ -314,6 +352,10 @@ func (a *OpenVPNAdapter) Stop() error {
 	if cmd != nil && cmd.Process != nil {
 		pid := cmd.Process.Pid
 		a.log("info", fmt.Sprintf("Stopping OpenVPN process (PID: %d)...", pid))
+		if lockFile != "" {
+			_ = os.Remove(lockFile)
+			time.Sleep(200 * time.Millisecond) // Give the script time to catch the deleted lockfile and kill the process gracefully
+		}
 		KillProcessTree(pid)
 	}
 	if tmpConfig != "" {

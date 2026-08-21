@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -195,6 +196,25 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		delete(activeOutbound, "response_packet_magic_header")
 		delete(activeOutbound, "underload_packet_magic_header")
 		delete(activeOutbound, "transport_header_magic_header")
+	}
+
+	// Inject TLS ClientHello fragmentation anti-censorship parameters if enabled
+	if settings.FragmentEnabled {
+		fragSize := settings.FragmentSize
+		if fragSize == "" {
+			fragSize = "100-200"
+		}
+		fragSleep := settings.FragmentSleep
+		if fragSleep == "" {
+			fragSleep = "10-20"
+		}
+		if tlsMap, ok := activeOutbound["tls"].(map[string]interface{}); ok {
+			tlsMap["fragment"] = map[string]interface{}{
+				"enabled": true,
+				"size":    fragSize,
+				"sleep":   fragSleep,
+			}
+		}
 	}
 
 	listenAddr := "127.0.0.1"
@@ -428,15 +448,26 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		}
 	}
 
-	// Per-App Process Routing (Split Tunneling)
-	if settings.AppRoutingMode == "bypass_selected" && len(settings.SelectedApps) > 0 {
+	// Per-App Process Routing (Split Tunneling) - Normalized for Cross-Platform compatibility
+	var processedApps []string
+	if len(settings.SelectedApps) > 0 {
+		for _, app := range settings.SelectedApps {
+			if runtime.GOOS != "windows" {
+				processedApps = append(processedApps, strings.TrimSuffix(strings.ToLower(app), ".exe"))
+			} else {
+				processedApps = append(processedApps, app)
+			}
+		}
+	}
+
+	if settings.AppRoutingMode == "bypass_selected" && len(processedApps) > 0 {
 		routeRules = append(routeRules, map[string]interface{}{
-			"process_name": settings.SelectedApps,
+			"process_name": processedApps,
 			"outbound":     "direct",
 		})
-	} else if settings.AppRoutingMode == "proxy_selected" && len(settings.SelectedApps) > 0 {
+	} else if settings.AppRoutingMode == "proxy_selected" && len(processedApps) > 0 {
 		routeRules = append(routeRules, map[string]interface{}{
-			"process_name": settings.SelectedApps,
+			"process_name": processedApps,
 			"outbound":     primaryTag,
 		})
 		// Other apps go direct
@@ -458,10 +489,10 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		)
 	}
 
-	// Ad-blocking rules
+	// Ad-blocking, Malware, and Anti-Phishing rules
 	if settings.BlockAds || routingMode == "direct_iran_block_ads" {
 		routeRules = append(routeRules, map[string]interface{}{
-			"domain_keyword": []string{"doubleclick", "adservice", "googleadservices", "adnxs", "adroll", "analytics", "applovin", "unityads", "vungle", "admob"},
+			"domain_keyword": []string{"doubleclick", "adservice", "googleadservices", "adnxs", "adroll", "analytics", "applovin", "unityads", "vungle", "admob", "tracker", "telemetry", "phishing", "malware", "spyware"},
 			"outbound":       "block",
 		})
 	}
@@ -1760,15 +1791,15 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 			"sniff":       true,
 		},
 		{
-			"type":                       "tun",
-			"tag":                        "tun-in",
-			"interface_name":             "NexVPN-TUN",
-			"inet4_address":              "172.19.0.1/30",
-			"auto_route":                 true,
-			"strict_route":               false,
-			"stack":                      "gvisor",
-			"sniff":                      true,
-			"endpoint_independent_nat":   true,
+			"type":                     "tun",
+			"tag":                      "tun-in",
+			"interface_name":           "NexVPN-TUN",
+			"inet4_address":            "172.19.0.1/30",
+			"auto_route":               true,
+			"strict_route":             false,
+			"stack":                    "gvisor",
+			"sniff":                    true,
+			"endpoint_independent_nat": true,
 		},
 	}
 
@@ -1781,8 +1812,8 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 	}
 
 	cfg := map[string]interface{}{
-		"log": map[string]interface{}{"level": "warn"},
-		"inbounds": inbounds,
+		"log":       map[string]interface{}{"level": "warn"},
+		"inbounds":  inbounds,
 		"outbounds": outbounds,
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
@@ -1797,7 +1828,7 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 		},
 		"route": map[string]interface{}{
 			"auto_detect_interface": true,
-			"final": "proxy",
+			"final":                 "proxy",
 			"rules": []map[string]interface{}{
 				{"protocol": []string{"dns"}, "outbound": "dns-out"},
 				{"ip_cidr": []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"}, "outbound": "direct"},
@@ -2536,6 +2567,22 @@ func BuildXrayConfigFromURI(rawURI string, httpPort int, socksPort int, routingM
 		},
 	}
 
+	if settings.FragmentEnabled {
+		fragLength := settings.FragmentSize
+		if fragLength == "" {
+			fragLength = "100-200"
+		}
+		fragInterval := settings.FragmentSleep
+		if fragInterval == "" {
+			fragInterval = "10-20"
+		}
+		if streamSettings, ok := outbound["streamSettings"].(map[string]interface{}); ok {
+			streamSettings["sockopt"] = map[string]interface{}{
+				"dialerProxy": "fragment",
+			}
+		}
+	}
+
 	outbounds := []map[string]interface{}{
 		outbound,
 		{
@@ -2554,6 +2601,29 @@ func BuildXrayConfigFromURI(rawURI string, httpPort int, socksPort int, routingM
 				},
 			},
 		},
+	}
+
+	if settings.FragmentEnabled {
+		fragLength := settings.FragmentSize
+		if fragLength == "" {
+			fragLength = "100-200"
+		}
+		fragInterval := settings.FragmentSleep
+		if fragInterval == "" {
+			fragInterval = "10-20"
+		}
+		outbounds = append(outbounds, map[string]interface{}{
+			"tag":      "fragment",
+			"protocol": "freedom",
+			"settings": map[string]interface{}{
+				"domainStrategy": "AsIs",
+				"fragment": map[string]interface{}{
+					"packets":  "tlshello",
+					"length":   fragLength,
+					"interval": fragInterval,
+				},
+			},
+		})
 	}
 
 	// Xray Routing Rules
@@ -2594,7 +2664,7 @@ func BuildXrayConfigFromURI(rawURI string, httpPort int, socksPort int, routingM
 		rules = append(rules, map[string]interface{}{
 			"type":        "field",
 			"outboundTag": "block",
-			"domain":      []string{"geosite:category-ads-all"},
+			"domain":      []string{"geosite:category-ads-all", "keyword:doubleclick", "keyword:adservice", "keyword:tracker", "keyword:telemetry", "keyword:phishing", "keyword:malware"},
 		})
 	}
 

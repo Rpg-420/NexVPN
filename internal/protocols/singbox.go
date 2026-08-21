@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +34,7 @@ type SingBoxAdapter struct {
 	onExit      OnExitFunc
 	statsCancel context.CancelFunc
 	lastError   string
+	lockFile    string
 }
 
 func NewSingBoxAdapter() *SingBoxAdapter {
@@ -77,7 +80,7 @@ func getFreeLocalPort() int {
 func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error {
 	sbBin, err := findBinary("sing-box")
 	if err != nil {
-		return fmt.Errorf("sing-box.exe not found. Please place sing-box.exe in bin folder")
+		return fmt.Errorf("Sing-box core binary not found. Please ensure 'sing-box' binary is in bin folder")
 	}
 
 	// Dynamically allocate a free local port for clash_api
@@ -104,10 +107,43 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 	tmpFile.Close()
 
 	binDir := filepath.Dir(sbBin)
-	cmd := exec.CommandContext(ctx, sbBin, "run", "-c", tmpPath, "-D", binDir)
+	cmdArgs := []string{"run", "-c", tmpPath, "-D", binDir}
+	var cmd *exec.Cmd
+	var lockFilePath string
+
+	u, errUser := user.Current()
+	isRoot := errUser == nil && u.Uid == "0"
+
+	if runtime.GOOS == "linux" && !isRoot && !hasNetCap(sbBin) && strings.Contains(configContent, `"type": "tun"`) {
+		if _, err := exec.LookPath("pkexec"); err == nil {
+			lockFile, err := os.CreateTemp(ensureNexVPNTempDir(), "singbox-lock-*.lock")
+			if err == nil {
+				lockFilePath = lockFile.Name()
+				lockFile.Close()
+				script := `
+					"$1" run -c "$2" -D "$3" &
+					pid=$!
+					while kill -0 $pid 2>/dev/null && [ -f "$4" ]; do
+						sleep 0.5
+					done
+					kill -9 $pid 2>/dev/null
+					exit 0
+				`
+				args := []string{"sh", "-c", script, "sh", sbBin, tmpPath, binDir, lockFilePath}
+				cmd = exec.CommandContext(ctx, "pkexec", args...)
+			}
+		}
+	}
+
+	if cmd == nil {
+		cmd = exec.CommandContext(ctx, sbBin, cmdArgs...)
+	}
+
 	cmd.Dir = binDir
 	cmd.Env = append(os.Environ(),
-		"PATH="+binDir+";"+os.Getenv("PATH"),
+		"ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true",
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"DBUS_SYSTEM_BUS_ADDRESS=unix:path=/dev/null", // Prevent sing-box from triggering NetworkManager Polkit route prompt
 	)
 	PrepareHiddenCmd(cmd)
 
@@ -134,6 +170,7 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 	a.bytesRx = 0
 	a.bytesTx = 0
 	a.lastError = ""
+	a.lockFile = lockFilePath
 	a.mu.Unlock()
 
 	a.log("info", fmt.Sprintf("Sing-box core started (PID: %d)", cmd.Process.Pid))
@@ -284,8 +321,10 @@ func (a *SingBoxAdapter) Stop() error {
 	}
 	cmd := a.cmd
 	tmpConfig := a.tmpConfig
+	lockFile := a.lockFile
 	a.cmd = nil
 	a.tmpConfig = ""
+	a.lockFile = ""
 	a.running = false
 	// Fix #2: Clear onExit before stopping — prevent false alarm on intentional stop
 	a.onExit = nil
@@ -296,6 +335,10 @@ func (a *SingBoxAdapter) Stop() error {
 	if cmd != nil && cmd.Process != nil {
 		pid := cmd.Process.Pid
 		a.log("info", fmt.Sprintf("Stopping Sing-box core (PID: %d)...", pid))
+		if lockFile != "" {
+			_ = os.Remove(lockFile)
+			time.Sleep(200 * time.Millisecond) // Give the script time to catch the deleted lockfile and kill the process gracefully
+		}
 		KillProcessTree(pid)
 	}
 	if tmpConfig != "" {

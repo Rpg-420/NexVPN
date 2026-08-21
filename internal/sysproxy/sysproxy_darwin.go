@@ -51,6 +51,7 @@ func setFullSystemProxyPlatform(httpPort int, socksPort int) error {
 		_ = exec.Command("networksetup", "-setwebproxystate", svc, "on").Run()
 		_ = exec.Command("networksetup", "-setsecurewebproxystate", svc, "on").Run()
 		_ = exec.Command("networksetup", "-setsocksfirewallproxystate", svc, "on").Run()
+		_ = exec.Command("networksetup", "-setproxybypassdomains", svc, "127.0.0.1", "localhost", "192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "*.ir").Run()
 	}
 
 	httpURL := fmt.Sprintf("http://127.0.0.1:%d", httpPort)

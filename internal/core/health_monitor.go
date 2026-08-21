@@ -1,7 +1,8 @@
-﻿package core
+package core
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net"
 	"net/http"
@@ -84,7 +85,15 @@ func (hm *HealthMonitor) Start(ctx context.Context) {
 }
 
 func (hm *HealthMonitor) probe() {
-	proxyUrl, _ := url.Parse("http://127.0.0.1:10808")
+	proxyScheme := "socks5"
+	port := hm.proxyPort
+	if port <= 0 {
+		port = 10808
+	}
+	if port == 10809 {
+		proxyScheme = "http"
+	}
+	proxyUrl, _ := url.Parse(fmt.Sprintf("%s://127.0.0.1:%d", proxyScheme, port))
 	transport := &http.Transport{
 		Proxy: http.ProxyURL(proxyUrl),
 		DialContext: (&net.Dialer{

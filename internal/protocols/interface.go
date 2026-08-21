@@ -33,6 +33,8 @@ func NewAdapter(protocol config.Protocol) (ProtocolAdapter, error) {
 		return NewSingBoxAdapter(), nil
 	case config.ProtocolOpenVPN:
 		return NewOpenVPNAdapter(), nil
+	case config.ProtocolAether:
+		return NewAetherAdapter(), nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
 	}

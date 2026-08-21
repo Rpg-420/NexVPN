@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -273,29 +272,5 @@ func testProfileRealDelay(ctx context.Context, p config.Profile, timeout time.Du
 		port = 443
 	}
 
-	// 1. First probe TLS Handshake on server:port
-	lat := parser.TCPPing(server, port, timeout)
-	if lat <= 0 {
-		return -1
-	}
-
-	// 2. Probe HTTP HEAD/GET generate_204 via cloudflare edge
-	start := time.Now()
-	client := &http.Client{
-		Timeout: timeout,
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://cp.cloudflare.com/generate_204", nil)
-	if err == nil {
-		resp, doErr := client.Do(req)
-		if doErr == nil && resp != nil {
-			resp.Body.Close()
-			realMs := int(time.Since(start).Milliseconds())
-			if realMs > 0 {
-				// Combined weighted latency
-				return (lat + realMs) / 2
-			}
-		}
-	}
-
-	return lat
+	return parser.SmartPing(server, port, p.Protocol, timeout)
 }

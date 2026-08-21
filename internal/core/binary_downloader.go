@@ -76,6 +76,19 @@ func GetCoreDownloadURL(coreKey string) string {
 		return "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
 	case "geosite":
 		return "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+	case "aether":
+		switch {
+		case osName == "windows" && arch == "amd64":
+			return "https://github.com/CluvexStudio/Aether/releases/download/v1.7.0/aether-windows-x86_64.zip"
+		case osName == "linux" && arch == "amd64":
+			return "https://github.com/CluvexStudio/Aether/releases/download/v1.7.0/aether-linux-x86_64.tar.gz"
+		case osName == "linux" && arch == "arm64":
+			return "https://github.com/CluvexStudio/Aether/releases/download/v1.7.0/aether-linux-arm64.tar.gz"
+		case osName == "darwin":
+			return "https://github.com/CluvexStudio/Aether/releases/download/v1.7.0/aether-macos-x86_64.tar.gz"
+		default:
+			return "https://github.com/CluvexStudio/Aether/releases/download/v1.7.0/aether-windows-x86_64.zip"
+		}
 	}
 
 	return ""
@@ -94,10 +107,25 @@ func CheckBinaries() map[string]BinaryInfo {
 			Filename:    exeName("sing-box"),
 			DownloadURL: GetCoreDownloadURL("singbox"),
 		},
+		"aether": {
+			Name:        "Aether Evasion Engine (MASQUE, gool, scan modes)",
+			Filename:    exeName("aether"),
+			DownloadURL: GetCoreDownloadURL("aether"),
+		},
 		"openvpn": {
 			Name:        "OpenVPN Native Client",
 			Filename:    exeName("openvpn"),
 			DownloadURL: "https://github.com/portapps/openvpn-portable/releases/download/2.5.8-19/openvpn-portable-win64.zip",
+		},
+		"geoip": {
+			Name:        "GeoIP Routing Database (Country IPs)",
+			Filename:    "geoip.dat",
+			DownloadURL: GetCoreDownloadURL("geoip"),
+		},
+		"geosite": {
+			Name:        "GeoSite Routing Database (Ads, Malware, Domains)",
+			Filename:    "geosite.dat",
+			DownloadURL: GetCoreDownloadURL("geosite"),
 		},
 	}
 
@@ -159,6 +187,12 @@ func queryCoreVersion(coreKey, binPath string) string {
 	if coreKey == "wireguard" {
 		return "v0.14.1 (Wintun Driver)"
 	}
+	if coreKey == "geoip" || coreKey == "geosite" {
+		if info, err := os.Stat(binPath); err == nil {
+			return info.ModTime().Format("2006-01-02")
+		}
+		return "Installed"
+	}
 
 	var cmd *exec.Cmd
 	switch coreKey {
@@ -168,6 +202,8 @@ func queryCoreVersion(coreKey, binPath string) string {
 		cmd = exec.Command(binPath, "version")
 	case "openvpn":
 		cmd = exec.Command(binPath, "--version")
+	case "aether":
+		return "v1.7.0"
 	default:
 		return "Installed"
 	}
@@ -315,6 +351,7 @@ func extractZip(data []byte, targetDir, coreKey string) error {
 			_, _ = io.Copy(out, rc)
 			out.Close()
 			rc.Close()
+			_ = os.Chmod(destPath, 0755)
 		}
 	}
 	return nil
@@ -351,12 +388,19 @@ func extractTarGz(data []byte, targetDir, coreKey string) error {
 			}
 			_, _ = io.Copy(out, tr)
 			out.Close()
+			_ = os.Chmod(destPath, 0755)
 		}
 	}
 	return nil
 }
 
 func exeName(name string) string {
+	if name == "geoip" {
+		return "geoip.dat"
+	}
+	if name == "geosite" {
+		return "geosite.dat"
+	}
 	if runtime.GOOS == "windows" {
 		return name + ".exe"
 	}

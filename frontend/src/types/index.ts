@@ -1,6 +1,6 @@
-export type ProfileCategory = 'v2ray' | 'wireguard_warp' | 'openvpn'
+export type ProfileCategory = 'v2ray' | 'wireguard_warp' | 'openvpn' | 'aether'
 
-export type Protocol = 'wireguard' | 'xray' | 'singbox' | 'openvpn' | 'hysteria2' | 'warp'
+export type Protocol = 'wireguard' | 'xray' | 'singbox' | 'openvpn' | 'hysteria2' | 'warp' | 'aether'
 
 export interface Profile {
   id: string

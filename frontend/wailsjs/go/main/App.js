@@ -170,6 +170,10 @@ export function GetLogs() {
   return window['go']['main']['App']['GetLogs']();
 }
 
+export function GetMobileRemoteInfo() {
+  return window['go']['main']['App']['GetMobileRemoteInfo']();
+}
+
 export function GetProfileByID(arg1) {
   return window['go']['main']['App']['GetProfileByID'](arg1);
 }

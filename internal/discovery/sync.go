@@ -2,17 +2,25 @@ package discovery
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"strings"
 	"time"
 
 	"nexvpn/internal/config"
 )
 
 const (
-	SyncBroadcastPort = 10815
-	SyncMagicHeader   = "NEXVPN_P2P_SYNC_V1:"
+	SyncBroadcastPort = 10816
+	SyncMagicHeader   = "NEXVPN_P2P_SYNC_V2:"
+	syncSharedKeyPass = "NexVPN-LAN-P2P-Secure-Key-v2"
 )
 
 type SyncPayload struct {
@@ -21,7 +29,54 @@ type SyncPayload struct {
 	Profiles   []config.Profile `json:"profiles"`
 }
 
-// BroadcastProfilesToLAN broadcasts selected profiles to local network
+func deriveSyncKey() []byte {
+	k := sha256.Sum256([]byte(syncSharedKeyPass))
+	return k[:]
+}
+
+// encryptSyncPayload encrypts payload bytes with AES-GCM
+func encryptSyncPayload(data []byte) (string, error) {
+	key := deriveSyncKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// decryptSyncPayload decrypts an AES-GCM encrypted payload string
+func decryptSyncPayload(b64Str string) ([]byte, error) {
+	raw, err := base64.StdEncoding.DecodeString(b64Str)
+	if err != nil {
+		return nil, err
+	}
+	key := deriveSyncKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(raw) < nonceSize {
+		return nil, fmt.Errorf("payload too short")
+	}
+	nonce, ciphertext := raw[:nonceSize], raw[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
+}
+
+// BroadcastProfilesToLAN broadcasts selected profiles securely to local network
 func BroadcastProfilesToLAN(profiles []config.Profile, deviceName string) (int, error) {
 	if len(profiles) == 0 {
 		return 0, fmt.Errorf("no profiles to broadcast")
@@ -42,7 +97,12 @@ func BroadcastProfilesToLAN(profiles []config.Profile, deviceName string) (int, 
 		return 0, err
 	}
 
-	msg := []byte(SyncMagicHeader + string(bytes))
+	encPayload, err := encryptSyncPayload(bytes)
+	if err != nil {
+		return 0, err
+	}
+
+	msg := []byte(SyncMagicHeader + encPayload)
 
 	// Broadcast address
 	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("255.255.255.255:%d", SyncBroadcastPort))
@@ -98,11 +158,14 @@ func ListenForNearbyProfiles(ctx context.Context, timeout time.Duration) (*SyncP
 		}
 
 		data := string(buf[:n])
-		if len(data) > len(SyncMagicHeader) && data[:len(SyncMagicHeader)] == SyncMagicHeader {
-			jsonStr := data[len(SyncMagicHeader):]
-			var payload SyncPayload
-			if err := json.Unmarshal([]byte(jsonStr), &payload); err == nil && len(payload.Profiles) > 0 {
-				return &payload, nil
+		if len(data) > len(SyncMagicHeader) && strings.HasPrefix(data, SyncMagicHeader) {
+			encContent := data[len(SyncMagicHeader):]
+			decrypted, err := decryptSyncPayload(encContent)
+			if err == nil {
+				var payload SyncPayload
+				if err := json.Unmarshal(decrypted, &payload); err == nil && len(payload.Profiles) > 0 {
+					return &payload, nil
+				}
 			}
 		}
 	}

@@ -42,5 +42,33 @@ X-GNOME-Autostart-enabled=true
 		}
 	}
 
+	if runtime.GOOS == "darwin" {
+		launchAgentsDir := filepath.Join(homeDir, "Library", "LaunchAgents")
+		plistFile := filepath.Join(launchAgentsDir, "dev.nexvpn.plist")
+
+		if enable {
+			_ = os.MkdirAll(launchAgentsDir, 0755)
+			content := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.nexvpn</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>%s</string>
+        <string>--minimized</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>`, execPath)
+			return os.WriteFile(plistFile, []byte(content), 0644)
+		} else {
+			_ = os.Remove(plistFile)
+			return nil
+		}
+	}
+
 	return nil
 }

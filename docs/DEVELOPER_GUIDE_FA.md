@@ -1,96 +1,50 @@
-# راهنمای جامع توسعه‌دهندگان و معماری نکس‌وی‌پی‌ان (NexVPN Pro v1.1.0)
+# راهنمای توسعه‌دهندگان NexVPN Pro
 
-این سند فنی شامل معماری سیستم، ساختار کدبیس گو (Go)، فرانت‌اند ری‌اکت و تایپ‌اسکریپت، هندلرها و بایندینگ‌های Wails v2، پارسر پروتکل‌ها و نحوه کامپایل پروژه می‌باشد.
+پروژه NexVPN با استفاده از **Wails**، **React** و زبان **Go** توسعه یافته است. معماری این برنامه کاملاً ماژولار بوده و برای پشتیبانی از چندین موتور مسیریابی مختلف و یکپارچگی عمیق با سیستم‌عامل‌های مختلف طراحی شده است.
 
----
+## ساختار پوشه‌ها
+- `frontend/`: کدهای فرانت‌اند (React + TypeScript).
+- `internal/`: منطق بک‌اند (Go).
+  - `config/`: مدیریت استیت‌ها، ذخیره‌سازی و ساختار داده‌ها.
+  - `core/`: موتور اصلی (`engine.go`, `dispatcher.go`)، شروع خودکار، کیل‌سوئیچ و مدیریت باینری‌ها.
+  - `parser/`: پارسرهای Split tunneling، تولیدکنندگان کانفیگ و سیستم پزشک شبکه (`doctor.go`).
+  - `protocols/`: آداپتورهای پروتکل‌ها (`interface.go`, `singbox.go`, `aether.go`, `openvpn.go`).
+  - `sysproc/`: مدیریت پروسس‌ها در سطح سیستم‌عامل و Job Objectها (برای ویندوز).
+  - `sysproxy/`: تغییر پروکسی سیستمی (`networksetup` در مک، رجیستری در ویندوز، `gsettings`/D-Bus در لینوکس).
+- `install_linux.sh`: اسکریپت کانفیگ Polkit و `setcap` برای اجرای بدون پسورد در لینوکس.
 
-## 🏛️ ساختار معماری کلان نرم‌افزار
-
-نکس‌وی‌پی‌ان بر پایه معماری ماژولار سه‌لایه طراحی شده است:
-
-1. **لایه فرانت‌اند (UI & State Management)**:
-   * توسعه داده شده با **React 18**، **TypeScript** و **TailwindCSS**.
-   * پشتیبانی کامل و اصولی از زبان‌های راست‌چین (فارسی با فونت Vazirmatn) و چپ‌چین (انگلیسی با فونت Inter).
-   * رسم نمودارها و گیج‌های ترافیک با **Recharts** و آیکون‌های متحرک با **Lucide React**.
-2. **پل ارتباطی و بایندینگ‌های سیستمی (Wails v2 RPC)**:
-   * فراخوانی توابع Native گو از طریق پراکسی خودکار JavaScript (`frontend/src/wailsjs/go/main/App`).
-3. **لایه بک‌اند و کنترل هسته‌ها (Go Core Services)**:
-   * ماژول `internal/core`: مدیریت چرخه حیات پروسه‌ها، محاسبه لحظه‌ای پهنای باند و کیل‌سوییچ.
-   * ماژول `internal/parser`: دیکود کردن انواع کانفیگ‌های VLESS، VMess، Trojan، SS، WireGuard و OVPN و تولید فایل‌های کانفیگ Sing-box و Xray.
-   * ماژول `internal/sysproxy`: مدیریت کارت شبکه مجازی Wintun، رجیستری ویندوز (WinINet) و تنظیمات پراکسی شبکه.
-
----
-
-## 📂 ساختار پوشه‌ها و فایل‌های پروژه
-
+## معماری موتورهای چند-هسته‌ای (Multi-Core)
+برنامه NexVPN به یک هسته ثابت محدود نیست. در فایل `internal/protocols/interface.go`، اینترفیس `ProtocolAdapter` به این شکل تعریف شده است:
+```go
+type ProtocolAdapter interface {
+    Name() config.Protocol
+    Start(ctx context.Context, configContent string) error
+    Stop() error
+    GetStats() (int64, int64, error)
+    IsRunning() bool
+    SetLogger(fn LoggerFunc)
+    SetOnExit(fn OnExitFunc)
+}
 ```
-.
-├── app.go                  # توابع اصلی ارتباطی بین فرانت‌اند و بک‌اند
-├── app_extra.go            # توابع کمکی (تست سرعت، پینگ هوشمند، عیب‌یابی شبکه)
-├── main.go                 # نقطه ورود برنامه و ترپ سیگنال‌های خروج امن
-├── build.ps1               # اسکریپت بیلد پروداکشن (Vite + go-winres + Wails)
-├── dev.ps1                 # اسکریپت اجرای محیط توسعه
-├── wails.json              # مانیفست و پیکربندی اصلی فریم‌ورک Wails
-├── winres/                 # فایل‌های منابع بومی ویندوز (آیکون، مانیفست و ورژن)
-│   ├── winres.json         # تعریف رزولوشن‌های آیکون و مشخصات سازگاری با مانیتورهای High-DPI
-│   └── icon.ico            # آیکون چند لایه ویندوز (از ۱۶ تا ۲۵۶ پیکسل)
-├── bin/                    # باینری‌ها و هسته‌های اجرایی پروتکل‌ها
-│   ├── sing-box.exe        # هسته قدرتمند Sing-Box (مخصوص TUN و Multi-Hop)
-│   ├── xray.exe            # هسته Xray-Core (مخصوص VLESS Reality و WS/gRPC)
-│   ├── openvpn.exe         # کلاینت رسمی OpenVPN
-│   ├── wintun.dll          # درایور کارت شبکه مجازی Wintun
-│   ├── geoip.dat           # دیتابیس لوکیشن آی‌پی‌ها
-│   └── geosite.dat         # دیتابیس دسته‌بندی دامنه‌ها
-├── docs/                   # مستندات و راهنماهای کاربری و فنی
-├── internal/               # پکیج‌های اختصاصی گو
-│   ├── config/             # مدیریت ذخیره‌سازی پروفایل‌ها و فایل‌های json دیتابیس
-│   ├── core/               # مدیریت دیمون‌ها و کنترل ترافیک شبکه
-│   ├── parser/             # مبدل‌ها و پارسرهای کانفیگ پروتکل‌ها
-│   └── sysproxy/           # مدیریت پروکسی سیستمی و درایورهای شبکه
-└── frontend/               # کدهای فرانت‌اند ری‌اکت و وب‌ویو
-    ├── src/
-    │   ├── components/     # تمامی پنجره‌های پاپ‌آپ و ماژول‌ها (فرگمنت، گیمینگ، نشت DNS و...)
-    │   ├── lib/            # کلاینت API، افکت‌های صوتی، دیکشنری دوزبانه (i18n)
-    │   ├── pages/          # صفحات اصلی برنامه (داشبورد، سرورها، تنظیمات، لاگ‌ها)
-    │   └── types/          # تایپ‌ها و اینترفیس‌های تایپ‌اسکریپت
-    └── package.json        # پکیج‌های فرانت‌اند
+هنگامی که کاربر روی اتصال کلیک می‌کند، فایل `engine.go` نوع پروتکل را تشخیص داده و آن را به آداپتور مربوطه (`AetherAdapter`, `SingBoxAdapter` یا `OpenVPNAdapter`) محول می‌کند.
+
+## افزودن یک هسته/پروتکل جدید
+۱. **ایجاد آداپتور**: فایل `internal/protocols/mycore.go` را بسازید و اینترفیس `ProtocolAdapter` را پیاده‌سازی کنید.
+۲. **ثبت آداپتور**: آن را به `internal/protocols/interface.go` و `internal/core/dispatcher.go` اضافه کنید.
+۳. **فرانت‌اند**: تایپ‌های TypeScript را در `frontend/src/types/index.ts` بروزرسانی کرده و یک صفحه React برای مدیریت کانفیگ‌های آن بسازید.
+۴. **مدیریت باینری**: لینک دانلود و بررسی هش باینری هسته را به `internal/core/binary_downloader.go` اضافه کنید.
+
+## یکپارچه‌سازی Polkit در لینوکس
+برای ایجاد TUN و دستکاری iptables در لینوکس معمولاً به دسترسی روت نیاز است. برای جلوگیری از نمایش مداوم پنجره درخواست پسورد (sudo/GNOME) در NexVPN از روش‌های زیر استفاده شده است:
+۱. استفاده از قابلیت‌های کرنل (`setcap cap_net_admin,cap_net_bind_service=+ep`) برای باینری‌ها.
+۲. ایجاد فایل Polkit Policy (`/usr/share/polkit-1/actions/dev.nexvpn.policy`) که مسیر دقیق باینری‌ها را برای اجرای Passwordless مجاز می‌کند.
+۳. پاک کردن متغیر `DBUS_SYSTEM_BUS_ADDRESS` قبل از اجرای هسته‌ها (مانند sing-box) تا از تریگر شدن هشدارهای امنیتی NetworkManager D-Bus جلوگیری شود و سیستم با آرامش کامل از `netlink` استفاده کند.
+
+## بیلد و توسعه
+```bash
+# محیط توسعه با قابلیت Hot-Reload
+wails dev
+
+# بیلد نسخه نهایی (Production)
+wails build -clean -platform windows/amd64,linux/amd64,darwin/arm64
 ```
-
----
-
-## 🛠️ مراحل بیلد و راه‌اندازی برای توسعه‌دهندگان
-
-### پیش‌نیازها
-* زبان برنامه‌نویسی Go نسخه `1.22` به بالا
-* محیط Node.js نسخه `18` به بالا و `npm`
-* ابزار Wails CLI:
-  ```powershell
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
-  ```
-* ابزار go-winres (جهت کامپایل آیکون ویندوز):
-  ```powershell
-  go install github.com/tc-hib/go-winres@latest
-  ```
-
-### اجرای محیط توسعه (Hot-Reload)
-```powershell
-.\dev.ps1
-```
-
-### ساخت فایل اجرایی پروداکشن (Production Build)
-```powershell
-.\build.ps1
-```
-فایل خروجی نهایی به صورت کامپایل شده و آماده استفاده در آدرس زیر قرار می‌گیرد:
-```
-build\bin\NexVPN.exe
-```
-
----
-
-## 🚀 راهنمای مشارکت (Contributing)
-
-ما از تمامی مشارکت‌ها، گزارش باگ‌ها و ارتقای هسته پروژه استقبال می‌کنیم:
-1. پروژه را فورک (Fork) کنید.
-2. برنچ جدیدی برای قابلیت خود بسازید (`git checkout -b feature/new-capability`).
-3. تغییرات خود را کامیت کرده و پول‌ریکوئست (PR) ارسال نمایید.

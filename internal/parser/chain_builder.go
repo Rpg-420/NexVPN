@@ -123,14 +123,27 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 	// Routing rules
 	routeRules := []map[string]interface{}{
 		{"protocol": []string{"dns"}, "outbound": "dns-out"},
-		{"ip_cidr": []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"}, "outbound": "direct"},
+		{"ip_cidr": []string{"192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16"}, "outbound": "direct"},
 	}
 
 	if settings.RoutingMode == "bypass_iran" || settings.RoutingMode == "direct_iran_block_ads" || settings.RoutingMode == "" {
 		routeRules = append(routeRules,
-			map[string]interface{}{"rule_set": []string{"geoip-ir"}, "outbound": "direct"},
-			map[string]interface{}{"rule_set": []string{"geosite-ir"}, "outbound": "direct"},
+			map[string]interface{}{
+				"domain_suffix": []string{".ir"},
+				"outbound":      "direct",
+			},
+			map[string]interface{}{
+				"domain_keyword": []string{"telewebion", "digikala", "snapp", "shaparak", "divar", "torob", "aparat", "varzesh3", "bank", "bmi.ir", "sep.ir", "shaparak.ir", "irib"},
+				"outbound":       "direct",
+			},
 		)
+	}
+
+	if settings.BlockAds || settings.RoutingMode == "direct_iran_block_ads" {
+		routeRules = append(routeRules, map[string]interface{}{
+			"domain_keyword": []string{"doubleclick", "adservice", "googleadservices", "adnxs", "adroll", "analytics", "applovin", "unityads", "vungle", "admob"},
+			"outbound":       "block",
+		})
 	}
 
 	fullConfig := map[string]interface{}{
@@ -142,9 +155,10 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
 				{"tag": "dns-direct", "address": "local", "detour": "direct"},
-				{"tag": "dns-remote", "address": "https://1.1.1.1/dns-query", "address_resolver": "dns-direct", "detour": "proxy"},
+				{"tag": "dns-remote", "address": "udp://1.1.1.1", "address_resolver": "dns-direct", "detour": "proxy"},
 			},
 			"rules": []map[string]interface{}{
+				{"domain_suffix": []string{".ir"}, "server": "dns-direct"},
 				{"outbound": "direct", "server": "dns-direct"},
 			},
 			"final":    "dns-remote",
