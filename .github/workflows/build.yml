@@ -28,15 +28,17 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
 
-      - name: Install Frontend Dependencies
+      - name: Install & Build Frontend
         working-directory: frontend
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       - name: Test Go Packages
         run: go test ./...
 
       - name: Build Windows Binary
-        run: wails build -platform windows/amd64
+        run: wails build -s -platform windows/amd64
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -70,12 +72,14 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
 
-      - name: Install Frontend Dependencies
+      - name: Install & Build Frontend
         working-directory: frontend
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       - name: Build Linux Binary
-        run: wails build -platform linux/amd64 -tags webkit2_41
+        run: wails build -s -platform linux/amd64 -tags webkit2_41
 
       - name: Upload Linux Artifact
         uses: actions/upload-artifact@v4

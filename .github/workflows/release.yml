@@ -51,9 +51,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
-      - name: Install Frontend Dependencies
+      - name: Install & Build Frontend
         working-directory: ./frontend
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       - name: Install Wails CLI
         run: |
@@ -98,9 +100,11 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           if ("${{ matrix.arch }}" -eq "386") {
-            wails build -clean -platform windows/${{ matrix.goarch }}
+            wails build -s -clean -platform windows/${{ matrix.goarch }}
+          } elseif ("${{ matrix.arch }}" -eq "arm64") {
+            wails build -s -clean -platform windows/${{ matrix.goarch }}
           } else {
-            wails build -clean -platform windows/${{ matrix.goarch }} -nsis
+            wails build -s -clean -platform windows/${{ matrix.goarch }} -nsis
           }
 
       - name: Package Portable ZIP
@@ -169,9 +173,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config libayatana-appindicator3-dev
 
-      - name: Install Frontend Dependencies
+      - name: Install & Build Frontend
         working-directory: ./frontend
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
@@ -195,7 +201,7 @@ jobs:
         env:
           GOARCH: ${{ matrix.goarch }}
         run: |
-          wails build -clean -platform linux/${{ matrix.goarch }} -tags webkit2_41
+          wails build -s -clean -platform linux/${{ matrix.goarch }} -tags webkit2_41
 
       - name: Package Linux Archive (.tar.gz & .deb)
         run: |
@@ -274,11 +280,15 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
-      - name: Install Frontend Dependencies
+      - name: Install & Build Frontend
         working-directory: ./frontend
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       - name: Install Wails CLI
+        env:
+          CGO_ENABLED: 1
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
 
       - name: Prepare macOS Core Bundles
@@ -291,7 +301,7 @@ jobs:
 
       - name: Build macOS Universal App
         run: |
-          wails build -clean -platform darwin/universal
+          wails build -s -clean -platform darwin/universal
 
       - name: Package macOS Artifacts (.dmg & .zip)
         run: |
