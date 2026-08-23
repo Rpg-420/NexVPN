@@ -59,7 +59,7 @@ jobs:
 
       - name: Install Wails CLI
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
       - name: Prepare Windows Core Bundles
         shell: pwsh
         run: |
@@ -175,7 +175,7 @@ jobs:
         run: npm ci
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
 
       - name: Prepare Linux Core Bundles
         run: |
@@ -279,7 +279,7 @@ jobs:
         run: npm ci
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.3
 
       - name: Prepare macOS Core Bundles
         run: |
