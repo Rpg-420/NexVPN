@@ -187,12 +187,9 @@ export default function LANShareModal({ isOpen, onClose }: Props) {
         {/* QR Code Section */}
         {showQR && (
           <div className="p-4 bg-slate-950/90 rounded-2xl border border-slate-800 flex flex-col items-center gap-3 animate-in fade-in duration-200">
-            <div
-              className="p-3 bg-white rounded-xl shadow-inner inline-block"
-              dangerouslySetInnerHTML={{
-                __html: generateQRCodeSVG(`http://${localIP}:10809`),
-              }}
-            />
+            <div className="p-3 bg-white rounded-xl shadow-inner inline-block">
+              <img src={generateQRCodeSVG(`http://${localIP}:10809`)} alt="QR Code" className="w-[180px] h-[180px]" />
+            </div>
             <span className="text-[11px] font-mono text-slate-400">
               Scan with phone camera or proxy app: http://{localIP}:10809
             </span>

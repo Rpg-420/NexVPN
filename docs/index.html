@@ -3,12 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexVPN Pro | عبور از محدودیت‌ها - Next-Gen Anti-Censorship</title>
-    <meta name="description" content="NexVPN Pro is an advanced multi-protocol VPN and anti-censorship client. | قوی‌ترین کلاینت ضد فیلترینگ چند-هسته‌ای">
+    <title>NexVPN Pro | پلتفرم چند‌هسته‌ای ضد فیلترینگ - Next-Gen Anti-Censorship & Privacy Client</title>
+    <meta name="description" content="NexVPN Pro is an advanced multi-core anti-censorship desktop client unifying Sing-box, Xray, Aether MASQUE, WireGuard, OpenVPN, and Psiphon. | کلاینت پیشرفته چند‌هسته‌ای برای عبور از شدیدترین محدودیت‌های اینترنتی.">
     
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter & Vazirmatn -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     
+    <!-- FontAwesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -19,117 +27,204 @@
                         en: ['Inter', 'sans-serif'],
                     },
                     colors: {
-                        dark: '#030712',
-                        card: 'rgba(17, 24, 39, 0.65)',
-                        primary: '#00F0FF',
-                        purple: '#A855F7',
-                        emerald: '#10B981',
+                        dark: {
+                            950: '#030712',
+                            900: '#0B0F19',
+                            800: '#111827',
+                            700: '#1F2937'
+                        },
+                        cyan: {
+                            400: '#22D3EE',
+                            500: '#00F0FF',
+                            600: '#0891B2'
+                        },
+                        purple: {
+                            400: '#C084FC',
+                            500: '#A855F7',
+                            600: '#9333EA'
+                        },
+                        emerald: {
+                            400: '#34D399',
+                            500: '#10B981',
+                            600: '#059669'
+                        }
                     },
                     animation: {
-                        'blob': 'blob 7s infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                         'float': 'float 6s ease-in-out infinite',
+                        'blob': 'blob 8s infinite',
+                        'glow': 'glow 3s ease-in-out infinite alternate',
                     },
                     keyframes: {
-                        blob: {
-                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
-                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
-                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
-                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
-                        },
                         float: {
                             '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-20px)' },
+                            '50%': { transform: 'translateY(-12px)' },
+                        },
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -40px) scale(1.08)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.92)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        glow: {
+                            '0%': { filter: 'drop-shadow(0 0 15px rgba(0,240,255,0.4))' },
+                            '100%': { filter: 'drop-shadow(0 0 25px rgba(168,85,247,0.7))' }
                         }
                     }
                 }
             }
         }
     </script>
+    
     <style>
-        body { background-color: #030712; color: #F3F4F6; overflow-x: hidden; }
-        
+        body {
+            background-color: #030712;
+            color: #F3F4F6;
+            overflow-x: hidden;
+        }
+
+        /* Glassmorphism Classes */
         .glass {
-            background: rgba(17, 24, 39, 0.4);
+            background: rgba(11, 15, 25, 0.7);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .glass-card {
-            background: linear-gradient(145deg, rgba(31, 41, 55, 0.4) 0%, rgba(17, 24, 39, 0.8) 100%);
-            backdrop-filter: blur(10px);
+            background: linear-gradient(135deg, rgba(31, 41, 55, 0.45) 0%, rgba(11, 15, 25, 0.85) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .glass-card:hover {
-            transform: translateY(-10px);
-            border-color: rgba(168, 85, 247, 0.4);
-            box-shadow: 0 20px 40px -10px rgba(168, 85, 247, 0.15);
+            transform: translateY(-6px);
+            border-color: rgba(0, 240, 255, 0.4);
+            box-shadow: 0 16px 32px -8px rgba(0, 240, 255, 0.18), 0 0 20px 0 rgba(168, 85, 247, 0.15);
+        }
+
+        .glass-card-purple:hover {
+            border-color: rgba(168, 85, 247, 0.5);
+            box-shadow: 0 16px 32px -8px rgba(168, 85, 247, 0.25);
+        }
+
+        .glass-card-emerald:hover {
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 16px 32px -8px rgba(16, 185, 129, 0.25);
         }
 
         .text-gradient {
-            background: linear-gradient(to right, #00F0FF, #A855F7);
+            background: linear-gradient(135deg, #00F0FF 0%, #A855F7 50%, #EC4899 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .text-gradient-alt {
-            background: linear-gradient(to right, #A855F7, #10B981);
+        .text-gradient-cyan {
+            background: linear-gradient(135deg, #00F0FF 0%, #3B82F6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        /* Language display logic */
+        .text-gradient-emerald {
+            background: linear-gradient(135deg, #10B981 0%, #00F0FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Language Visibility Rules */
         [lang="fa"] .en-only { display: none !important; }
         [lang="en"] .fa-only { display: none !important; }
-        
         [lang="en"] { font-family: 'Inter', sans-serif; }
         [lang="fa"] { font-family: 'Vazirmatn', sans-serif; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #030712; }
+        ::-webkit-scrollbar-thumb { background: #1F2937; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #374151; }
+
+        /* Glowing dots */
+        .cyber-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
     </style>
 </head>
-<body class="antialiased relative selection:bg-purple-500/30">
+<body class="antialiased relative selection:bg-cyan-500/30 selection:text-cyan-200">
 
-    <!-- Background Orbs -->
-    <div class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
-        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob"></div>
-        <div class="absolute top-[20%] right-[-10%] w-96 h-96 bg-cyan-500/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob animation-delay-2000"></div>
-        <div class="absolute bottom-[-20%] left-[20%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full mix-blend-screen filter blur-[120px] animate-blob animation-delay-4000"></div>
+    <!-- Ambient Glowing Background Orbs -->
+    <div class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none cyber-grid">
+        <div class="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-purple-600/15 rounded-full filter blur-[140px] animate-blob"></div>
+        <div class="absolute top-[25%] left-[-10%] w-[550px] h-[550px] bg-cyan-500/15 rounded-full filter blur-[140px] animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[-10%] right-[15%] w-[650px] h-[650px] bg-emerald-500/10 rounded-full filter blur-[160px] animate-blob animation-delay-4000"></div>
     </div>
 
-    <!-- Navigation -->
-    <nav class="fixed w-full z-50 glass border-b-0">
+    <!-- Top Sticky Glass Navigation Bar -->
+    <nav class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/10 transition-all duration-300">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-20">
-                <div class="flex items-center gap-3 cursor-pointer" onclick="window.scrollTo(0,0)">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-600 flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.5)]">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    </div>
-                    <span class="font-black text-2xl tracking-tight text-white en-only">Nex<span class="text-primary">VPN</span></span>
-                    <span class="font-black text-2xl tracking-tight text-white fa-only">نکس<span class="text-primary">وی‌پی‌ان</span></span>
-                </div>
                 
-                <div class="hidden lg:flex items-center space-x-8 rtl:space-x-reverse">
-                    <a href="#features" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide fa-only">ویژگی‌ها</a>
-                    <a href="#engines" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide fa-only">موتورها</a>
-                    <a href="#docs" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide fa-only">مستندات</a>
-                    
-                    <a href="#features" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide en-only">Features</a>
-                    <a href="#engines" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide en-only">Engines</a>
-                    <a href="#docs" class="text-gray-300 hover:text-white transition font-medium text-sm tracking-wide en-only">Docs</a>
+                <!-- Brand Logo & Name -->
+                <div class="flex items-center gap-3 cursor-pointer" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-400 via-purple-600 to-pink-500 flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-transform hover:scale-105">
+                        <i class="fa-solid fa-bolt text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-black text-2xl tracking-tight text-white flex items-center gap-1.5">
+                            <span>Nex<span class="text-cyan-400">VPN</span></span>
+                            <span class="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500/30 to-cyan-500/30 border border-purple-500/40 text-purple-300">PRO</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 font-mono -mt-1 fa-only">نسخه ۱.۳.۵ • چندهسته‌ای</p>
+                        <p class="text-[10px] text-gray-400 font-mono -mt-1 en-only">v1.3.5 • Multi-Core Engine</p>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-4">
-                    <!-- Language Toggle -->
-                    <button id="langToggle" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition text-gray-300">
+                <!-- Desktop Navigation Menu -->
+                <div class="hidden lg:flex items-center space-x-7 rtl:space-x-reverse font-medium text-sm text-gray-300">
+                    <a href="#features" class="hover:text-cyan-400 transition-colors py-1">
+                        <span class="fa-only">ویژگی‌ها</span><span class="en-only">Features</span>
+                    </a>
+                    <a href="#engines" class="hover:text-cyan-400 transition-colors py-1">
+                        <span class="fa-only">موتورهای هسته</span><span class="en-only">Core Engines</span>
+                    </a>
+                    <a href="#tools" class="hover:text-cyan-400 transition-colors py-1">
+                        <span class="fa-only">ابزارهای آنلاین</span><span class="en-only">Live Tools</span>
+                    </a>
+                    <a href="#download" class="hover:text-cyan-400 transition-colors py-1">
+                        <span class="fa-only">دانلود</span><span class="en-only">Download</span>
+                    </a>
+                    <a href="#guides" class="hover:text-cyan-400 transition-colors py-1">
+                        <span class="fa-only">آموزش و راهنما</span><span class="en-only">Guides</span>
+                    </a>
+                    <a href="#faq" class="hover:text-cyan-400 transition-colors py-1">
+                        <span class="fa-only">عیب‌یابی و FAQ</span><span class="en-only">FAQ & Help</span>
+                    </a>
+                </div>
+
+                <!-- Action Controls: Language Toggle & GitHub Link -->
+                <div class="flex items-center gap-3">
+                    <!-- Language Toggle Button -->
+                    <button id="langToggleBtn" class="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-gray-200 transition-all hover:border-cyan-400/50 cursor-pointer">
+                        <i class="fa-solid fa-globe text-cyan-400"></i>
                         <span class="fa-only">English</span>
                         <span class="en-only">فارسی</span>
                     </button>
-                    
-                    <a href="https://github.com/Rpg-420/NexVPN" target="_blank" class="hidden sm:flex items-center gap-2 px-5 py-2.5 rounded-full bg-white text-dark hover:bg-gray-200 transition font-bold text-sm shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
-                        <span class="fa-only">گیت‌هاب</span>
-                        <span class="en-only">GitHub</span>
+
+                    <!-- GitHub Button -->
+                    <a href="https://github.com/Rpg-420/NexVPN" target="_blank" rel="noopener noreferrer" class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-700 hover:to-gray-800 border border-white/10 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:border-white/20">
+                        <i class="fa-brands fa-github text-base"></i>
+                        <span>GitHub</span>
+                    </a>
+
+                    <!-- Direct Download CTA Header Button -->
+                    <a href="#download" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-dark-950 font-black text-xs transition-all shadow-[0_0_20px_rgba(0,240,255,0.35)] hover:scale-105">
+                        <i class="fa-solid fa-download"></i>
+                        <span class="fa-only">دریافت برنامه</span>
+                        <span class="en-only">Get NexVPN</span>
                     </a>
                 </div>
             </div>
@@ -137,193 +232,268 @@
     </nav>
 
     <!-- Hero Section -->
-    <main class="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+    <header class="relative pt-32 pb-20 lg:pt-44 lg:pb-32 overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
             
-            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border-purple-500/30 text-sm text-purple-300 font-medium mb-8 animate-float">
-                <span class="flex h-2 w-2 rounded-full bg-purple-500 shadow-[0_0_8px_#A855F7]"></span>
-                <span class="fa-only">نسخه ۱.۳.۴ منتشر شد! سریع‌تر و پایدارتر از همیشه</span>
-                <span class="en-only">Version 1.3.4 is out! Faster and more stable.</span>
+            <!-- Animated Badge -->
+            <div class="inline-flex items-center gap-2.5 px-4 py-2 rounded-full glass border-cyan-500/30 text-xs font-semibold text-cyan-300 mb-8 animate-float">
+                <span class="flex h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_10px_#00F0FF] animate-ping"></span>
+                <span class="fa-only">نسخه ۱.۳.۵ منتشر شد! سریع‌تر، هوشمندتر و پایدارتر از همیشه</span>
+                <span class="en-only">Version 1.3.5 is Out! Faster, Smarter & More Resilient Than Ever.</span>
             </div>
 
-            <!-- Persian Title -->
-            <h1 class="fa-only text-5xl sm:text-6xl md:text-7xl font-black tracking-tight mb-8 leading-[1.15]">
-                اینترنت آزاد و بدون مرز با<br>
-                <span class="text-gradient">معماری چند-هسته‌ای</span>
+            <!-- Main Persian Hero Headline -->
+            <h1 class="fa-only text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight mb-8 leading-[1.25]">
+                عبور از سخت‌ترین سدهای فیلترینگ با <br>
+                <span class="text-gradient">۵ هسته مسیریابی هوشمند</span>
             </h1>
-            <p class="fa-only mt-4 max-w-3xl mx-auto text-xl md:text-2xl text-gray-400 mb-12 font-medium leading-relaxed">
-                NexVPN Pro ترکیبی قدرتمند از هسته‌های Aether (MASQUE)، Sing-box و OpenVPN است. یک کلاینت فوق‌پیشرفته دسکتاپ که برای دور زدن خشن‌ترین سیستم‌های فیلترینگ (DPI) طراحی شده است.
+
+            <!-- Main English Hero Headline -->
+            <h1 class="en-only text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight mb-8 leading-[1.15]">
+                Shatter Every Firewall Barrier With <br>
+                <span class="text-gradient">5 Multi-Core Routing Engines</span>
+            </h1>
+
+            <!-- Persian Subtitle -->
+            <p class="fa-only max-w-3xl mx-auto text-lg sm:text-xl text-gray-300 mb-12 font-normal leading-relaxed">
+                ترکیب بی‌نظیر <span class="text-cyan-400 font-semibold">Sing-box</span>، <span class="text-purple-400 font-semibold">Xray-core</span>، <span class="text-pink-400 font-semibold">Aether MASQUE (HTTP/3)</span>، <span class="text-emerald-400 font-semibold">WireGuard / WARP</span> و <span class="text-amber-400 font-semibold">OpenVPN</span> در یک کلاینت دسکتاپ سبک، مدرن، بدون قطعی و با کیل‌سوئیچ لایه صفر.
             </p>
 
-            <!-- English Title -->
-            <h1 class="en-only text-5xl sm:text-6xl md:text-8xl font-black tracking-tight mb-8 leading-[1.1]">
-                Unrestricted Internet.<br>
-                <span class="text-gradient">Multi-Core Routing.</span>
-            </h1>
-            <p class="en-only mt-4 max-w-3xl mx-auto text-xl md:text-2xl text-gray-400 mb-12 leading-relaxed">
-                NexVPN Pro unifies Aether (MASQUE/gool), Sing-box (V2Ray), and OpenVPN into an ultimate desktop anti-censorship toolkit designed to shatter severe DPI firewalls.
+            <!-- English Subtitle -->
+            <p class="en-only max-w-3xl mx-auto text-lg sm:text-xl text-gray-300 mb-12 font-normal leading-relaxed">
+                The ultimate fusion of <span class="text-cyan-400 font-semibold">Sing-box</span>, <span class="text-purple-400 font-semibold">Xray-core</span>, <span class="text-pink-400 font-semibold">Aether MASQUE (HTTP/3)</span>, <span class="text-emerald-400 font-semibold">WireGuard / WARP</span>, and <span class="text-amber-400 font-semibold">OpenVPN</span> under a unified, high-speed desktop client with Zero-Leak Kill Switch.
             </p>
 
-            <div class="flex flex-col sm:flex-row justify-center items-center gap-5">
-                <a href="https://github.com/Rpg-420/NexVPN/releases" class="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 text-white font-bold text-lg hover:scale-105 transition-transform shadow-[0_0_30px_rgba(0,240,255,0.4)] flex items-center justify-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    <span class="fa-only">دانلود رایگان برای ویندوز، مک و لینوکس</span>
-                    <span class="en-only">Download for Win, Mac & Linux</span>
+            <!-- Main Action CTAs -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+                <!-- Windows Download -->
+                <a href="https://github.com/Rpg-420/NexVPN/releases/latest" class="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-cyan-400 to-purple-600 text-dark-950 font-black text-base shadow-[0_0_30px_rgba(0,240,255,0.4)] hover:shadow-[0_0_45px_rgba(0,240,255,0.6)] hover:scale-105 transition-all">
+                    <i class="fa-brands fa-windows text-xl"></i>
+                    <span class="fa-only">دانلود برای ویندوز (۶۴ بیت)</span>
+                    <span class="en-only">Download for Windows (x64)</span>
                 </a>
-                <a href="#docs" class="w-full sm:w-auto px-8 py-4 rounded-full glass text-white font-bold text-lg hover:bg-white/10 transition flex items-center justify-center gap-2">
-                    <span class="fa-only">مطالعه مستندات و آموزش‌ها</span>
-                    <span class="en-only">Read the Documentation</span>
-                    <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+
+                <!-- Multi-OS Releases -->
+                <a href="#download" class="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl glass hover:bg-white/10 border-white/15 text-white font-bold text-base transition-all hover:scale-105">
+                    <i class="fa-brands fa-linux text-xl text-emerald-400"></i>
+                    <i class="fa-brands fa-apple text-xl text-purple-400"></i>
+                    <span class="fa-only">سایر سیستم‌عامل‌ها (لینوکس و مک)</span>
+                    <span class="en-only">All Platforms (Linux & macOS)</span>
                 </a>
             </div>
-        </div>
-    </main>
 
-    <!-- Visual Dashboard Showcase -->
-    <div class="max-w-6xl mx-auto px-4 mb-32 relative z-10">
-        <div class="rounded-2xl glass p-3 shadow-2xl border-purple-500/20 transform rotate-1 hover:rotate-0 transition-transform duration-500">
-            <div class="rounded-xl bg-[#0a0a0a] overflow-hidden border border-white/5 relative">
-                <!-- Mac UI Dots -->
-                <div class="absolute top-0 left-0 w-full h-10 bg-white/5 flex items-center px-4 gap-2 rtl:flex-row-reverse border-b border-white/5">
-                    <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
-                    <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                    <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+            <!-- Hero Live Interactive Connection Simulator & HUD -->
+            <div class="max-w-4xl mx-auto glass-card rounded-3xl p-6 sm:p-8 text-right border-white/15 shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-cyan-400 via-purple-500 to-emerald-400"></div>
+
+                <!-- Window Top Header Bar -->
+                <div class="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                        <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                        <span class="w-3 h-3 rounded-full bg-emerald-500/80"></span>
+                        <span class="text-xs text-gray-400 font-mono ml-2">NexVPN Pro Desktop HUD</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="simStatusPill" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                            <span class="fa-only">متصل • TUN Mode</span>
+                            <span class="en-only">Connected • TUN Mode</span>
+                        </span>
+                    </div>
                 </div>
-                <!-- Fake Terminal Logs -->
-                <div class="p-6 pt-16 font-mono text-sm sm:text-base leading-relaxed text-gray-300">
-                    <div class="text-purple-400">> NexVPN Pro Engine Initialized v1.3.4</div>
-                    <div class="text-blue-400">> [engine] Smart Core: Dispatching to Aether (MASQUE)</div>
-                    <div class="text-gray-400">> [aether] Hunting for clean IP endpoints (budget: 120s)</div>
-                    <div class="text-yellow-400">> [aether] Found 14 clean IPs via thorough scan in 8.2s</div>
-                    <div class="text-cyan-400">> [sysproxy] Applying GNOME D-Bus and Linux netlink routing</div>
-                    <div class="text-emerald-400 font-bold mt-2">> [NexVPN] Connected Successfully (Latency: 45ms, Upload: 1.2MB/s, Download: 8.5MB/s)</div>
-                    <div class="animate-pulse mt-2 block w-2 h-5 bg-white/50"></div>
+
+                <!-- HUD Metrics Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 text-center">
+                    <!-- Metric 1: Download Speed -->
+                    <div class="p-4 rounded-2xl bg-dark-900/80 border border-white/5">
+                        <div class="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-arrow-down text-cyan-400"></i>
+                            <span class="fa-only">سرعت دانلود</span>
+                            <span class="en-only">Download</span>
+                        </div>
+                        <div id="simDownloadSpeed" class="text-2xl sm:text-3xl font-black font-mono text-cyan-400">84.2 <span class="text-xs text-gray-400 font-normal">Mbps</span></div>
+                    </div>
+
+                    <!-- Metric 2: Upload Speed -->
+                    <div class="p-4 rounded-2xl bg-dark-900/80 border border-white/5">
+                        <div class="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-arrow-up text-purple-400"></i>
+                            <span class="fa-only">سرعت آپلود</span>
+                            <span class="en-only">Upload</span>
+                        </div>
+                        <div id="simUploadSpeed" class="text-2xl sm:text-3xl font-black font-mono text-purple-400">32.8 <span class="text-xs text-gray-400 font-normal">Mbps</span></div>
+                    </div>
+
+                    <!-- Metric 3: Ping & Latency -->
+                    <div class="p-4 rounded-2xl bg-dark-900/80 border border-white/5">
+                        <div class="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-wifi text-emerald-400"></i>
+                            <span class="fa-only">پینگ زنده</span>
+                            <span class="en-only">Real Latency</span>
+                        </div>
+                        <div id="simPingLatency" class="text-2xl sm:text-3xl font-black font-mono text-emerald-400">38 <span class="text-xs text-gray-400 font-normal">ms</span></div>
+                    </div>
+
+                    <!-- Metric 4: Active Protocol -->
+                    <div class="p-4 rounded-2xl bg-dark-900/80 border border-white/5">
+                        <div class="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-pink-400"></i>
+                            <span class="fa-only">پروتکل فعال</span>
+                            <span class="en-only">Protocol</span>
+                        </div>
+                        <div class="text-lg sm:text-xl font-bold font-mono text-pink-400 mt-1">VLESS Reality</div>
+                    </div>
+                </div>
+
+                <!-- Interactive Simulator Controller Footer -->
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/5 border border-white/5">
+                    <div class="flex items-center gap-3 text-xs text-gray-300">
+                        <span class="flex items-center gap-1.5 text-emerald-400 font-mono"><i class="fa-solid fa-lock"></i> DNS Leak Shield: OK</span>
+                        <span class="hidden sm:inline text-gray-500">•</span>
+                        <span class="flex items-center gap-1.5 text-cyan-400 font-mono"><i class="fa-solid fa-fire"></i> Kill Switch: Active</span>
+                    </div>
+
+                    <button id="simToggleConnectBtn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-dark-950 font-black text-xs transition-all hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.4)]">
+                        <span class="fa-only"><i class="fa-solid fa-power-off ml-1"></i> تست شبیه‌ساز (قطع / وصل)</span>
+                        <span class="en-only"><i class="fa-solid fa-power-off mr-1"></i> Test Simulator (Toggle)</span>
+                    </button>
                 </div>
             </div>
         </div>
-    </div>
+    </header>
 
-    <!-- Features Overview -->
-    <section id="features" class="py-24 bg-black/40 border-y border-white/5">
+    <!-- Engines Showcase Section -->
+    <section id="engines" class="py-24 relative z-10 border-t border-white/5">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-20">
-                <h2 class="text-4xl md:text-5xl font-black text-white mb-6">
-                    <span class="fa-only">چرا <span class="text-gradient">NexVPN Pro</span> بهترین است؟</span>
-                    <span class="en-only">Why choose <span class="text-gradient">NexVPN Pro</span>?</span>
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-xs uppercase font-bold tracking-widest text-cyan-400 mb-3">
+                    <span class="fa-only">معماری چندهسته‌ای</span>
+                    <span class="en-only">Multi-Core Architecture</span>
                 </h2>
-                <p class="text-xl text-gray-400 max-w-2xl mx-auto fa-only">ما تمام ابزارهای مورد نیاز برای حفظ یک اتصال پایدار، امن و بدون قطعی را در یک کلاینت یکپارچه مهندسی کرده‌ایم.</p>
-                <p class="text-xl text-gray-400 max-w-2xl mx-auto en-only">We engineered all the essential tools for a stable, secure, and drop-free connection into one seamless client.</p>
+                <h3 class="text-3xl sm:text-4xl font-black text-white mb-6">
+                    <span class="fa-only">۵ موتور قدرتمند برای هر سطح از فیلترینگ</span>
+                    <span class="en-only">5 Dedicated Cores for Every Censorship Level</span>
+                </h3>
+                <p class="text-gray-400 text-sm sm:text-base leading-relaxed">
+                    <span class="fa-only">NexVPN شما را به یک پروتکل محدود نمی‌کند؛ با ترکیب پیشرفته‌ترین هسته‌ها، همیشه مسیری برای اتصال وجود دارد.</span>
+                    <span class="en-only">NexVPN never locks you into a single protocol. By dynamically dispatching between cores, your connection stays resilient.</span>
+                </p>
             </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <!-- Doctor -->
-                <div class="glass-card rounded-2xl p-8">
-                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center mb-6 border border-cyan-500/30 text-cyan-400">
-                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    </div>
-                    <h3 class="text-2xl font-bold mb-4 text-white fa-only">پزشک هوشمند شبکه</h3>
-                    <h3 class="text-2xl font-bold mb-4 text-white en-only">Smart Network Doctor</h3>
-                    
-                    <p class="text-gray-400 leading-relaxed fa-only">
-                        آیا اینترنت شما بعد از قطع VPN دچار مشکل می‌شود؟ پزشک هوشمند ما به طور خودکار آداپتورهای گیرکرده را ریست می‌کند، کش DNS را پاک می‌کند و پروکسی‌های رها شده سیستم را تمیز می‌کند.
-                    </p>
-                    <p class="text-gray-400 leading-relaxed en-only">
-                        Experiencing drops after disconnecting? Our Smart Doctor automatically resets frozen network adapters, flushes DNS caches, and cleans abandoned system proxies instantly.
-                    </p>
-                </div>
 
-                <!-- Split Tunneling -->
-                <div class="glass-card rounded-2xl p-8">
-                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-6 border border-purple-500/30 text-purple-400">
-                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                    </div>
-                    <h3 class="text-2xl font-bold mb-4 text-white fa-only">تونل‌زنی تفکیک‌شده اپلیکیشن‌ها</h3>
-                    <h3 class="text-2xl font-bold mb-4 text-white en-only">App Split Tunneling</h3>
-                    
-                    <p class="text-gray-400 leading-relaxed fa-only">
-                        ترافیک برنامه‌های داخلی (مثل همراه‌بانک‌ها یا بازی‌های آنلاین) را از VPN جدا کنید. NexVPN ترافیک را دقیقاً در سطح پروسس (فایل اجرایی) رهگیری و تفکیک می‌کند.
-                    </p>
-                    <p class="text-gray-400 leading-relaxed en-only">
-                        Bypass the VPN for local apps like banking or gaming. NexVPN intercepts and routes traffic precisely at the process (executable) level for flawless execution.
-                    </p>
-                </div>
-
-                <!-- OS Integration -->
-                <div class="glass-card rounded-2xl p-8">
-                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/20 flex items-center justify-center mb-6 border border-emerald-500/30 text-emerald-400">
-                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"></path></svg>
-                    </div>
-                    <h3 class="text-2xl font-bold mb-4 text-white fa-only">یکپارچگی عمیق با سیستم‌عامل</h3>
-                    <h3 class="text-2xl font-bold mb-4 text-white en-only">Deep OS Integration</h3>
-                    
-                    <p class="text-gray-400 leading-relaxed fa-only">
-                        اجرای بدون پسورد از طریق Polkit و مسیریابی netlink در لینوکس. مدیریت هوشمند رجیستری و Wintun در ویندوز. استارت‌آپ اتوماتیک LaunchAgent و کیل‌سوئیچ pfctl در مک.
-                    </p>
-                    <p class="text-gray-400 leading-relaxed en-only">
-                        Passwordless Polkit execution and netlink routing on Linux. Smart Registry and Wintun management on Windows. LaunchAgent autostart and pfctl Kill Switch on macOS.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Engines Section -->
-    <section id="engines" class="py-24 relative overflow-hidden">
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[500px] bg-gradient-to-r from-cyan-500/5 to-purple-500/5 blur-[100px] -z-10"></div>
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col lg:flex-row items-center gap-16">
+            <!-- 5 Engines Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
-                <div class="lg:w-1/2 space-y-10">
+                <!-- Engine 1: Sing-box Core -->
+                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between">
                     <div>
-                        <h2 class="text-4xl font-black text-white mb-6">
-                            <span class="fa-only">یک نرم‌افزار، <span class="text-gradient-alt">سـه مـوتـور</span> قدرتمند.</span>
-                            <span class="en-only">One App. <span class="text-gradient-alt">Three Powerful</span> Engines.</span>
-                        </h2>
-                        <p class="text-xl text-gray-400 leading-relaxed fa-only">شما محدود به یک پروتکل نیستید. NexVPN موتورهای برتر جهان را در خود جای داده و به طور هوشمند ترافیک را هدایت می‌کند.</p>
-                        <p class="text-xl text-gray-400 leading-relaxed en-only">You are not limited to one protocol. NexVPN embeds the world's top routing engines and dynamically dispatches your traffic.</p>
+                        <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-2xl mb-6">
+                            <i class="fa-solid fa-cubes"></i>
+                        </div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-xl font-bold text-white">Sing-box Core</h4>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">VLESS / Hysteria2</span>
+                        </div>
+                        <p class="text-gray-400 text-xs sm:text-sm leading-relaxed mb-6">
+                            <span class="fa-only">سریع‌ترین و کم‌مصرف‌ترین هسته مدرن با پشتیبانی از VLESS Reality، Trojan، Hysteria 2 و TUIC v5 با آداپتور سیستمی TUN و پایش لحظه‌ای ترافیک.</span>
+                            <span class="en-only">High-performance modern proxy engine handling VLESS Reality, Trojan, Hysteria 2, and TUIC v5 with low memory footprint and high-speed TUN routing.</span>
+                        </p>
                     </div>
-                    
-                    <div class="space-y-6 relative before:absolute before:inset-y-0 before:w-0.5 before:bg-gradient-to-b before:from-cyan-500 before:via-purple-500 before:to-emerald-500 before:left-3 rtl:before:right-3 rtl:before:left-auto">
-                        
-                        <div class="relative pl-10 rtl:pr-10 rtl:pl-0">
-                            <div class="absolute w-6 h-6 rounded-full bg-cyan-500 shadow-[0_0_15px_#00F0FF] left-0 rtl:right-0 mt-1 border-4 border-dark"></div>
-                            <h4 class="text-2xl font-bold text-white">Aether (MASQUE / gool)</h4>
-                            <p class="mt-2 text-gray-400 fa-only">موتور پرچمدار ضد سانسور بر بستر HTTP/3 با قابلیت تونل‌های تودرتو (WARP-in-WARP) و ۵ حالت اسکنر فوق‌هوشمند.</p>
-                            <p class="mt-2 text-gray-400 en-only">Flagship anti-censorship engine over HTTP/3 featuring WARP-in-WARP nested tunnels and 5 intelligent IP scanner modes.</p>
-                        </div>
-
-                        <div class="relative pl-10 rtl:pr-10 rtl:pl-0">
-                            <div class="absolute w-6 h-6 rounded-full bg-purple-500 shadow-[0_0_15px_#A855F7] left-0 rtl:right-0 mt-1 border-4 border-dark"></div>
-                            <h4 class="text-2xl font-bold text-white">Sing-box (V2Ray / WireGuard)</h4>
-                            <p class="mt-2 text-gray-400 fa-only">استاندارد جهانی برای اتصالات VLESS، Trojan، Hysteria2 و وایرگارد. مجهز به مسیریابی کامل TUN و Smart DNS.</p>
-                            <p class="mt-2 text-gray-400 en-only">Global standard for VLESS, Trojan, Hysteria2, and WireGuard. Features full-system TUN routing and Smart DNS.</p>
-                        </div>
-
-                        <div class="relative pl-10 rtl:pr-10 rtl:pl-0">
-                            <div class="absolute w-6 h-6 rounded-full bg-emerald-500 shadow-[0_0_15px_#10B981] left-0 rtl:right-0 mt-1 border-4 border-dark"></div>
-                            <h4 class="text-2xl font-bold text-white">OpenVPN Core</h4>
-                            <p class="mt-2 text-gray-400 fa-only">مسیریابی اصیل لایه ۳ برای پیکربندی‌های کلاسیک با اتصال کامل به فایروال سیستم برای جلوگیری از نشت دیتا (Kill Switch).</p>
-                            <p class="mt-2 text-gray-400 en-only">Native Layer-3 routing for classic configs, perfectly integrated with system firewalls for zero data leaks (Kill Switch).</p>
-                        </div>
+                    <div class="border-t border-white/10 pt-4 flex items-center justify-between text-xs text-gray-400">
+                        <span>DPI Bypass: <b class="text-emerald-400">99%</b></span>
+                        <span>UDP Boost: <b class="text-cyan-400">Brutal QUIC</b></span>
                     </div>
                 </div>
 
-                <div class="lg:w-1/2 w-full">
-                    <div class="relative">
-                        <!-- Abstract Core Illustration -->
-                        <div class="w-full aspect-square max-w-md mx-auto relative">
-                            <div class="absolute inset-0 border-2 border-dashed border-white/10 rounded-full animate-[spin_60s_linear_infinite]"></div>
-                            <div class="absolute inset-4 border-2 border-dashed border-cyan-500/30 rounded-full animate-[spin_40s_linear_reverse_infinite]"></div>
-                            <div class="absolute inset-12 border-2 border-solid border-purple-500/20 rounded-full flex items-center justify-center">
-                                <div class="w-32 h-32 bg-gradient-to-tr from-cyan-400 to-purple-500 rounded-full blur-[20px] animate-pulse"></div>
-                                <div class="absolute text-3xl font-black text-white mix-blend-overlay">CORE</div>
-                            </div>
-                            
-                            <!-- Satellites -->
-                            <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-2xl glass flex items-center justify-center font-bold text-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.2)]">ATHR</div>
-                            <div class="absolute bottom-1/4 -left-8 w-16 h-16 rounded-2xl glass flex items-center justify-center font-bold text-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.2)]">SBOX</div>
-                            <div class="absolute bottom-1/4 -right-8 w-16 h-16 rounded-2xl glass flex items-center justify-center font-bold text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)]">OVPN</div>
+                <!-- Engine 2: Aether MASQUE -->
+                <div class="glass-card glass-card-purple rounded-3xl p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 text-2xl mb-6">
+                            <i class="fa-solid fa-atom"></i>
                         </div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-xl font-bold text-white">Aether MASQUE (HTTP/3)</h4>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">WARP-in-WARP</span>
+                        </div>
+                        <p class="text-gray-400 text-xs sm:text-sm leading-relaxed mb-6">
+                            <span class="fa-only">کپسوله‌سازی UDP در استریم‌های HTTP/3 و ساخت تونل‌های تودرتوی کلودفلر همراه با اسکنر تطبیقی ۵ سطحی (از Turbo تا Ironclad).</span>
+                            <span class="en-only">Flagship circumvention core wrapping UDP packets in HTTP/3 streams with nested WARP-in-WARP tunnels and 5-tier adaptive endpoint scanner.</span>
+                        </p>
+                    </div>
+                    <div class="border-t border-white/10 pt-4 flex items-center justify-between text-xs text-gray-400">
+                        <span>DPI Bypass: <b class="text-emerald-400">98%</b></span>
+                        <span>Mode: <b class="text-purple-400">Adaptive Stealth</b></span>
+                    </div>
+                </div>
+
+                <!-- Engine 3: Xray-core -->
+                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 text-2xl mb-6">
+                            <i class="fa-solid fa-network-wired"></i>
+                        </div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-xl font-bold text-white">Xray Core</h4>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30">gRPC / WebSocket</span>
+                        </div>
+                        <p class="text-gray-400 text-xs sm:text-sm leading-relaxed mb-6">
+                            <span class="fa-only">استاندارد جهانی اکوسیستم V2Ray برای پیکربندی‌های پیچیده، ترانسپورت‌های gRPC، وب‌سوکت با رمزنگاری TLS و مسیریابی سرورهای CDN.</span>
+                            <span class="en-only">The battle-tested V2Ray engine for VMess, VLESS, gRPC, and WebSocket transports with TLS camouflage and CDN reverse proxying.</span>
+                        </p>
+                    </div>
+                    <div class="border-t border-white/10 pt-4 flex items-center justify-between text-xs text-gray-400">
+                        <span>DPI Bypass: <b class="text-cyan-400">92%</b></span>
+                        <span>Routing: <b class="text-pink-400">GeoIP & Geosite</b></span>
+                    </div>
+                </div>
+
+                <!-- Engine 4: WARP & WireGuard -->
+                <div class="glass-card glass-card-emerald rounded-3xl p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl mb-6">
+                            <i class="fa-solid fa-cloud"></i>
+                        </div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-xl font-bold text-white">WARP & WireGuard</h4>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Clean IP Hunter</span>
+                        </div>
+                        <p class="text-gray-400 text-xs sm:text-sm leading-relaxed mb-6">
+                            <span class="fa-only">تولید مستقیم اکانت WARP و WARP+، اسکن خودکار صدها رنج IP تمیز کلودفلر و اتصال از طریق تونل‌های پرسرعت و سبک WireGuard.</span>
+                            <span class="en-only">Native 1-click Cloudflare WARP/WARP+ key generator paired with multi-threaded Clean IP scanner for high-speed WireGuard tunnels.</span>
+                        </p>
+                    </div>
+                    <div class="border-t border-white/10 pt-4 flex items-center justify-between text-xs text-gray-400">
+                        <span>Ping: <b class="text-emerald-400">&lt; 40ms</b></span>
+                        <span>Security: <b class="text-emerald-400">ChaCha20-Poly1305</b></span>
+                    </div>
+                </div>
+
+                <!-- Engine 5: OpenVPN & Psiphon -->
+                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between md:col-span-2 lg:col-span-2">
+                    <div>
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl">
+                                <i class="fa-solid fa-key"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-xl font-bold text-white">OpenVPN & Psiphon Emergency</h4>
+                                <span class="text-xs text-gray-400">سازگاری با کانفیگ‌های سازمانی و دور زدن خاموشی‌های شدید اینترنت</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            <div class="p-4 rounded-xl bg-dark-900/60 border border-white/5">
+                                <b class="text-amber-400 text-xs block mb-1">OpenVPN Layer-3:</b>
+                                <p class="text-xs text-gray-400">پشتیبانی کامل از فایل‌های پیکربندی .ovpn، احراز هویت با نام کاربری و پسورد و گواهینامه‌های TLS.</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-dark-900/60 border border-white/5">
+                                <b class="text-red-400 text-xs block mb-1">Psiphon Obfuscated SSH:</b>
+                                <p class="text-xs text-gray-400">اتصال پشتیبان و اضطراری در زمان قطع کامل اینترنت بین‌الملل و فیلترینگ شدید پروتکل‌های استاندارد.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border-t border-white/10 pt-4 flex items-center justify-between text-xs text-gray-400">
+                        <span>Fallback Safety: <b class="text-amber-400">100% Redundant</b></span>
+                        <span>Compatibility: <b class="text-white">Universal (.ovpn / SSH)</b></span>
                     </div>
                 </div>
 
@@ -331,59 +501,548 @@
         </div>
     </section>
 
-    <!-- Documentation & Resources Section -->
-    <section id="docs" class="py-24 bg-white/[0.02] border-t border-white/5">
+    <!-- 12 Super Features Grid -->
+    <section id="features" class="py-24 relative z-10 bg-dark-900/50 border-t border-white/5">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl font-black text-white mb-6">
-                    <span class="fa-only">مستندات و آموزش‌ها</span>
-                    <span class="en-only">Official Documentation</span>
+            <div class="text-center max-w-3xl mx-auto mb-20">
+                <h2 class="text-xs uppercase font-bold tracking-widest text-purple-400 mb-3">
+                    <span class="fa-only">امکانات فوق‌العاده</span>
+                    <span class="en-only">Supercharged Features</span>
                 </h2>
-                <p class="text-xl text-gray-400 max-w-2xl mx-auto fa-only">هر آنچه برای نصب، استفاده و توسعه نرم‌افزار NexVPN نیاز دارید، با دقت مستند شده است.</p>
-                <p class="text-xl text-gray-400 max-w-2xl mx-auto en-only">Everything you need to install, configure, and develop on NexVPN is meticulously documented.</p>
+                <h3 class="text-3xl sm:text-4xl font-black text-white mb-6">
+                    <span class="fa-only">هر آنچه برای آزادی کامل اینترنت نیاز دارید</span>
+                    <span class="en-only">Everything You Need for Complete Internet Freedom</span>
+                </h3>
+                <p class="text-gray-400 text-sm sm:text-base">
+                    <span class="fa-only">طراحی شده با حساسیت بالا، کاربری آسان و ابزارهای مهندسی شبکه در یک نرم‌افزار واحد.</span>
+                    <span class="en-only">Engineered with high precision, intuitive UX, and pro networking tools in a single app.</span>
+                </p>
             </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                
-                <!-- Users -->
-                <div class="glass-card p-10 rounded-3xl group">
-                    <h3 class="text-3xl font-bold mb-4 text-white group-hover:text-cyan-400 transition-colors">
-                        <span class="fa-only">📖 راهنمای کاربران</span>
-                        <span class="en-only">📖 User Guides</span>
-                    </h3>
-                    <p class="text-gray-400 mb-8 text-lg fa-only">آموزش وارد کردن پروفایل، کار با پزشک شبکه، تونل‌زنی اسپلیت و رفع خطاهای اتصال در لینوکس (Polkit).</p>
-                    <p class="text-gray-400 mb-8 text-lg en-only">Learn to import profiles, use the Network Doctor, setup Split Tunneling, and solve Linux Polkit issues.</p>
+
+            <!-- Features Grid (12 Cards) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <!-- Feature 1: Telegram Proxy Scraper -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-brands fa-telegram"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">ربات استخراج پروکسی تلگرام</span>
+                        <span class="en-only">Telegram Proxy Scraper</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">دریافت و استخراج خودکار صدها پروکسی MTProto و V2Ray از کانال‌های معتبر تلگرامی همراه با تست پینگ موازی و اجرای مستقیم با ۱ کلیک در تلگرام دسکتاپ.</span>
+                        <span class="en-only">Automated real-time crawler scraping verified public Telegram channels for MTProto & V2Ray nodes with live concurrent ping tests.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 2: Clean IP Scanner -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-crosshairs"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">اسکنر IP تمیز کلودفلر</span>
+                        <span class="en-only">Cloudflare Clean IP Scanner</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">اسکن همزمان صدها رنج IPv4 کلودفلر، سنجش دقیق جیتر، تاخیر و پکت‌لاس برای یافتن سریع‌ترین آی‌پی‌های بدون فیلتر جهت استفاده در کانفیگ‌های WARP و CDN.</span>
+                        <span class="en-only">Multi-threaded CIDR scanner testing latency, jitter, and packet loss across WARP and CDN IPv4 subnets to assign clean endpoints.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 3: TLS Fragment Studio -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-pink-500/10 text-pink-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-puzzle-piece"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">استودیوی فرگمنت TLS</span>
+                        <span class="en-only">TLS Fragment Studio</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">تکه‌تکه کردن پکت‌های ClientHello با تنظیم فواصل تاخیر و طول بایت‌ها برای شکستن شناسایی SNI و عبور تضمینی از سامانه‌های DPI اپراتورها.</span>
+                        <span class="en-only">Visual studio for ClientHello packet fragmentation with custom delay intervals to bypass SNI-based deep packet inspection.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 4: Smart ISP Optimizer -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-tower-broadcast"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">بهینه‌ساز هوشمند اپراتورها</span>
+                        <span class="en-only">Smart ISP Optimizer</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">تشخیص خودکار اپراتور شما (همراه اول، ایرانسل، شاتل، مخابرات و...) و اعمال تنظیمات فرگمنت، رنج IP تمیز و MTU بهینه مختص همان اپراتور.</span>
+                        <span class="en-only">Auto-detects active ISP (MCI, Irancell, Shatel, Mokhaberat) and configures tailor-made fragmentation, clean IP pools, and MTU.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 5: Zero-Leak Kill Switch -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-shield-virus"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">کیل‌سوئیچ لایه صفر سیستمی</span>
+                        <span class="en-only">Zero-Leak System Kill Switch</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">مدیریت مستقیم دیواره آتش سیستم‌عامل (Windows Netsh، Linux iptables، macOS pfctl) جهت مسدودسازی کامل هرگونه نشت تصادفی IP هنگام قطعی تونل.</span>
+                        <span class="en-only">Kernel-level firewall lockdown (Netsh, iptables, pfctl) preventing any unprotected outbound traffic if the VPN connection drops.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 6: DNS Leak Shield -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-fingerprint"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">سپر ضد نشت DNS</span>
+                        <span class="en-only">Multi-Resolver DNS Shield</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">تست مداوم نشت DNS در برابر سرورهای کلودفلر، گوگل و Quad9 و جلوگیری کامل از حملات مسمومیت DNS (DNS Hijacking) از طریق DoH رمزنگاری‌شده.</span>
+                        <span class="en-only">Probes and enforces DNS queries through encrypted DoH/DoT resolvers (Cloudflare, Quad9, Google) to defeat DNS poisoning.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 7: App Split Tunneling -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">تفکیک ترافیک برنامه‌ها</span>
+                        <span class="en-only">Process-Based Split Tunneling</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">انتخاب آسان برنامه‌های اجرایی (مانند برنامه‌های بانکی یا بازی‌های آنلاین) جهت عبور مستقیم از اینترنت بدون فیلترشکن یا عبور اجباری از VPN.</span>
+                        <span class="en-only">Intercept traffic at the executable process level to bypass banking apps or route specific tools directly through the tunnel.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 8: Mobile Remote Companion -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-mobile-screen-button"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">کنترل از راه دور با موبایل</span>
+                        <span class="en-only">Mobile Remote Web Companion</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">اسکن بارکد QR با گوشی روی همان شبکه Wi-Fi و وارد کردن پین امنیتی ۶ رقمی برای قطع/وصل و مانیتورینگ سرعت سیستم از روی گوشی بدون نیاز به دست زدن به کیبورد.</span>
+                        <span class="en-only">Control your desktop VPN from any phone on Wi-Fi via a secure PIN-authenticated QR web companion without touching your PC.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 9: LAN Proxy Sharing -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-share-nodes"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">اشتراک پروکسی در شبکه محلی</span>
+                        <span class="en-only">LAN Proxy Sharing</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">اشتراک اتصال امن فیلترشکن با تلویزیون هوشمند (Smart TV)، کنسول‌های بازی (PS5/Xbox) و سایر دستگاه‌های شبکه خانگی بدون نیاز به نصب برنامه روی آنها.</span>
+                        <span class="en-only">Share encrypted VPN tunnel access over local Wi-Fi with Smart TVs, gaming consoles, and mobile devices via local HTTP/SOCKS5.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 10: Smart Network Doctor -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-user-doctor"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">پزشک هوشمند شبکه</span>
+                        <span class="en-only">Smart Network Doctor</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">تعمیر اورژانسی و خودکار شبکه در ۱ ثانیه (خالی کردن کش DNS، ریست استک Winsock، پاکسازی پروکسی‌های رهاشده و بستن هسته‌های گیر کرده).</span>
+                        <span class="en-only">One-click emergency repair to purge DNS caches, reset Winsock/Netlink stacks, clear zombie proxies, and kill dangling processes.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 11: Gaming Mode & Mini HUD -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-gamepad"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">حالت گیمینگ و ویجت شناور</span>
+                        <span class="en-only">Gaming Mode & Floating HUD</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">شتاب‌دهنده پکت‌های UDP با جیتر فوق‌العاده پایین برای بازی‌های آنلاین رقابتی همراه با ویجت مینیاتوری همیشه در دسترس روی صفحه دسکتاپ.</span>
+                        <span class="en-only">Ultra low-jitter UDP optimization for online gaming paired with a semi-transparent floating desktop widget showing live speed and latency.</span>
+                    </p>
+                </div>
+
+                <!-- Feature 12: Encrypted Vault & Nearby Sync -->
+                <div class="glass-card rounded-2xl p-6">
+                    <div class="w-12 h-12 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center text-xl mb-5">
+                        <i class="fa-solid fa-vault"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-white mb-2">
+                        <span class="fa-only">والت رمزگذاری‌شده و ارسال محلی</span>
+                        <span class="en-only">Encrypted Vault & P2P Sync</span>
+                    </h4>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        <span class="fa-only">پشتیبان‌گیری رمزگذاری‌شده با الگوریتم AES-256، همگام‌سازی با GitHub Gist و انتقال بی‌سیم نودها میان لپ‌تاپ‌های اطراف در همان شبکه محلی.</span>
+                        <span class="en-only">AES-256 encrypted vault backup, GitHub Gist cloud synchronization, and peer-to-peer Wi-Fi profile sharing between local devices.</span>
+                    </p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Live Node Converter & Inspector Tool -->
+    <section id="tools" class="py-24 relative z-10 border-t border-white/5">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-12">
+                <h2 class="text-xs uppercase font-bold tracking-widest text-cyan-400 mb-3">
+                    <span class="fa-only">ابزار آنلاین تست و تبدیل</span>
+                    <span class="en-only">Interactive Live Inspector</span>
+                </h2>
+                <h3 class="text-3xl sm:text-4xl font-black text-white mb-4">
+                    <span class="fa-only">آنالیزر و مبدل آنلاین کانفیگ‌ها</span>
+                    <span class="en-only">Live Config & Node Inspector / Converter</span>
+                </h3>
+                <p class="text-gray-400 text-sm">
+                    <span class="fa-only">لینک کانفیگ خود را وارد کنید تا ساختار فنی، SNI، پورت، پروتکل و سلامت آن به صورت زنده استخراج شود.</span>
+                    <span class="en-only">Paste any proxy URI (vless, vmess, trojan, ss, hy2, tuic) to instantly parse and inspect its security parameters.</span>
+                </p>
+            </div>
+
+            <!-- Tool Glass Box -->
+            <div class="glass-card rounded-3xl p-6 sm:p-8 border-cyan-500/20 shadow-2xl">
+                <!-- Input Box -->
+                <div class="mb-6">
+                    <label class="block text-xs font-mono text-gray-300 mb-2 flex items-center justify-between">
+                        <span><i class="fa-solid fa-terminal text-cyan-400 ml-1"></i> <span class="fa-only">لینک کانفیگ یا سابسکریپشن:</span><span class="en-only">Proxy URI or Subscription:</span></span>
+                        <button id="demoConfigBtn" class="text-[11px] text-cyan-400 hover:underline cursor-pointer">
+                            <span class="fa-only">تست با کانفیگ نمونه (VLESS Reality)</span>
+                            <span class="en-only">Paste Demo VLESS Reality Link</span>
+                        </button>
+                    </label>
+                    <textarea id="configInput" rows="3" placeholder="vless://... / vmess://... / trojan://... / ss://... / hy2://..." class="w-full px-4 py-3 rounded-xl bg-dark-900/90 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 transition-colors"></textarea>
+                </div>
+
+                <!-- Action Button -->
+                <div class="flex items-center justify-end gap-3 mb-6">
+                    <button id="clearConfigBtn" class="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold transition cursor-pointer">
+                        <span class="fa-only">پاک کردن</span><span class="en-only">Clear</span>
+                    </button>
+                    <button id="inspectConfigBtn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-dark-950 font-black text-xs transition-all shadow-[0_0_20px_rgba(0,240,255,0.3)] hover:scale-105 cursor-pointer">
+                        <i class="fa-solid fa-magnifying-glass ml-1"></i>
+                        <span class="fa-only">آنالیز و تفکیک پارامترها</span>
+                        <span class="en-only">Parse & Inspect Parameters</span>
+                    </button>
+                </div>
+
+                <!-- Output Display Result -->
+                <div id="inspectorResult" class="hidden border-t border-white/10 pt-6">
+                    <h5 class="text-xs font-mono uppercase tracking-widest text-cyan-400 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-check-circle text-emerald-400"></i>
+                        <span class="fa-only">نتایج آنالیز پارامترهای پروتکل:</span>
+                        <span class="en-only">Parsed Protocol Parameters:</span>
+                    </h5>
                     
-                    <div class="flex flex-col gap-4">
-                        <a href="user-guide-fa.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/50 transition font-bold text-cyan-300 fa-only">
-                            مطالعه آموزش به زبان فارسی
-                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                        <div class="p-3 rounded-xl bg-dark-900/80 border border-white/5">
+                            <span class="text-[10px] text-gray-400 block mb-1">Protocol:</span>
+                            <b id="resProtocol" class="text-cyan-400 font-mono text-xs sm:text-sm uppercase">-</b>
+                        </div>
+                        <div class="p-3 rounded-xl bg-dark-900/80 border border-white/5">
+                            <span class="text-[10px] text-gray-400 block mb-1">Server Host / IP:</span>
+                            <b id="resServer" class="text-white font-mono text-xs sm:text-sm truncate block">-</b>
+                        </div>
+                        <div class="p-3 rounded-xl bg-dark-900/80 border border-white/5">
+                            <span class="text-[10px] text-gray-400 block mb-1">Port:</span>
+                            <b id="resPort" class="text-emerald-400 font-mono text-xs sm:text-sm">-</b>
+                        </div>
+                        <div class="p-3 rounded-xl bg-dark-900/80 border border-white/5">
+                            <span class="text-[10px] text-gray-400 block mb-1">Security / SNI:</span>
+                            <b id="resSecurity" class="text-purple-400 font-mono text-xs sm:text-sm truncate block">-</b>
+                        </div>
+                    </div>
+
+                    <!-- JSON Outbound Preview -->
+                    <div>
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-2">
+                            <span>Sing-box / Xray Outbound JSON:</span>
+                            <button id="copyJsonBtn" class="text-cyan-400 hover:underline cursor-pointer text-xs flex items-center gap-1">
+                                <i class="fa-solid fa-copy"></i>
+                                <span class="fa-only">کپی ساختار JSON</span>
+                                <span class="en-only">Copy Outbound JSON</span>
+                            </button>
+                        </div>
+                        <pre id="resJsonPreview" class="p-4 rounded-xl bg-dark-950 border border-white/5 text-gray-300 font-mono text-xs overflow-x-auto max-h-48"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Center Section -->
+    <section id="download" class="py-24 relative z-10 bg-dark-900/40 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-xs uppercase font-bold tracking-widest text-emerald-400 mb-3">
+                    <span class="fa-only">مرکز دانلود رایگان</span>
+                    <span class="en-only">Download Center</span>
+                </h2>
+                <h3 class="text-3xl sm:text-4xl font-black text-white mb-6">
+                    <span class="fa-only">دانلود نسخه رسمی NexVPN Pro</span>
+                    <span class="en-only">Get the Official NexVPN Pro Release</span>
+                </h3>
+                <p class="text-gray-400 text-sm sm:text-base">
+                    <span class="fa-only">متن‌باز، بدون تبلیغات، بدون محدودیت و با پشتیبانی کامل از تمامی پلتفرم‌های دسکتاپ.</span>
+                    <span class="en-only">Open-source, zero ads, unlimited, and fully supported across all desktop operating systems.</span>
+                </p>
+            </div>
+
+            <!-- Download Matrix Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                
+                <!-- Windows Card -->
+                <div class="glass-card rounded-3xl p-8 text-center flex flex-col justify-between border-cyan-500/30">
+                    <div>
+                        <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-3xl mx-auto mb-6">
+                            <i class="fa-brands fa-windows"></i>
+                        </div>
+                        <h4 class="text-2xl font-black text-white mb-2">Windows</h4>
+                        <p class="text-xs text-gray-400 mb-6">Windows 10 / 11 (64-bit / ARM64 / 32-bit)</p>
+                        
+                        <ul class="text-xs text-gray-300 text-right space-y-2.5 mb-8">
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-cyan-400 text-[10px]"></i> درایور اختصاصی پرسرعت Wintun</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-cyan-400 text-[10px]"></i> آیکون سینی ویندوز (Taskbar Tray)</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-cyan-400 text-[10px]"></i> ویجت شناور روی صفحه دسکتاپ</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <a href="https://github.com/Rpg-420/NexVPN/releases/latest" class="block w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-dark-950 font-black text-sm shadow-[0_0_20px_rgba(0,240,255,0.3)] transition hover:scale-105 mb-2">
+                            <i class="fa-solid fa-download ml-1"></i>
+                            <span class="fa-only">دانلود فایل نصب (.exe)</span>
+                            <span class="en-only">Download Installer (.exe)</span>
                         </a>
-                        <a href="user-guide-en.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/50 transition font-bold text-cyan-300">
-                            Read User Guide (English)
-                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        <a href="https://github.com/Rpg-420/NexVPN/releases/latest" class="text-[11px] text-gray-400 hover:text-cyan-400 transition">
+                            <span class="fa-only">دانلود نسخه پرتابل (.zip)</span>
+                            <span class="en-only">Portable (.zip)</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- Developers -->
-                <div class="glass-card p-10 rounded-3xl group">
-                    <h3 class="text-3xl font-bold mb-4 text-white group-hover:text-purple-400 transition-colors">
-                        <span class="fa-only">💻 مستندات توسعه‌دهندگان</span>
-                        <span class="en-only">💻 Developer Guides</span>
-                    </h3>
-                    <p class="text-gray-400 mb-8 text-lg fa-only">بررسی معماری بک‌اند Go، فرانت‌اند React، نحوه اضافه کردن هسته جدید به برنامه و دستکاری سیستم‌عامل.</p>
-                    <p class="text-gray-400 mb-8 text-lg en-only">Explore the Go backend architecture, React frontend, and how to add new Protocol Adapters natively.</p>
-                    
-                    <div class="flex flex-col gap-4">
-                        <a href="developer-guide-fa.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/50 transition font-bold text-purple-300 fa-only">
-                            مطالعه مستندات فنی (فارسی)
-                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                <!-- Linux Card -->
+                <div class="glass-card glass-card-emerald rounded-3xl p-8 text-center flex flex-col justify-between border-emerald-500/30">
+                    <div>
+                        <div class="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-3xl mx-auto mb-6">
+                            <i class="fa-brands fa-linux"></i>
+                        </div>
+                        <h4 class="text-2xl font-black text-white mb-2">Linux</h4>
+                        <p class="text-xs text-gray-400 mb-6">Ubuntu, Debian, Arch, Fedora, RHEL</p>
+                        
+                        <ul class="text-xs text-gray-300 text-right space-y-2.5 mb-8">
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-400 text-[10px]"></i> اجرای بدون پسورد با سرویس Polkit</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-400 text-[10px]"></i> اتصال بومی TUN و دسترسی cap_net_admin</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-400 text-[10px]"></i> هماهنگی خودکار با GNOME و KDE D-Bus</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <a href="https://github.com/Rpg-420/NexVPN/releases/latest" class="block w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-dark-950 font-black text-sm shadow-[0_0_20px_rgba(16,185,129,0.3)] transition hover:scale-105 mb-2">
+                            <i class="fa-solid fa-download ml-1"></i>
+                            <span class="fa-only">دانلود برای لینوکس (.tar.gz)</span>
+                            <span class="en-only">Download Linux (.tar.gz)</span>
                         </a>
-                        <a href="developer-guide-en.html" class="inline-flex items-center justify-between w-full p-4 rounded-xl bg-white/5 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/50 transition font-bold text-purple-300">
-                            Read Tech Docs (English)
-                            <svg class="w-5 h-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block">اجرای sudo ./install_linux.sh الزامی است</span>
+                    </div>
+                </div>
+
+                <!-- macOS Card -->
+                <div class="glass-card glass-card-purple rounded-3xl p-8 text-center flex flex-col justify-between border-purple-500/30">
+                    <div>
+                        <div class="w-16 h-16 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-3xl mx-auto mb-6">
+                            <i class="fa-brands fa-apple"></i>
+                        </div>
+                        <h4 class="text-2xl font-black text-white mb-2">macOS</h4>
+                        <p class="text-xs text-gray-400 mb-6">Apple Silicon (M1/M2/M3) & Intel Core</p>
+                        
+                        <ul class="text-xs text-gray-300 text-right space-y-2.5 mb-8">
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-purple-400 text-[10px]"></i> باینری یکپارچه Universal 64-bit</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-purple-400 text-[10px]"></i> کیل‌سوئیچ نیتیو از طریق pfctl</li>
+                            <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-purple-400 text-[10px]"></i> هماهنگی با LaunchAgent برای اجرای خودکار</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <a href="https://github.com/Rpg-420/NexVPN/releases/latest" class="block w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-500 to-purple-400 hover:from-purple-400 hover:to-purple-300 text-white font-black text-sm shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:scale-105 mb-2">
+                            <i class="fa-solid fa-download ml-1"></i>
+                            <span class="fa-only">دانلود پکیج مک (.dmg)</span>
+                            <span class="en-only">Download macOS (.dmg)</span>
                         </a>
+                        <span class="text-[10px] text-gray-400 font-mono block">سازگار با macOS 11 Big Sur به بعد</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Guides & Documentation Hub -->
+    <section id="guides" class="py-24 relative z-10 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-xs uppercase font-bold tracking-widest text-purple-400 mb-3">
+                    <span class="fa-only">مستندات و آموزش‌ها</span>
+                    <span class="en-only">Documentation & Guides</span>
+                </h2>
+                <h3 class="text-3xl sm:text-4xl font-black text-white mb-6">
+                    <span class="fa-only">راهنمای جامع کاربری و توسعه‌دهندگان</span>
+                    <span class="en-only">Comprehensive User & Developer Guides</span>
+                </h3>
+            </div>
+
+            <!-- Docs Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                
+                <!-- User Guide Card -->
+                <div class="glass-card rounded-3xl p-8 border-cyan-500/20">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-2xl">
+                            <i class="fa-solid fa-book-open"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold text-white">راهنمای کاربری (User Guide)</h4>
+                            <span class="text-xs text-gray-400">آموزش گام‌به‌گام اتصال، ترفندهای اپراتورها و تنظیم فرگمنت</span>
+                        </div>
+                    </div>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed mb-6">
+                        شامل آموزش راه‌اندازی سریع در ۳ گام، روش‌های اتصال در همراه اول و ایرانسل، نحوه تفکیک برنامه‌های بانکی و فعال‌سازی کنترل موبایل.
+                    </p>
+                    <div class="flex items-center gap-3">
+                        <a href="user-guide-fa.html" class="px-5 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-bold transition">
+                            <i class="fa-solid fa-file-lines ml-1"></i> مشاهده راهنمای فارسی
+                        </a>
+                        <a href="user-guide-en.html" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-medium transition">
+                            English Guide
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Developer Guide Card -->
+                <div class="glass-card glass-card-purple rounded-3xl p-8 border-purple-500/20">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-2xl">
+                            <i class="fa-solid fa-code"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold text-white">راهنمای توسعه‌دهندگان (Dev Docs)</h4>
+                            <span class="text-xs text-gray-400">معماری Go، گذرگاه Wails، افزودن پروتکل و کامپایل</span>
+                        </div>
+                    </div>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed mb-6">
+                        شامل تشریح کامل پکیج‌های core، protocols، discovery و parser، چرخه عمر Wails IPC و نحوه کامپایل از سورس‌کد با Wails CLI.
+                    </p>
+                    <div class="flex items-center gap-3">
+                        <a href="developer-guide-fa.html" class="px-5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 text-xs font-bold transition">
+                            <i class="fa-solid fa-code ml-1"></i> مستندات فنی فارسی
+                        </a>
+                        <a href="developer-guide-en.html" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-medium transition">
+                            English Developer Guide
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ & Troubleshooting Accordion Section -->
+    <section id="faq" class="py-24 relative z-10 bg-dark-900/50 border-t border-white/5">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-xs uppercase font-bold tracking-widest text-cyan-400 mb-3">
+                    <span class="fa-only">پرسش‌های پرتکرار و عیب‌یابی</span>
+                    <span class="en-only">FAQ & Troubleshooting</span>
+                </h2>
+                <h3 class="text-3xl sm:text-4xl font-black text-white mb-6">
+                    <span class="fa-only">پاسخ به سوالات رایج و حل مشکلات اتصال</span>
+                    <span class="en-only">Frequently Asked Questions & Emergency Fixes</span>
+                </h3>
+            </div>
+
+            <!-- Accordion Items -->
+            <div class="space-y-4">
+                
+                <!-- FAQ 1 -->
+                <div class="glass-card rounded-2xl p-6 cursor-pointer" onclick="toggleFaq(1)">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-white text-base flex items-center gap-3">
+                            <i class="fa-solid fa-circle-question text-cyan-400"></i>
+                            <span class="fa-only">اگر پس از قطع فیلترشکن، اینترنت ویندوز یا مرورگرها قطع شد چه کنیم؟</span>
+                            <span class="en-only">What should I do if internet disconnects after turning off the VPN?</span>
+                        </h4>
+                        <i id="faqIcon-1" class="fa-solid fa-chevron-down text-gray-400 transition-transform"></i>
+                    </div>
+                    <div id="faqContent-1" class="hidden mt-4 pt-4 border-t border-white/10 text-xs sm:text-sm text-gray-300 leading-relaxed">
+                        کافیست در نوار ابزار سایدبار برنامه روی دکمه <b>Network Doctor (پزشک هوشمند شبکه)</b> کلیک کنید. این ابزار به صورت خودکار کش DNS را خالی کرده، استک Winsock و تنظیمات پروکسی گیرکرده در رجیستری ویندوز را پاکسازی می‌کند و اینترنت بلافاصله وصل می‌شود.
+                    </div>
+                </div>
+
+                <!-- FAQ 2 -->
+                <div class="glass-card rounded-2xl p-6 cursor-pointer" onclick="toggleFaq(2)">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-white text-base flex items-center gap-3">
+                            <i class="fa-solid fa-circle-question text-purple-400"></i>
+                            <span class="fa-only">چگونه در اپراتور همراه اول یا ایرانسل قطعی‌های فیلترینگ SNI را برطرف کنیم؟</span>
+                            <span class="en-only">How to bypass SNI throttling on mobile networks (MCI / Irancell)?</span>
+                        </h4>
+                        <i id="faqIcon-2" class="fa-solid fa-chevron-down text-gray-400 transition-transform"></i>
+                    </div>
+                    <div id="faqContent-2" class="hidden mt-4 pt-4 border-t border-white/10 text-xs sm:text-sm text-gray-300 leading-relaxed">
+                        وارد بخش <b>Fragment Studio</b> در نرم‌افزار شوید و گزینه فرگمنت را با سایز <code>10-30</code> و تاخیر <code>15-30ms</code> فعال کنید. همچنین می‌توانید از پروتکل <b>Aether MASQUE (HTTP/3)</b> که ترافیک را در قالب پکت‌های استاندارد وب مخفی می‌کند استفاده نمایید.
+                    </div>
+                </div>
+
+                <!-- FAQ 3 -->
+                <div class="glass-card rounded-2xl p-6 cursor-pointer" onclick="toggleFaq(3)">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-white text-base flex items-center gap-3">
+                            <i class="fa-solid fa-circle-question text-emerald-400"></i>
+                            <span class="fa-only">چرا در لینوکس حتماً باید اسکریپت install_linux.sh را اجرا کنیم؟</span>
+                            <span class="en-only">Why do I need to run install_linux.sh on Linux?</span>
+                        </h4>
+                        <i id="faqIcon-3" class="fa-solid fa-chevron-down text-gray-400 transition-transform"></i>
+                    </div>
+                    <div id="faqContent-3" class="hidden mt-4 pt-4 border-t border-white/10 text-xs sm:text-sm text-gray-300 leading-relaxed">
+                        این اسکریپت دسترسی سیستمی <code>cap_net_admin</code> و سیاست‌های سرویس Polkit را تنظیم می‌کند. در صورت عدم اجرای آن، لینوکس در هر بار اتصال، تغییر روتینگ یا ایجاد آداپتور TUN از شما پسورد روت (Sudo) درخواست خواهد کرد. با یک بار اجرای آن، برنامه کاملاً سایلنت و بدون پسورد اجرا می‌شود.
+                    </div>
+                </div>
+
+                <!-- FAQ 4 -->
+                <div class="glass-card rounded-2xl p-6 cursor-pointer" onclick="toggleFaq(4)">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-white text-base flex items-center gap-3">
+                            <i class="fa-solid fa-circle-question text-pink-400"></i>
+                            <span class="fa-only">تفاوت حالت TUN Mode و System Proxy چیست؟</span>
+                            <span class="en-only">What is the difference between TUN Mode and System Proxy?</span>
+                        </h4>
+                        <i id="faqIcon-4" class="fa-solid fa-chevron-down text-gray-400 transition-transform"></i>
+                    </div>
+                    <div id="faqContent-4" class="hidden mt-4 pt-4 border-t border-white/10 text-xs sm:text-sm text-gray-300 leading-relaxed">
+                        در حالت <b>TUN Mode</b>، یک کارت شبکه مجازی ساخته شده و ۱۰۰٪ ترافیک کل سیستم (بازی‌ها، مرورگرها، دانلود منیجر، ترمینال و برنامه‌ها) از تونل عبور داده می‌شود. در حالت <b>System Proxy</b> فقط برنامه‌هایی که از پروکسی سیستم‌عامل پیروی می‌کنند (مانند مرورگرها) از فیلترشکن رد می‌شوند.
                     </div>
                 </div>
 
@@ -392,41 +1051,217 @@
     </section>
 
     <!-- Footer -->
-    <footer class="border-t border-white/10 bg-[#030712] pt-16 pb-8">
-        <div class="max-w-7xl mx-auto px-4 text-center">
-            <h2 class="text-3xl font-black text-white tracking-tighter mb-4">Nex<span class="text-primary">VPN</span> Pro</h2>
-            <p class="text-gray-500 mb-8 max-w-lg mx-auto fa-only">پروژه‌ای متن‌باز و رایگان برای گردش آزاد اطلاعات. منتشر شده تحت لایسنس MIT.</p>
-            <p class="text-gray-500 mb-8 max-w-lg mx-auto en-only">An open-source circumvention tool built for absolute internet freedom. Released under the MIT License.</p>
-            
-            <div class="flex flex-wrap justify-center gap-6 text-gray-400 font-medium">
-                <a href="https://github.com/Rpg-420/NexVPN" class="hover:text-white hover:underline transition">GitHub</a>
-                <a href="https://github.com/Rpg-420/NexVPN/releases" class="hover:text-white hover:underline transition">Releases & Downloads</a>
-                <a href="https://github.com/Rpg-420/NexVPN/issues" class="hover:text-white hover:underline transition">Report Issue</a>
+    <footer class="py-16 relative z-10 border-t border-white/10 bg-dark-950 text-gray-400">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-8 mb-12">
+                
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-purple-600 to-pink-500 flex items-center justify-center text-white text-lg shadow-[0_0_15px_rgba(0,240,255,0.3)]">
+                        <i class="fa-solid fa-bolt"></i>
+                    </div>
+                    <div>
+                        <span class="font-black text-xl text-white tracking-tight">Nex<span class="text-cyan-400">VPN</span> Pro</span>
+                        <p class="text-xs text-gray-400">Next-Generation Anti-Censorship Client</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-center gap-6 text-xs">
+                    <a href="#features" class="hover:text-white transition">ویژگی‌ها</a>
+                    <a href="#engines" class="hover:text-white transition">موتورهای هسته</a>
+                    <a href="#tools" class="hover:text-white transition">آنالیزر آنلاین</a>
+                    <a href="#download" class="hover:text-white transition">مرکز دانلود</a>
+                    <a href="https://github.com/Rpg-420/NexVPN" target="_blank" class="hover:text-white transition">مخزن گیت‌هاب</a>
+                </div>
+
+                <div class="flex items-center gap-4 text-lg">
+                    <a href="https://github.com/Rpg-420/NexVPN" target="_blank" class="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition hover:text-cyan-400"><i class="fa-brands fa-github"></i></a>
+                </div>
             </div>
-            <p class="mt-12 text-sm text-gray-600">© 2026 NexVPN Project. Open Source.</p>
+
+            <div class="border-t border-white/5 pt-8 text-center text-xs text-gray-400 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p>© 2026 NexVPN Pro Project. Released under the MIT Open-Source License.</p>
+                <p class="font-mono text-gray-400">Engineered with Go 1.25, Wails v2 & React 18</p>
+            </div>
         </div>
     </footer>
 
-    <!-- Interactive Scripts -->
+    <!-- Interactive Scripts for Language Toggle, Live Simulator, and Inspector Tool -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const html = document.documentElement;
-            const toggleBtn = document.getElementById('langToggle');
+        // 1. Language Toggle Logic
+        const langToggleBtn = document.getElementById('langToggleBtn');
+        let currentLang = 'fa';
 
-            // Default to Persian based on HTML attribute
-            
-            toggleBtn.addEventListener('click', () => {
-                if (html.lang === 'fa') {
-                    // Switch to English
-                    html.lang = 'en';
-                    html.dir = 'ltr';
-                } else {
-                    // Switch to Persian
-                    html.lang = 'fa';
-                    html.dir = 'rtl';
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.documentElement.lang = lang;
+            document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
+            localStorage.setItem('nexvpn_lang', lang);
+        }
+
+        langToggleBtn.addEventListener('click', () => {
+            setLanguage(currentLang === 'fa' ? 'en' : 'fa');
+        });
+
+        // Initialize language from storage if present
+        const savedLang = localStorage.getItem('nexvpn_lang');
+        if (savedLang) {
+            setLanguage(savedLang);
+        }
+
+        // 2. Live Simulator Controls
+        let simConnected = true;
+        let simInterval = null;
+
+        const simToggleBtn = document.getElementById('simToggleConnectBtn');
+        const simStatusPill = document.getElementById('simStatusPill');
+        const simDownloadSpeed = document.getElementById('simDownloadSpeed');
+        const simUploadSpeed = document.getElementById('simUploadSpeed');
+        const simPingLatency = document.getElementById('simPingLatency');
+
+        function updateSimStats() {
+            if (simConnected) {
+                const dl = (75 + Math.random() * 25).toFixed(1);
+                const ul = (25 + Math.random() * 15).toFixed(1);
+                const ping = Math.floor(32 + Math.random() * 12);
+
+                simDownloadSpeed.innerHTML = `${dl} <span class="text-xs text-gray-400 font-normal">Mbps</span>`;
+                simUploadSpeed.innerHTML = `${ul} <span class="text-xs text-gray-400 font-normal">Mbps</span>`;
+                simPingLatency.innerHTML = `${ping} <span class="text-xs text-gray-400 font-normal">ms</span>`;
+            }
+        }
+
+        simInterval = setInterval(updateSimStats, 2000);
+
+        simToggleBtn.addEventListener('click', () => {
+            simConnected = !simConnected;
+            if (simConnected) {
+                simStatusPill.className = "px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-2";
+                simStatusPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span><span>Connected • TUN Mode</span>';
+                updateSimStats();
+            } else {
+                simStatusPill.className = "px-3 py-1 rounded-full text-xs font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-2";
+                simStatusPill.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-400"></span><span>Disconnected</span>';
+                simDownloadSpeed.innerHTML = `0.0 <span class="text-xs text-gray-400 font-normal">Mbps</span>`;
+                simUploadSpeed.innerHTML = `0.0 <span class="text-xs text-gray-400 font-normal">Mbps</span>`;
+                simPingLatency.innerHTML = `-- <span class="text-xs text-gray-400 font-normal">ms</span>`;
+            }
+        });
+
+        // 3. Live Config / Node Inspector Tool
+        const demoConfigBtn = document.getElementById('demoConfigBtn');
+        const clearConfigBtn = document.getElementById('clearConfigBtn');
+        const inspectConfigBtn = document.getElementById('inspectConfigBtn');
+        const configInput = document.getElementById('configInput');
+        const inspectorResult = document.getElementById('inspectorResult');
+        const copyJsonBtn = document.getElementById('copyJsonBtn');
+
+        const demoLink = "vless://7f9d8a56-b032-4e4b-9721-a1b2c3d4e5f6@104.16.120.45:443?encryption=none&security=reality&sni=speed.cloudflare.com&fp=chrome&pbk=Ea_F_98y4Kz1L8-vT63zQ71a2b3c4d5e6f7g8h9i0j&sid=12ab34cd#MCI-Fast-Reality-Node";
+
+        demoConfigBtn.addEventListener('click', () => {
+            configInput.value = demoLink;
+            runInspect();
+        });
+
+        clearConfigBtn.addEventListener('click', () => {
+            configInput.value = '';
+            inspectorResult.classList.add('hidden');
+        });
+
+        inspectConfigBtn.addEventListener('click', runInspect);
+
+        function runInspect() {
+            const raw = configInput.value.trim();
+            if (!raw) return;
+
+            try {
+                let proto = 'unknown';
+                let server = '127.0.0.1';
+                let port = 443;
+                let security = 'tls';
+                let uuid = '';
+                let sni = '';
+
+                if (raw.startsWith('vless://')) {
+                    proto = 'vless';
+                    const u = new URL(raw);
+                    server = u.hostname;
+                    port = u.port || 443;
+                    uuid = u.username;
+                    security = u.searchParams.get('security') || 'none';
+                    sni = u.searchParams.get('sni') || u.hostname;
+                } else if (raw.startsWith('vmess://')) {
+                    proto = 'vmess';
+                    const b64 = raw.replace('vmess://', '');
+                    const jsonStr = atob(b64);
+                    const parsed = JSON.parse(jsonStr);
+                    server = parsed.add || parsed.host;
+                    port = parsed.port;
+                    uuid = parsed.id;
+                    security = parsed.tls || 'none';
+                    sni = parsed.sni || parsed.host || '';
+                } else if (raw.startsWith('trojan://')) {
+                    proto = 'trojan';
+                    const u = new URL(raw);
+                    server = u.hostname;
+                    port = u.port || 443;
+                    security = 'tls';
+                    sni = u.searchParams.get('sni') || u.hostname;
+                } else if (raw.startsWith('ss://')) {
+                    proto = 'shadowsocks';
+                    proto = 'ss';
+                } else if (raw.startsWith('hy2://') || raw.startsWith('hysteria2://')) {
+                    proto = 'hysteria2';
+                    const u = new URL(raw.replace('hy2://', 'https://').replace('hysteria2://', 'https://'));
+                    server = u.hostname;
+                    port = u.port || 443;
+                    sni = u.searchParams.get('sni') || u.hostname;
+                    security = 'tls';
                 }
+
+                document.getElementById('resProtocol').textContent = proto.toUpperCase();
+                document.getElementById('resServer').textContent = server;
+                document.getElementById('resPort').textContent = port;
+                document.getElementById('resSecurity').textContent = `${security} (${sni || 'default'})`;
+
+                const outboundJson = {
+                    type: proto,
+                    tag: "proxy-out",
+                    server: server,
+                    server_port: parseInt(port),
+                    uuid: uuid || "secret-uuid",
+                    tls: {
+                        enabled: security !== 'none',
+                        server_name: sni || server,
+                        insecure: false
+                    }
+                };
+
+                document.getElementById('resJsonPreview').textContent = JSON.stringify(outboundJson, null, 2);
+                inspectorResult.classList.remove('hidden');
+            } catch (err) {
+                alert('خطا در تحلیل لینک. لطفاً از فرمت استاندارد vless://, vmess://, trojan:// استفاده کنید.');
+            }
+        }
+
+        copyJsonBtn.addEventListener('click', () => {
+            const code = document.getElementById('resJsonPreview').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                alert('JSON Outbound با موفقیت کپی شد!');
             });
         });
+
+        // 4. FAQ Accordion Toggle
+        function toggleFaq(id) {
+            const content = document.getElementById(`faqContent-${id}`);
+            const icon = document.getElementById(`faqIcon-${id}`);
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.classList.add('rotate-180');
+            } else {
+                content.classList.add('hidden');
+                icon.classList.remove('rotate-180');
+            }
+        }
     </script>
 </body>
 </html>

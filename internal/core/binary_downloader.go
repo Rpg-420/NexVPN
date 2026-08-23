@@ -89,10 +89,26 @@ func GetCoreDownloadURL(coreKey string) string {
 		default:
 			return "https://github.com/CluvexStudio/Aether/releases/download/v1.7.0/aether-windows-x86_64.zip"
 		}
+	case "psiphon":
+		switch {
+		case osName == "windows":
+			return "" // Fallback to local bin/psiphon.exe (CLI Core) instead of downloading psiphon3.exe GUI
+		case osName == "linux" && arch == "amd64":
+			return "https://github.com/Psiphon-Labs/psiphon-tunnel-core/releases/download/v20230327/psiphon-tunnel-core-linux-amd64"
+		case osName == "linux" && arch == "arm64":
+			return "https://github.com/Psiphon-Labs/psiphon-tunnel-core/releases/download/v20230327/psiphon-tunnel-core-linux-arm64"
+		case osName == "darwin":
+			return "https://github.com/Psiphon-Labs/psiphon-tunnel-core/releases/download/v20230327/psiphon-tunnel-core-darwin-amd64"
+		default:
+			return ""
+		}
 	}
 
 	return ""
 }
+
+// DownloadProgressCallback reports progress during core binary downloads
+type DownloadProgressCallback func(percent int, downloadedBytes int64, totalBytes int64, speedBytesPerSec int64, status string)
 
 // CheckBinaries checks availability and versions of all core engines
 func CheckBinaries() map[string]BinaryInfo {
@@ -111,6 +127,11 @@ func CheckBinaries() map[string]BinaryInfo {
 			Name:        "Aether Evasion Engine (MASQUE, gool, scan modes)",
 			Filename:    exeName("aether"),
 			DownloadURL: GetCoreDownloadURL("aether"),
+		},
+		"psiphon": {
+			Name:        "Psiphon Emergency Shield (psiphon-tunnel-core)",
+			Filename:    exeName("psiphon"),
+			DownloadURL: GetCoreDownloadURL("psiphon"),
 		},
 		"openvpn": {
 			Name:        "OpenVPN Native Client",
@@ -202,8 +223,10 @@ func queryCoreVersion(coreKey, binPath string) string {
 		cmd = exec.Command(binPath, "version")
 	case "openvpn":
 		cmd = exec.Command(binPath, "--version")
+	case "psiphon":
+		return "v2.0.40 (Console Core)"
 	case "aether":
-		return "v1.7.0"
+		return "v1.7.0 (MASQUE / Evasion)"
 	default:
 		return "Installed"
 	}
@@ -225,42 +248,113 @@ func queryCoreVersion(coreKey, binPath string) string {
 	return "Installed"
 }
 
-// UpdateCoreEngine downloads and hot-updates an engine binary
+// UpdateCoreEngine downloads and hot-updates an engine binary (without progress callback)
 func UpdateCoreEngine(coreKey string) (string, error) {
-	url := GetCoreDownloadURL(coreKey)
-	if url == "" {
+	return UpdateCoreEngineWithProgress(coreKey, nil)
+}
+
+func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCallback) (string, error) {
+	urlStr := GetCoreDownloadURL(coreKey)
+	if urlStr == "" {
 		return "", fmt.Errorf("no download URL available for %s", coreKey)
 	}
 
+	urls := strings.Split(urlStr, ",")
 	targetDir := getBinDirectory()
 	_ = os.MkdirAll(targetDir, 0755)
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 NexVPN-Updater/1.1")
+	client := &http.Client{Timeout: 300 * time.Second}
+	var resp *http.Response
+	var err error
+	var activeUrl string
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to download core: %w", err)
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if progressCb != nil {
+			progressCb(0, 0, 0, 0, "Connecting to mirror...")
+		}
+		req, reqErr := http.NewRequest("GET", u, nil)
+		if reqErr != nil {
+			err = reqErr
+			continue
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 NexVPN-Updater/1.1")
+		
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			activeUrl = u
+			break
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}
+
+	if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download core after trying mirrors, last error: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("server responded with status %s", resp.Status)
+	totalBytes := resp.ContentLength
+	var downloaded int64
+	var lastReport time.Time
+	var lastDownloaded int64
+	var buf [32 * 1024]byte
+	var bodyBuffer bytes.Buffer
+
+	startTime := time.Now()
+	lastReport = startTime
+
+	for {
+		n, readErr := resp.Body.Read(buf[:])
+		if n > 0 {
+			bodyBuffer.Write(buf[:n])
+			downloaded += int64(n)
+
+			now := time.Now()
+			if now.Sub(lastReport) >= 200*time.Millisecond || readErr == io.EOF {
+				duration := now.Sub(lastReport).Seconds()
+				var speed int64
+				if duration > 0 {
+					speed = int64(float64(downloaded-lastDownloaded) / duration)
+				}
+				percent := 0
+				if totalBytes > 0 {
+					percent = int((downloaded * 100) / totalBytes)
+					if percent > 100 {
+						percent = 100
+					}
+				}
+
+				if progressCb != nil {
+					progressCb(percent, downloaded, totalBytes, speed, "Downloading...")
+				}
+				lastReport = now
+				lastDownloaded = downloaded
+			}
+		}
+
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			return "", fmt.Errorf("stream read error: %w", readErr)
+		}
 	}
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	if progressCb != nil {
+		progressCb(98, downloaded, totalBytes, 0, "Extracting...")
 	}
+
+	data := bodyBuffer.Bytes()
 
 	// Determine archive type
-	if strings.HasSuffix(url, ".zip") {
+	if strings.HasSuffix(activeUrl, ".zip") {
 		err = extractZip(data, targetDir, coreKey)
-	} else if strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
+	} else if strings.HasSuffix(activeUrl, ".tar.gz") || strings.HasSuffix(activeUrl, ".tgz") {
 		err = extractTarGz(data, targetDir, coreKey)
 	} else {
 		// Direct file
@@ -270,6 +364,10 @@ func UpdateCoreEngine(coreKey string) (string, error) {
 
 	if err != nil {
 		return "", fmt.Errorf("extraction error: %w", err)
+	}
+
+	if progressCb != nil {
+		progressCb(100, downloaded, totalBytes, 0, "Completed")
 	}
 
 	return fmt.Sprintf("Successfully updated %s to latest version", coreKey), nil
@@ -319,6 +417,10 @@ func getBinDirectory() string {
 	cwd, _ := os.Getwd()
 	if info, err := os.Stat(filepath.Join(cwd, "bin")); err == nil && info.IsDir() {
 		return filepath.Join(cwd, "bin")
+	}
+
+	if info, err := os.Stat(filepath.Join(cwd, "..", "bin")); err == nil && info.IsDir() {
+		return filepath.Join(cwd, "..", "bin")
 	}
 
 	return filepath.Join(baseDir, "bin")

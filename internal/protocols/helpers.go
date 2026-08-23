@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,32 @@ import (
 
 	"nexvpn/internal/sysproc"
 )
+
+// FindFreePort checks if the preferredPort is available; if not, returns the next available free port
+func FindFreePort(preferredPort int) int {
+	if preferredPort <= 0 {
+		preferredPort = 10808
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", preferredPort))
+	if err == nil {
+		_ = ln.Close()
+		return preferredPort
+	}
+	for port := preferredPort + 1; port < preferredPort+200; port++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			_ = ln.Close()
+			return port
+		}
+	}
+	ln, err = net.Listen("tcp", "127.0.0.1:0")
+	if err == nil {
+		addr := ln.Addr().(*net.TCPAddr)
+		_ = ln.Close()
+		return addr.Port
+	}
+	return preferredPort
+}
 
 type LoggerFunc func(level, message, source string)
 

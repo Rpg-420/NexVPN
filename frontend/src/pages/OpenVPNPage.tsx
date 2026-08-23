@@ -152,13 +152,13 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
         <div className="p-3.5 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-left rtl:text-right space-y-1.5 animate-in fade-in duration-200">
           <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
             <AlertTriangle size={15} className="text-rose-400 shrink-0 animate-pulse" />
-            <span>{t('connection_failed') || 'خطای اتصال به سرور OpenVPN'}</span>
+            <span>{t('connection_failed')}</span>
           </div>
           <p className="text-xs text-rose-200/90 leading-relaxed font-sans font-medium">
             {status.error_msg}
           </p>
           <div className="text-[11px] text-rose-300/70 pt-0.5">
-            💡 راهنما: در صورت خطای AUTH_FAILED نام کاربری و پسورد سرور را بررسی کنید. در صورت تایم‌اوت، پورت UDP توسط اپراتور مسدود شده است (از سرورهای TCP 443 یا VLESS استفاده کنید).
+            💡 {t('openvpn_error_hint')}
           </div>
         </div>
       )}

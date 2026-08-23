@@ -693,6 +693,8 @@ export namespace main {
 	export class MobileRemoteInfo {
 	    running: boolean;
 	    url: string;
+	    auth_url: string;
+	    pin: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new MobileRemoteInfo(source);
@@ -702,6 +704,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.running = source["running"];
 	        this.url = source["url"];
+	        this.auth_url = source["auth_url"];
+	        this.pin = source["pin"];
 	    }
 	}
 	export class RadarProtocolResult {

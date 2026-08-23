@@ -32,6 +32,7 @@ import {
   Shield,
   Flame,
   Award,
+  Trash2,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t, getLanguage } from '../lib/i18n'
@@ -107,10 +108,10 @@ export default function DiscoveryHub({ status }: Props) {
       const saved = localStorage.getItem('nexvpn_cached_tg_proxies')
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        if (Array.isArray(parsed)) return parsed
       }
     } catch {}
-    return INITIAL_STARTER_PROXIES
+    return []
   })
   const [isFetchingTg, setIsFetchingTg] = useState(false)
   const [isTestingTg, setIsTestingTg] = useState(false)
@@ -176,25 +177,19 @@ export default function DiscoveryHub({ status }: Props) {
   // Save states across navigation
   useEffect(() => {
     try {
-      if (tgProxies && tgProxies.length > 0) {
-        localStorage.setItem('nexvpn_cached_tg_proxies', JSON.stringify(tgProxies))
-      }
+      localStorage.setItem('nexvpn_cached_tg_proxies', JSON.stringify(tgProxies))
     } catch {}
   }, [tgProxies])
 
   useEffect(() => {
     try {
-      if (freeConfigs && freeConfigs.length > 0) {
-        localStorage.setItem('nexvpn_cached_free_configs', JSON.stringify(freeConfigs))
-      }
+      localStorage.setItem('nexvpn_cached_free_configs', JSON.stringify(freeConfigs))
     } catch {}
   }, [freeConfigs])
 
   useEffect(() => {
     try {
-      if (cfResults && cfResults.length > 0) {
-        localStorage.setItem('nexvpn_cached_cf_results', JSON.stringify(cfResults))
-      }
+      localStorage.setItem('nexvpn_cached_cf_results', JSON.stringify(cfResults))
     } catch {}
   }, [cfResults])
 
@@ -230,9 +225,13 @@ export default function DiscoveryHub({ status }: Props) {
   const handleFetchTelegramProxies = async () => {
     setIsFetchingTg(true)
     try {
-      const list = await api.fetchTelegramProxies(customTgSources.length > 0 ? customTgSources : undefined)
+      const list = await api.fetchTelegramProxies(customTgSources)
       if (Array.isArray(list)) {
-        setTgProxies(list)
+        setTgProxies(prev => {
+          const existingMap = new Set(prev.map(p => `${p.server}:${p.port}`))
+          const newOnes = list.filter(p => !existingMap.has(`${p.server}:${p.port}`))
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev
+        })
         showToast(t('alive_proxies_found') + `: ${list.length}`)
       }
     } catch (err) {
@@ -567,17 +566,24 @@ export default function DiscoveryHub({ status }: Props) {
   useEffect(() => {
     const unsubCfProg = api.onEvent('cf_scanner:progress', (p: CloudflareScanProgress) => {
       setCfProgress(p)
-      if (Array.isArray(p?.results)) {
-        setCfResults(p.results)
+      if (Array.isArray(p?.results) && p.results.length > 0) {
+        setCfResults(prev => {
+          const existingMap = new Set(prev.map(x => `${x.ip}:${x.port}`))
+          const newOnes = p.results.filter(x => !existingMap.has(`${x.ip}:${x.port}`))
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev
+        })
       }
       setIsCfScanning(true)
     })
 
     const unsubCfComplete = api.onEvent('cf_scanner:complete', (results: CloudflareTarget[]) => {
       setIsCfScanning(false)
-      if (Array.isArray(results)) {
-        setCfResults(results)
-        if (results.length > 0) setSelectedCleanTarget(results[0])
+      if (Array.isArray(results) && results.length > 0) {
+        setCfResults(prev => {
+          const existingMap = new Set(prev.map(x => `${x.ip}:${x.port}`))
+          const newOnes = results.filter(x => !existingMap.has(`${x.ip}:${x.port}`))
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev
+        })
       }
     })
 
@@ -772,6 +778,28 @@ export default function DiscoveryHub({ status }: Props) {
                   <span className="w-2 h-2 rounded-full bg-blue-400" />
                 )}
               </button>
+
+              {tgProxies.some(x => !x.is_alive) && (
+                <button
+                  onClick={() => setTgProxies(prev => prev.filter(x => x.is_alive))}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/30 text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  title={t('remove_dead')}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{t('remove_dead')}</span>
+                </button>
+              )}
+
+              {tgProxies.length > 0 && (
+                <button
+                  onClick={() => setTgProxies([])}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/60 hover:bg-rose-950/60 border border-gray-700/40 hover:border-rose-700/40 text-gray-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  title={t('clear_all_proxies')}
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>{t('clear_all_proxies')}</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -785,7 +813,7 @@ export default function DiscoveryHub({ status }: Props) {
                       : 'text-gray-400 hover:text-gray-200'
                   }`}
                 >
-                  {t('select_all') || 'همه'}
+                  {t('filter_all')}
                 </button>
 
                 <button
@@ -892,79 +920,86 @@ export default function DiscoveryHub({ status }: Props) {
                   className="group relative flex flex-col justify-between p-4 bg-gray-900/60 hover:bg-gray-850/80 rounded-2xl border border-gray-800/80 hover:border-blue-500/40 transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-blue-500/5 backdrop-blur-sm"
                 >
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
                         <CountryFlag codeOrName={p.country_code || p.country || p.server} size="sm" />
-                        <span
-                          className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${
-                            p.type === 'mtproto'
-                              ? 'bg-blue-500/20 text-blue-300 border border-blue-400/20'
-                              : 'bg-purple-500/20 text-purple-300 border border-purple-400/20'
-                          }`}
-                        >
-                          {p.type}
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-blue-500/20 text-blue-300 border border-blue-400/20">
+                          {p.type.toUpperCase()}
                         </span>
-                        {p.country && (
-                          <span className="text-xs text-gray-400 truncate max-w-[100px]">{p.country}</span>
-                        )}
                       </div>
 
-                      {p.latency_ms > 0 ? (
-                        <span
-                          className={`flex items-center gap-1 text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
-                            p.latency_ms < 300
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : p.latency_ms < 700
-                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                          }`}
+                      <div className="flex items-center gap-1.5">
+                        {p.latency_ms > 0 ? (
+                          <span
+                            className={`flex items-center gap-1 text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
+                              p.latency_ms < 300
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : p.latency_ms < 700
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            }`}
+                          >
+                            <Clock className="w-3 h-3" />
+                            {p.latency_ms} ms
+                          </span>
+                        ) : p.is_alive ? (
+                          <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {t('active_status')}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-500 font-mono">-- ms</span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => setTgProxies(prev => prev.filter(x => x.id !== p.id))}
+                          title={t('delete') || 'حذف'}
+                          className="p-1 text-gray-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-all"
                         >
-                          <Clock className="w-3 h-3" />
-                          {p.latency_ms} ms
-                        </span>
-                      ) : p.is_alive ? (
-                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                          <CheckCircle2 className="w-3 h-3" />
-                          {t('active_status')}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-gray-500 font-mono">-- ms</span>
-                      )}
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="font-mono text-sm font-semibold text-gray-200 truncate flex items-center gap-1 mt-1" dir="ltr">
-                      <span className="truncate">{p.server}</span>
-                      <span className="text-xs text-blue-400 font-normal shrink-0">:{p.port}</span>
+                    <div className="font-mono text-sm font-semibold text-gray-200 truncate flex items-center justify-between gap-1 mt-1" dir="ltr">
+                      <div className="truncate">
+                        <span className="truncate">{p.server}</span>
+                        <span className="text-xs text-blue-400 font-normal shrink-0 ml-0.5">:{p.port}</span>
+                      </div>
                     </div>
 
                     {p.secret && (
-                      <div className="mt-1 text-[11px] text-gray-500 font-mono truncate">
-                        Secret: {p.secret.slice(0, 14)}...
+                      <div className="mt-1 text-[11px] text-gray-500 font-mono truncate" dir="ltr">
+                        Secret: {p.secret.slice(0, 16)}...
                       </div>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-1.5 mt-4 pt-3 border-t border-gray-800/60">
+                  <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-gray-800/60">
                     <button
+                      type="button"
                       onClick={() => handleLaunchTelegram(p)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all whitespace-nowrap"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                       <span>{t('open_in_telegram')}</span>
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(p.link, p.id, t('proxy_copied'))}
                       title={t('copy_proxy_link')}
-                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all"
+                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all shrink-0"
                     >
                       {copiedId === p.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleShowQrModal(`${p.type.toUpperCase()} - ${p.server}:${p.port}`, p.link)}
                       title={t('show_qr_code')}
-                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all"
+                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all shrink-0"
                     >
                       <QrCode className="w-3.5 h-3.5" />
                     </button>
@@ -1044,6 +1079,28 @@ export default function DiscoveryHub({ status }: Props) {
                     <span className="w-2 h-2 rounded-full bg-indigo-400" />
                   )}
                 </button>
+
+                {freeConfigs.some(x => !x.is_alive) && (
+                  <button
+                    onClick={() => setFreeConfigs(prev => prev.filter(x => x.is_alive))}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/30 text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    title={t('remove_dead')}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t('remove_dead')}</span>
+                  </button>
+                )}
+
+                {freeConfigs.length > 0 && (
+                  <button
+                    onClick={() => setFreeConfigs([])}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/60 hover:bg-rose-950/60 border border-gray-700/40 hover:border-rose-700/40 text-gray-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    title={t('clear_all_proxies')}
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>{t('clear_all_proxies')}</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1225,6 +1282,14 @@ export default function DiscoveryHub({ status }: Props) {
                         >
                           <QrCode className="w-3.5 h-3.5" />
                         </button>
+
+                        <button
+                          onClick={() => setFreeConfigs(prev => prev.filter(x => x.id !== c.id))}
+                          title={t('delete') || 'حذف'}
+                          className="p-1.5 bg-gray-800/60 hover:bg-rose-950/60 text-gray-400 hover:text-rose-400 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1278,7 +1343,7 @@ export default function DiscoveryHub({ status }: Props) {
                     key={isp}
                     onClick={() => setCfIspFilter(isp)}
                     className={`px-2.5 py-1 rounded-lg transition-all ${
-                      cfIspFilter === isp
+                  cfIspFilter === isp
                         ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30'
                         : 'text-gray-400 hover:text-gray-200'
                     }`}
@@ -1303,6 +1368,28 @@ export default function DiscoveryHub({ status }: Props) {
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                   <span>{t('stop_scanner')}</span>
+                </button>
+              )}
+
+              {cfResults.some(x => x.loss_rate > 0) && (
+                <button
+                  onClick={() => setCfResults(prev => prev.filter(x => x.loss_rate === 0))}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/30 text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  title={t('remove_unstable')}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{t('remove_unstable')}</span>
+                </button>
+              )}
+
+              {cfResults.length > 0 && (
+                <button
+                  onClick={() => setCfResults([])}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/60 hover:bg-rose-950/60 border border-gray-700/40 hover:border-rose-700/40 text-gray-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  title={t('clear_all_proxies')}
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>{t('clear_all_proxies')}</span>
                 </button>
               )}
             </div>
@@ -1353,10 +1440,14 @@ export default function DiscoveryHub({ status }: Props) {
                   key={`${target.ip}:${target.port}-${idx}`}
                   className="group flex flex-col justify-between p-4 bg-gray-900/60 hover:bg-gray-850/80 rounded-2xl border border-gray-800/80 hover:border-amber-500/40 transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-amber-500/5 backdrop-blur-sm"
                 >
-                  <div>
+                    <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-amber-500/20 text-amber-300 border border-amber-400/20">
-                        {target.mode.toUpperCase()}
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${
+                        target.mode === 'cdn'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/20'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-400/20'
+                      }`}>
+                        {target.mode === 'cdn' ? '🌐 CDN Clean IP' : 'WARP Endpoint'}
                       </span>
 
                       <div className="flex items-center gap-1.5">
@@ -1377,12 +1468,35 @@ export default function DiscoveryHub({ status }: Props) {
                           <Clock className="w-3 h-3" />
                           {target.latency_ms} ms
                         </span>
+
+                        <button
+                          type="button"
+                          onClick={() => setCfResults(prev => prev.filter(x => !(x.ip === target.ip && x.port === target.port)))}
+                          title={t('delete') || 'حذف'}
+                          className="p-1 text-gray-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    <div className="font-mono text-sm font-semibold text-gray-200 truncate">
-                      {target.ip}
-                      <span className="text-xs text-gray-400 font-normal ml-1">:{target.port}</span>
+                    <div className="font-mono text-sm font-semibold text-gray-200 truncate flex items-center justify-between gap-1" dir="ltr">
+                      <div className="truncate">
+                        <span>{target.ip}</span>
+                        <span className={`text-xs font-normal ml-0.5 ${target.mode === 'cdn' ? 'text-emerald-400' : 'text-amber-400'}`}>:{target.port}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(`${target.ip}:${target.port}`, `${target.ip}:${target.port}`, t('clean_ip_copied'))}
+                        title={t('copy_clean_ip')}
+                        className="p-1 text-gray-500 hover:text-white rounded transition-all shrink-0"
+                      >
+                        {copiedId === `${target.ip}:${target.port}` ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     </div>
 
                     {target.location && (
@@ -1392,81 +1506,44 @@ export default function DiscoveryHub({ status }: Props) {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-1.5 mt-4 pt-3 border-t border-gray-800/60">
+                  <div className="mt-3 pt-2.5 border-t border-gray-800/60">
                     {target.mode === 'warp' ? (
-                      <>
+                      <div className="grid grid-cols-2 gap-1.5 w-full">
                         <button
                           type="button"
                           onClick={() => handleGenerateWarpConfig(target)}
                           disabled={isGeneratingWarp === `${target.ip}:${target.port}`}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                          className="flex items-center justify-center gap-1 py-2 px-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 hover:text-amber-100 border border-amber-500/35 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all truncate"
+                          title={t('generate_warp_config')}
                         >
-                          <Zap className={`w-3.5 h-3.5 fill-current ${isGeneratingWarp === `${target.ip}:${target.port}` ? 'animate-spin' : ''}`} />
-                          <span>{isGeneratingWarp === `${target.ip}:${target.port}` ? (t('generating') || 'در حال ساخت...') : (t('generate_warp_config') || '⚡ ساخت کانفیگ وارپ')}</span>
+                          <Zap className={`w-3.5 h-3.5 text-amber-400 shrink-0 ${isGeneratingWarp === `${target.ip}:${target.port}` ? 'animate-spin' : ''}`} />
+                          <span className="truncate">{isGeneratingWarp === `${target.ip}:${target.port}` ? t('generating') : t('create_warp_btn')}</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleApplyToWarpProfiles(target)}
                           disabled={isApplyingWarp}
-                          title={t('apply_to_warp_profiles') || 'اعمال به تمام پروفایل‌های موجود'}
-                          className="p-2 bg-gray-800/60 hover:bg-gray-800 text-amber-300 hover:text-white rounded-xl transition-all"
+                          title={t('apply_to_warp_profiles')}
+                          className="flex items-center justify-center gap-1 py-2 px-2 bg-gray-800/70 hover:bg-gray-750 text-gray-300 hover:text-white border border-gray-700/50 rounded-xl text-xs font-semibold transition-all active:scale-95 truncate"
                         >
-                          <Sparkles className="w-3.5 h-3.5" />
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="truncate">{t('apply_to_warp_btn')}</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyToV2RayProfiles(target, true)}
-                          disabled={isApplyingV2Ray}
-                          title="Apply to CDN V2Ray Profiles"
-                          className="p-2 bg-gray-800/60 hover:bg-gray-800 text-amber-300 hover:text-white rounded-xl transition-all"
-                        >
-                          <Globe className="w-3.5 h-3.5" />
-                        </button>
-                      </>
+                      </div>
                     ) : (
-                      <>
+                      <div className="w-full">
                         <button
                           type="button"
                           onClick={() => handleApplyToV2RayProfiles(target, true)}
                           disabled={isApplyingV2Ray}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 hover:text-emerald-100 border border-emerald-500/35 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all"
+                          title={t('apply_to_v2ray_profiles')}
                         >
-                          <Globe className="w-3.5 h-3.5" />
-                          <span>{t('apply_to_v2ray_profiles')}</span>
+                          <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>{t('apply_to_v2ray_btn')}</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateWarpConfig(target)}
-                          disabled={isGeneratingWarp === `${target.ip}:${target.port}`}
-                          title={t('generate_warp_config') || 'ساخت کانفیگ جدید وارپ با این IP'}
-                          className="p-2 bg-gray-800/60 hover:bg-gray-800 text-amber-300 hover:text-white rounded-xl transition-all"
-                        >
-                          <Zap className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyToWarpProfiles(target)}
-                          disabled={isApplyingWarp}
-                          title={t('apply_to_warp_profiles') || 'اعمال به تمام پروفایل‌های موجود'}
-                          className="p-2 bg-gray-800/60 hover:bg-gray-800 text-amber-300 hover:text-white rounded-xl transition-all"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                        </button>
-                      </>
+                      </div>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(`${target.ip}:${target.port}`, `${target.ip}:${target.port}`, t('clean_ip_copied'))}
-                      title={t('copy_clean_ip')}
-                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all"
-                    >
-                      {copiedId === `${target.ip}:${target.port}` ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </button>
                   </div>
                 </div>
               ))}
@@ -1713,10 +1790,9 @@ export default function DiscoveryHub({ status }: Props) {
               </button>
             </div>
 
-            <div
-              className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner"
-              dangerouslySetInnerHTML={{ __html: qrModalData.qrSvg }}
-            />
+            <div className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg">
+              <img src={qrModalData.qrSvg} alt="QR Code" className="w-[220px] h-[220px]" />
+            </div>
 
             <div className="p-2.5 bg-gray-950/60 rounded-xl text-left border border-gray-800/60">
               <p className="font-mono text-[11px] text-gray-400 break-all select-all line-clamp-3">

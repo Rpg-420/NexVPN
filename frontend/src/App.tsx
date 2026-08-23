@@ -20,6 +20,7 @@ import DiscoveryHub from './pages/DiscoveryHub'
 import SettingsPage from './pages/Settings'
 import Logs from './pages/Logs'
 import AetherPage from './pages/AetherPage'
+import PsiphonPage from './pages/PsiphonPage'
 import { NetworkDoctorModal } from './components/NetworkDoctorModal'
 import { VisualAppSelectorModal } from './components/VisualAppSelectorModal'
 import FloatingMiniWidget from './components/FloatingMiniWidget'
@@ -30,9 +31,9 @@ import { t, getLanguage, setLanguage, onLanguageChange } from './lib/i18n'
 import { initTheme, onThemeChange, getTheme, applyTheme, THEMES } from './lib/theme'
 import { handleGlobalStatusNotification } from './lib/notification'
 import type { ConnectionStatus, TrafficStats, Settings } from './types'
-import { Info, Compass } from 'lucide-react'
+import { Info, Compass, Flame } from 'lucide-react'
 
-type NavTab = 'dashboard' | 'v2ray' | 'warp' | 'openvpn' | 'aether' | 'discovery' | 'settings' | 'logs'
+type NavTab = 'dashboard' | 'v2ray' | 'warp' | 'openvpn' | 'aether' | 'psiphon' | 'discovery' | 'settings' | 'logs'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard')
@@ -43,7 +44,7 @@ export default function App() {
   const [isDoctorOpen, setIsDoctorOpen] = useState(false)
   const [isAppSelectorOpen, setIsAppSelectorOpen] = useState(false)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
-  const [appVersion, setAppVersion] = useState<string>('1.3.3')
+  const [appVersion, setAppVersion] = useState<string>('1.3.5')
   const [stats, setStats] = useState<TrafficStats>({
     bytes_received: 0,
     bytes_sent: 0,
@@ -205,6 +206,16 @@ export default function App() {
           </button>
 
           <button
+            id="nav-psiphon"
+            className={`nav-item${activeTab === 'psiphon' ? ' active' : ''}`}
+            onClick={() => setActiveTab('psiphon')}
+            title="Psiphon Shield"
+          >
+            <Flame size={18} className={activeTab === 'psiphon' ? 'text-amber-400 animate-pulse' : 'text-amber-400/80'} />
+            <span className="font-semibold">{t('nav_psiphon')}</span>
+          </button>
+
+          <button
             id="nav-discovery"
             className={`nav-item${activeTab === 'discovery' ? ' active' : ''}`}
             onClick={() => setActiveTab('discovery')}
@@ -262,10 +273,10 @@ export default function App() {
             <button
               onClick={handleToggleLang}
               className="btn btn-secondary btn-sm flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-1.5"
-              title="Toggle Language"
+              title={t('lang_btn_text')}
             >
               <Globe size={13} />
-              <span>{lang === 'fa' ? 'English' : 'فارسی'}</span>
+              <span>{t('lang_btn_text')}</span>
             </button>
 
             <button
@@ -320,6 +331,7 @@ export default function App() {
         {activeTab === 'warp' && <WarpWireGuardPage status={status} onStatusChange={setStatus} onNavigateTab={setActiveTab} />}
         {activeTab === 'openvpn' && <OpenVPNPage status={status} onStatusChange={setStatus} />}
         {activeTab === 'aether' && <AetherPage status={status} onStatusChange={setStatus} />}
+        {activeTab === 'psiphon' && <PsiphonPage status={status} stats={stats} />}
         {activeTab === 'discovery' && <DiscoveryHub status={status} onStatusChange={setStatus} />}
         {activeTab === 'settings' && <SettingsPage onSettingsSaved={setSettings} />}
         {activeTab === 'logs' && <Logs />}

@@ -324,10 +324,10 @@ func ScanCleanIPs(ctx context.Context, subnets []string, customPorts []int, maxR
 
 // testEndpoint tests connectivity and latency to an IP:port across TCP or UDP
 func testEndpoint(ctx context.Context, ip string, port int) (latency int, lossRate int) {
-	// First test TCP connect to verify the IP path is open
+	// First test TCP connect to verify the target IP:port is reachable
 	tcpAddr := net.JoinHostPort(ip, strconv.Itoa(port))
 	dialer := net.Dialer{
-		Timeout: 750 * time.Millisecond,
+		Timeout: 850 * time.Millisecond,
 	}
 
 	start := time.Now()
@@ -341,13 +341,21 @@ func testEndpoint(ctx context.Context, ip string, port int) (latency int, lossRa
 		return dur, 0
 	}
 
-	// If TCP port dial failed, test TCP on port 443 of that same IP to verify reachability
-	if port != 443 {
-		start443 := time.Now()
-		conn443, err443 := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, "443"))
-		if err443 == nil {
-			dur := int(time.Since(start443).Milliseconds())
-			conn443.Close()
+	// For WARP/WireGuard UDP ports, probe Anycast TCP 443/80 to measure true network route latency
+	if isWarpUDPPort(port) {
+		edgeConn, edgeErr := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, "443"))
+		if edgeErr == nil {
+			dur := int(time.Since(start).Milliseconds())
+			edgeConn.Close()
+			if dur == 0 {
+				dur = 1
+			}
+			return dur, 0
+		}
+		edgeConn80, edgeErr80 := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, "80"))
+		if edgeErr80 == nil {
+			dur := int(time.Since(start).Milliseconds())
+			edgeConn80.Close()
 			if dur == 0 {
 				dur = 1
 			}
@@ -356,4 +364,13 @@ func testEndpoint(ctx context.Context, ip string, port int) (latency int, lossRa
 	}
 
 	return -1, 100
+}
+
+func isWarpUDPPort(port int) bool {
+	switch port {
+	case 2408, 500, 4500, 1701, 854, 859, 864, 878, 880, 890, 891, 894, 908, 989, 51820:
+		return true
+	default:
+		return false
+	}
 }

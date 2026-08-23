@@ -27,6 +27,8 @@ import {
   Zap,
   Scan,
   ArrowRightLeft,
+  ClipboardList,
+  AlertCircle,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
@@ -49,6 +51,25 @@ interface Props {
 
 type FilterProtocol = 'all' | 'vless' | 'vmess' | 'trojan' | 'shadowsocks' | 'hysteria2' | 'wireguard' | 'warp' | 'tuic'
 type SortMode = 'default' | 'ping_asc' | 'ping_desc' | 'country' | 'name'
+
+// Helper to determine exact protocol label
+function getDisplayProtocol(p: Profile): { label: string; color: string } {
+  const raw = (p.raw_uri || '').toLowerCase()
+  if (raw.startsWith('vless://')) {
+    if (raw.includes('security=reality')) return { label: 'VLESS Reality', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' }
+    return { label: 'VLESS', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' }
+  }
+  if (raw.startsWith('vmess://')) return { label: 'VMess', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' }
+  if (raw.startsWith('trojan://')) return { label: 'Trojan', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' }
+  if (raw.startsWith('ss://')) return { label: 'Shadowsocks', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' }
+  if (raw.startsWith('hysteria2://') || raw.startsWith('hy2://')) return { label: 'Hysteria 2', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' }
+  if (raw.startsWith('wireguard://') || raw.startsWith('warp://')) return { label: 'WireGuard', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' }
+  if (raw.startsWith('tuic://')) return { label: 'TUIC', color: 'bg-teal-500/10 text-teal-400 border-teal-500/20' }
+  if (p.protocol && p.protocol !== 'singbox' && p.protocol !== 'xray') {
+    return { label: p.protocol.toUpperCase(), color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' }
+  }
+  return { label: 'VLESS', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' }
+}
 
 export default function V2RayPage({ status, onStatusChange }: Props) {
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -108,6 +129,22 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
   useEffect(() => {
     loadProfiles()
   }, [loadProfiles])
+
+  const handleImportFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text || !text.trim()) {
+        showToast(t('clipboard_empty'))
+        return
+      }
+      const count = await api.importSubscription(text.trim())
+      await loadProfiles()
+      showToast(t('imported_nodes_count', { count: count || 1 }))
+    } catch (err) {
+      console.error('Clipboard import error:', err)
+      showToast(t('import_failed'))
+    }
+  }
 
   const activeGroupProfiles = useMemo(() => {
     if (filterGroup === 'all') return []
@@ -387,6 +424,15 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={handleImportFromClipboard}
+            title={t('import_from_clipboard')}
+          >
+            <ClipboardList size={14} className="text-emerald-400" />
+            <span>{t('import_from_clipboard')}</span>
+          </button>
+
+          <button
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
             onClick={() => setShowScreenQRModal(true)}
             title="Scan QR Code from Screen or Image"
           >
@@ -492,7 +538,7 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-purple-300 flex items-center gap-1.5">
                   <Activity size={13} className="text-purple-400" />
-                  <span>حجم مصرفی اشتراک:</span>
+                  <span>{t('sub_data_usage')}</span>
                 </span>
                 <span className="font-mono font-bold text-white">
                   {(subUserInfo.used_bytes / (1024 * 1024 * 1024)).toFixed(1)} GB / {(subUserInfo.total_bytes / (1024 * 1024 * 1024)).toFixed(0)} GB
@@ -504,9 +550,9 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
 
               {subUserInfo.expire_date > 0 && (
                 <div className="text-slate-400 font-mono text-[11px] flex items-center gap-1">
-                  <span>انقضا:</span>
+                  <span>{t('sub_expires')}</span>
                   <span className="text-amber-300 font-bold">
-                    {new Date(subUserInfo.expire_date * 1000).toLocaleDateString('fa-IR')}
+                    {new Date(subUserInfo.expire_date * 1000).toLocaleDateString()}
                   </span>
                 </div>
               )}
@@ -565,13 +611,13 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
               className="btn btn-secondary btn-sm text-xs text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/10"
               onClick={handleRealDelayAll}
               disabled={isTestingRealDelay}
-              title="Real HTTP/204 URL Delay Test"
+              title={t('url_test_all')}
             >
               <Activity size={13} className={isTestingRealDelay ? 'animate-spin text-cyan-400' : 'text-cyan-400'} />
-              <span>{isTestingRealDelay ? 'Testing...' : '⚡ URL Test'}</span>
+              <span>{isTestingRealDelay ? t('testing_url') : t('url_test_all')}</span>
             </button>
 
-            {/* Ping All */}
+            {/* TCP Ping All */}
             <button
               className="btn btn-secondary btn-sm text-xs"
               onClick={handlePingAll}
@@ -668,14 +714,19 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
                   <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <CountryFlag codeOrName={p.country_code || p.name} size="md" />
-                      <h4 className="font-bold text-xs text-slate-100 truncate min-w-0" title={p.name}>
+                      <h4 className="font-bold text-xs text-slate-100 truncate min-w-0 font-sans" title={p.name}>
                         {p.name}
                       </h4>
                     </div>
 
-                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0 font-bold">
-                      {p.protocol}
-                    </span>
+                    {(() => {
+                      const protoInfo = getDisplayProtocol(p)
+                      return (
+                        <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border shrink-0 font-bold ${protoInfo.color}`}>
+                          {protoInfo.label}
+                        </span>
+                      )
+                    })()}
                   </div>
 
                   {/* Middle Row: Server Address & Group Info */}
@@ -699,21 +750,28 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
                   >
                     <Activity
                       size={11}
-                      className={p.latency_ms && p.latency_ms > 0 ? 'text-emerald-400' : 'text-slate-500'}
+                      className={p.latency_ms && p.latency_ms > 0 ? 'text-emerald-400' : p.latency_ms === -1 || (p.latency_ms && p.latency_ms < 0) ? 'text-rose-400' : 'text-slate-500'}
                     />
-                    <span
-                      className={
-                        p.latency_ms && p.latency_ms > 0
-                          ? p.latency_ms < 150
+                    {p.latency_ms && p.latency_ms > 0 ? (
+                      <span
+                        className={
+                          p.latency_ms < 150
                             ? 'text-emerald-400 font-bold'
                             : p.latency_ms < 300
                             ? 'text-amber-400 font-bold'
                             : 'text-rose-400 font-bold'
-                          : 'text-slate-400'
-                      }
-                    >
-                      {p.latency_ms && p.latency_ms > 0 ? `${p.latency_ms}ms` : 'Ping'}
-                    </span>
+                        }
+                      >
+                        {p.latency_ms}ms
+                      </span>
+                    ) : p.latency_ms === -1 || (p.latency_ms && p.latency_ms < 0) ? (
+                      <span className="text-rose-400 font-bold flex items-center gap-0.5">
+                        <AlertCircle size={10} />
+                        <span>-1 ms</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-mono">Ping</span>
+                    )}
                   </button>
 
                   <div className="flex items-center gap-0.5 shrink-0">
@@ -851,9 +909,10 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
           <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center space-y-4">
             <h3 className="font-bold text-slate-200 text-sm truncate">{sharingProfile.name}</h3>
             {qrImageUrl && (
-              <div
-                className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg"
-                dangerouslySetInnerHTML={{ __html: qrImageUrl }}
+              <img
+                src={qrImageUrl}
+                alt="QR Code"
+                className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg w-[220px] h-[220px]"
               />
             )}
             <button className="btn btn-secondary w-full text-xs" onClick={() => setSharingProfile(null)}>

@@ -68,6 +68,22 @@ func (d *SmartCoreDispatcher) Decide(profile *config.Profile, settings config.Se
 		}, nil
 	}
 
+	// Psiphon Profile
+	if profile.Protocol == config.ProtocolPsiphon || profile.Category == config.CategoryPsiphon {
+		adapter, err := protocols.NewAdapter(config.ProtocolPsiphon)
+		if err != nil {
+			return nil, fmt.Errorf("psiphon adapter error: %w", err)
+		}
+
+		return &DispatchDecision{
+			CoreProtocol:  config.ProtocolPsiphon,
+			ConfigContent: profile.ConfigContent,
+			Adapter:       adapter,
+			CoreName:      "Psiphon Emergency Shield",
+			Description:   "Psiphon multi-hop obfuscated anti-censorship tunnel (SSH/Meek/OSSH)",
+		}, nil
+	}
+
 	// 1. OpenVPN Profile
 	if profile.Protocol == config.ProtocolOpenVPN || profile.Category == config.CategoryOpenVPN {
 		adapter, err := protocols.NewAdapter(config.ProtocolOpenVPN)

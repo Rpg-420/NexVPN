@@ -1,0 +1,36 @@
+name: 💡 Feature Request
+description: Propose a new feature, protocol engine, or enhancement for NexVPN Pro
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We are constantly improving NexVPN Pro! Please provide as much detail as possible about your idea.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: Is your feature request related to a problem or limitation?
+      placeholder: I find it difficult to... / When using ISP X, the connection...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution or feature you'd like to see implemented.
+      placeholder: Add support for protocol X / Implement an automated scanner for...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or features you've considered?
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues and feature requests to prevent duplicates.
+          required: true

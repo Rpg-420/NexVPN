@@ -1,0 +1,83 @@
+name: 🐛 Bug Report
+description: Report a reproducible bug or issue in NexVPN Pro
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please ensure you have tested the latest version before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: NexVPN Version
+      description: What version of NexVPN are you using? (e.g., v1.3.5)
+      placeholder: v1.3.5
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you running NexVPN on?
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (Ubuntu / Debian)
+        - Linux (Arch / Manjaro)
+        - Linux (Fedora / RHEL)
+        - macOS (Apple Silicon M1/M2/M3)
+        - macOS (Intel)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Active Core / Protocol
+      description: Which protocol or core engine was active when the bug occurred?
+      options:
+        - Sing-box (VLESS / Trojan / Hysteria2)
+        - Aether (MASQUE / HTTP3 / Warp-in-Warp)
+        - Xray (VLESS / VMess)
+        - WireGuard / WARP
+        - OpenVPN
+        - Psiphon
+        - Clean IP / Fragment Scanner
+        - Other / Not Applicable
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+      placeholder: When I click connect on a VLESS Reality profile...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step by step instructions to reproduce the behavior.
+      value: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Messages
+      description: Paste any logs from the 'Logs & Events' tab (sensitive IP/tokens are automatically redacted).
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Verification Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate.
+          required: true
+        - label: I have tested with Network Doctor or emergency repair tools.
+          required: false

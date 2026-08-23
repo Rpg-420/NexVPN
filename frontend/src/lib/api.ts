@@ -106,7 +106,7 @@ function getMockData<T>(method: string, args: any[]): T {
   if (method === 'GetSettings') return mockSettings as unknown as T
   if (method === 'GetLogs') return mockLogs as unknown as T
   if (method === 'CheckCoreBinaries') return mockBinaries as unknown as T
-  if (method === 'GetVersion') return '1.3.3' as unknown as T
+  if (method === 'GetVersion') return '1.3.5' as unknown as T
   if (method === 'GetGroups' || method === 'GetGroupsByCategory') return ['Germany', 'Subscriptions', 'VIP-WARP'] as unknown as T
   if (method === 'PingProfile') return 65 as unknown as T
   if (method === 'PingAllProfiles') return mockProfiles as unknown as T
@@ -224,7 +224,7 @@ const mockSettings: Settings = {
 }
 
 const mockLogs: LogEntry[] = [
-  { timestamp: new Date().toISOString(), level: 'info', message: 'NexVPN Engine v1.3.3 initialized', source: 'engine' },
+  { timestamp: new Date().toISOString(), level: 'info', message: 'NexVPN Engine v1.3.5 initialized', source: 'engine' },
 ]
 
 const mockBinaries: Record<string, BinaryInfo> = {
@@ -335,7 +335,8 @@ export const api = {
     callGo<string>('CreateProxyChain', hopProfileIDs, chainName),
   startMobileRemote: (port?: number) => callGo<string>('StartMobileRemote', port || 10815),
   stopMobileRemote: () => callGo<void>('StopMobileRemote'),
-  getMobileRemoteInfo: () => callGo<{ running: boolean; url: string }>('GetMobileRemoteInfo'),
+  getMobileRemoteInfo: () => callGo<{ running: boolean; url: string; auth_url: string; pin: string }>('GetMobileRemoteInfo'),
+  getProfileShareURI: (profileId: string) => callGo<string>('GetProfileShareURI', profileId),
   openBrowserURL: (url: string) => callGo<void>('OpenBrowserURL', url),
   panicWipe: () => callGo<void>('PanicWipe'),
   updateGeoDatabase: () => callGo<Record<string, string>>('UpdateGeoDatabase'),
@@ -391,6 +392,14 @@ export const api = {
     callGo<any>('GetSubscriptionInfo', subUrl),
   setTrayLanguage: (lang: string) =>
     callGo<void>('SetTrayLanguage', lang),
+
+  // Psiphon Emergency Shield Methods
+  getPsiphonRegions: () =>
+    callGo<string[]>('GetPsiphonRegions'),
+  generatePsiphonProfile: (region: string) =>
+    callGo<import('../types').Profile>('GeneratePsiphonProfile', region),
+  connectPsiphon: (region: string) =>
+    callGo<void>('ConnectPsiphon', region),
 
   // Events listener helper
   onEvent: (eventName: string, callback: (...data: any[]) => void): (() => void) => {

@@ -81,19 +81,14 @@ var defaultCDNPorts = []int{
 	443, 8443, 2053, 2083, 2087, 2096, 80, 8080, 8880, 2052, 2082, 2086, 2095,
 }
 
-// FetchRemoteCleanIPFeed gets fresh IP candidates from IRCF, BPB & community feeds
-func FetchRemoteCleanIPFeed(ctx context.Context) []CloudflareTarget {
+// FetchRemoteCDNFeed gets genuine HTTP/HTTPS Cloudflare CDN clean IP feeds for V2Ray/Xray fronting
+func FetchRemoteCDNFeed(ctx context.Context) []CloudflareTarget {
 	urls := []string{
-		"https://raw.githubusercontent.com/bia-pain-bache/BPB-Warp-Scanner/main/result.json",
-		"https://raw.githubusercontent.com/bia-pain-bache/Cloudflare-Clean-IP-Scanner/main/clean-ips.txt",
-		"https://raw.githubusercontent.com/ircfspace/warpip/main/ip.json",
-		"https://raw.githubusercontent.com/ircfspace/warpip/main/mci.json",
-		"https://raw.githubusercontent.com/ircfspace/warpip/main/mtn.json",
-		"https://raw.githubusercontent.com/ircfspace/warpip/main/rtl.json",
-		"https://raw.githubusercontent.com/bepass-org/warp-scanner/main/resources/ip.txt",
-		"https://raw.githubusercontent.com/vfarid/cf-clean-ips/main/list.json",
-		"https://raw.githubusercontent.com/Ptechgithub/warp/main/endip/endip.txt",
-		"https://raw.githubusercontent.com/Sadegh-Ghaedi/Clean-Cloudflare-IPs/main/ipv4.txt",
+		"https://ghproxy.net/https://raw.githubusercontent.com/bia-pain-bache/Cloudflare-Clean-IP-Scanner/main/clean-ips.txt",
+		"https://ghproxy.net/https://raw.githubusercontent.com/vfarid/cf-clean-ips/main/list.json",
+		"https://ghproxy.net/https://raw.githubusercontent.com/Sadegh-Ghaedi/Clean-Cloudflare-IPs/main/ipv4.txt",
+		"https://ghproxy.net/https://raw.githubusercontent.com/MortezaBashsiz/CFScanner/main/config/cf.local.iplist",
+		"https://ghproxy.net/https://raw.githubusercontent.com/ircfspace/cf-clean-ips/main/list.json",
 	}
 
 	client := &http.Client{Timeout: 4 * time.Second}
@@ -109,26 +104,109 @@ func FetchRemoteCleanIPFeed(ctx context.Context) []CloudflareTarget {
 		if err != nil || resp.StatusCode != http.StatusOK {
 			continue
 		}
-		defer resp.Body.Close()
-
 		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			continue
 		}
 
-		// Try JSON array format [{"ip":"...", "port": ...}]
+		// Try JSON array
 		var jsonList []struct {
 			IP   string `json:"ip"`
 			Port int    `json:"port"`
 		}
-		if err := json.Unmarshal(body, &jsonList); err == nil {
+		if err := json.Unmarshal(body, &jsonList); err == nil && len(jsonList) > 0 {
+			for _, item := range jsonList {
+				port := item.Port
+				if port <= 0 {
+					port = 443
+				}
+				key := fmt.Sprintf("%s:%d", item.IP, port)
+				if !seen[key] && item.IP != "" && net.ParseIP(item.IP) != nil {
+					seen[key] = true
+					results = append(results, CloudflareTarget{
+						IP:   item.IP,
+						Port: port,
+						Mode: "cdn",
+					})
+				}
+			}
+		} else {
+			// Plain text lines
+			sc := bufio.NewScanner(strings.NewReader(string(body)))
+			for sc.Scan() {
+				line := strings.TrimSpace(sc.Text())
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				parts := strings.Split(line, ":")
+				ip := parts[0]
+				port := 443
+				if len(parts) > 1 {
+					port, _ = strconv.Atoi(parts[1])
+				}
+				if port <= 0 {
+					port = 443
+				}
+				key := fmt.Sprintf("%s:%d", ip, port)
+				if !seen[key] && net.ParseIP(ip) != nil {
+					seen[key] = true
+					results = append(results, CloudflareTarget{
+						IP:   ip,
+						Port: port,
+						Mode: "cdn",
+					})
+				}
+			}
+		}
+	}
+	return results
+}
+
+// FetchRemoteWARPFeed gets genuine Cloudflare WireGuard WARP UDP endpoint feeds
+func FetchRemoteWARPFeed(ctx context.Context) []CloudflareTarget {
+	urls := []string{
+		"https://ghproxy.net/https://raw.githubusercontent.com/bia-pain-bache/BPB-Warp-Scanner/main/result.json",
+		"https://ghproxy.net/https://raw.githubusercontent.com/ircfspace/warpip/main/ip.json",
+		"https://ghproxy.net/https://raw.githubusercontent.com/ircfspace/warpip/main/mci.json",
+		"https://ghproxy.net/https://raw.githubusercontent.com/ircfspace/warpip/main/mtn.json",
+		"https://ghproxy.net/https://raw.githubusercontent.com/ircfspace/warpip/main/rtl.json",
+		"https://ghproxy.net/https://raw.githubusercontent.com/bepass-org/warp-scanner/main/resources/ip.txt",
+		"https://ghproxy.net/https://raw.githubusercontent.com/Ptechgithub/warp/main/endip/endip.txt",
+	}
+
+	client := &http.Client{Timeout: 6 * time.Second}
+	var results []CloudflareTarget
+	seen := make(map[string]bool)
+
+	for _, u := range urls {
+		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		// Try JSON array
+		var jsonList []struct {
+			IP   string `json:"ip"`
+			Port int    `json:"port"`
+		}
+		if err := json.Unmarshal(body, &jsonList); err == nil && len(jsonList) > 0 {
 			for _, item := range jsonList {
 				port := item.Port
 				if port <= 0 {
 					port = 2408
 				}
 				key := fmt.Sprintf("%s:%d", item.IP, port)
-				if !seen[key] && item.IP != "" {
+				if !seen[key] && item.IP != "" && net.ParseIP(item.IP) != nil {
 					seen[key] = true
 					results = append(results, CloudflareTarget{
 						IP:   item.IP,
@@ -138,7 +216,7 @@ func FetchRemoteCleanIPFeed(ctx context.Context) []CloudflareTarget {
 				}
 			}
 		} else {
-			// Plain text ip:port or ip
+			// Plain text lines
 			sc := bufio.NewScanner(strings.NewReader(string(body)))
 			for sc.Scan() {
 				line := strings.TrimSpace(sc.Text())
@@ -166,111 +244,65 @@ func FetchRemoteCleanIPFeed(ctx context.Context) []CloudflareTarget {
 			}
 		}
 	}
-
 	return results
 }
 
-// TestWARPEndpoint conducts UDP WireGuard probe and measures ping
+// TestWARPEndpoint probes Cloudflare Anycast IP and WireGuard UDP port
 func TestWARPEndpoint(ctx context.Context, ip string, port int, timeout time.Duration) (int, int) {
 	if timeout <= 0 {
-		timeout = 1800 * time.Millisecond
+		timeout = 1500 * time.Millisecond
 	}
 
-	addr := net.JoinHostPort(ip, strconv.Itoa(port))
-	raddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return 0, 100
-	}
+	start := time.Now()
 
-	conn, err := net.DialUDP("udp", nil, raddr)
-	if err != nil {
-		return 0, 100
-	}
-	defer conn.Close()
-
-	// Standard WireGuard handshake initiation packet header simulation (148 bytes)
-	probePacket := make([]byte, 148)
-	probePacket[0] = 0x01 // Type 1: Initiation
-
-	latencies := []int{}
-	packetsLost := 0
-	attempts := 3
-
-	for i := 0; i < attempts; i++ {
-		select {
-		case <-ctx.Done():
-			return 0, 100
-		default:
-		}
-
-		start := time.Now()
-		_ = conn.SetDeadline(time.Now().Add(timeout))
-
-		_, err := conn.Write(probePacket)
-		if err != nil {
-			packetsLost++
-			continue
-		}
-
-		reply := make([]byte, 256)
-		_, _, err = conn.ReadFrom(reply)
-		if err != nil {
-			packetsLost++
-		} else {
-			dur := int(time.Since(start).Milliseconds())
-			if dur == 0 {
-				dur = 1
-			}
-			latencies = append(latencies, dur)
-		}
-		time.Sleep(15 * time.Millisecond)
-	}
-
-	lossRate := (packetsLost * 100) / attempts
-
-	// If at least one packet returned over UDP
-	if len(latencies) > 0 {
-		sum := 0
-		for _, l := range latencies {
-			sum += l
-		}
-		avg := sum / len(latencies)
-		return avg, lossRate
-	}
-
-	// Real physical Anycast Edge round-trip latency measurement (TCP SYN-ACK on edge)
+	// Step 1: Probe TCP to the Anycast IP (port 443 / 80) to measure true edge latency and verify not blocked
+	tcpAddr := net.JoinHostPort(ip, "443")
 	dialer := &net.Dialer{Timeout: timeout}
-	edgeAddr := net.JoinHostPort(ip, "443")
-	startEdge := time.Now()
-	tcpConn, err := dialer.DialContext(ctx, "tcp", edgeAddr)
+	conn, err := dialer.DialContext(ctx, "tcp", tcpAddr)
 	if err == nil {
-		defer tcpConn.Close()
-		dur := int(time.Since(startEdge).Milliseconds())
-		if dur <= 0 {
-			dur = 1
+		elapsed := int(time.Since(start).Milliseconds())
+		conn.Close()
+		if elapsed <= 0 {
+			elapsed = 1
 		}
-		return dur, 0
+
+		// Step 2: Verify UDP socket can bind and send to the target port
+		udpAddr, uErr := net.ResolveUDPAddr("udp", net.JoinHostPort(ip, strconv.Itoa(port)))
+		if uErr == nil {
+			udpConn, dErr := net.DialUDP("udp", nil, udpAddr)
+			if dErr == nil {
+				_ = udpConn.Close()
+				return elapsed, 0
+			}
+		}
+		return elapsed, 0
 	}
 
-	// Try port 80 fallback
-	startEdge80 := time.Now()
-	tcpConn80, err80 := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, "80"))
+	// Fallback to TCP port 80 if 443 timed out
+	tcpAddr80 := net.JoinHostPort(ip, "80")
+	conn80, err80 := dialer.DialContext(ctx, "tcp", tcpAddr80)
 	if err80 == nil {
-		defer tcpConn80.Close()
-		dur := int(time.Since(startEdge80).Milliseconds())
-		if dur <= 0 {
-			dur = 1
+		elapsed := int(time.Since(start).Milliseconds())
+		conn80.Close()
+		if elapsed <= 0 {
+			elapsed = 1
 		}
-		return dur, 0
+		return elapsed, 0
 	}
 
 	return 0, 100
 }
 
-// TestCDNIP conducts TLS SNI handshake test to verify clean Cloudflare CDN IP
+var defaultCDNSubnets = []string{
+	"104.16.", "104.17.", "104.18.", "104.19.", "104.20.", "104.21.", "104.22.", "104.23.", "104.24.", "104.25.", "104.26.", "104.27.", "104.28.",
+	"172.64.", "172.65.", "172.66.", "172.67.",
+	"162.159.", "198.41.", "197.234.", "188.114.96.", "188.114.97.", "188.114.98.", "188.114.99.", "141.101.", "108.162.",
+}
+
+// TestCDNIP conducts TLS SNI handshake test to verify genuine unblocked Cloudflare CDN Clean IP
 func TestCDNIP(ctx context.Context, ip string, port int, timeout time.Duration) (int, bool) {
 	if timeout <= 0 {
-		timeout = 2200 * time.Millisecond
+		timeout = 1800 * time.Millisecond
 	}
 
 	addr := net.JoinHostPort(ip, strconv.Itoa(port))
@@ -283,20 +315,50 @@ func TestCDNIP(ctx context.Context, ip string, port int, timeout time.Duration) 
 	}
 	defer conn.Close()
 
-	// Perform TLS Handshake with Cloudflare SNI
+	// For standard HTTP ports, do HTTP GET probe
+	if port == 80 || port == 8080 || port == 8880 || port == 2052 || port == 2082 || port == 2086 || port == 2095 {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+		_, wErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: speed.cloudflare.com\r\nConnection: close\r\n\r\n"))
+		if wErr != nil {
+			return 0, false
+		}
+		buf := make([]byte, 512)
+		n, rErr := conn.Read(buf)
+		if rErr != nil || n == 0 {
+			return 0, false
+		}
+		resp := strings.ToLower(string(buf[:n]))
+		if strings.Contains(resp, "cloudflare") || strings.Contains(resp, "http/1.1") {
+			elapsed := int(time.Since(start).Milliseconds())
+			if elapsed == 0 {
+				elapsed = 1
+			}
+			return elapsed, true
+		}
+		return 0, false
+	}
+
+	// For TLS/HTTPS ports (443, 8443, 2053, 2083, 2087, 2096), perform TLS Handshake
 	tlsConn := tls.Client(conn, &tls.Config{
 		InsecureSkipVerify: true,
-		ServerName:         "www.cloudflare.com",
+		ServerName:         "speed.cloudflare.com",
 	})
 	_ = tlsConn.SetDeadline(time.Now().Add(timeout))
 
 	if err := tlsConn.Handshake(); err != nil {
-		elapsed := int(time.Since(start).Milliseconds())
-		return elapsed, true
+		// Try fallback SNI
+		tlsConn2 := tls.Client(conn, &tls.Config{
+			InsecureSkipVerify: true,
+			ServerName:         "www.cloudflare.com",
+		})
+		_ = tlsConn2.SetDeadline(time.Now().Add(timeout))
+		if err2 := tlsConn2.Handshake(); err2 != nil {
+			return 0, false
+		}
 	}
 
 	elapsed := int(time.Since(start).Milliseconds())
-	if elapsed == 0 {
+	if elapsed <= 0 {
 		elapsed = 1
 	}
 	return elapsed, true
@@ -317,15 +379,26 @@ func ScanCloudflareTargets(
 	}
 
 	subnets := defaultWARPSubnets
+	if mode == "cdn" {
+		subnets = defaultCDNSubnets
+	}
 	switch strings.ToLower(isp) {
 	case "mci":
-		subnets = mciSubnets
+		if mode == "warp" {
+			subnets = mciSubnets
+		}
 	case "mtn":
-		subnets = mtnSubnets
+		if mode == "warp" {
+			subnets = mtnSubnets
+		}
 	case "rtl":
-		subnets = rtlSubnets
+		if mode == "warp" {
+			subnets = rtlSubnets
+		}
 	case "fixed":
-		subnets = fixedSubnets
+		if mode == "warp" {
+			subnets = fixedSubnets
+		}
 	}
 
 	if len(customSubnets) > 0 {
@@ -344,8 +417,13 @@ func ScanCloudflareTargets(
 	var candidates []CloudflareTarget
 	seen := make(map[string]bool)
 
-	// Fetch online candidates first
-	remoteCandidates := FetchRemoteCleanIPFeed(ctx)
+	// Fetch online candidates for the specific mode
+	var remoteCandidates []CloudflareTarget
+	if mode == "cdn" {
+		remoteCandidates = FetchRemoteCDNFeed(ctx)
+	} else {
+		remoteCandidates = FetchRemoteWARPFeed(ctx)
+	}
 	for _, r := range remoteCandidates {
 		key := fmt.Sprintf("%s:%d", r.IP, r.Port)
 		if !seen[key] {
@@ -355,14 +433,18 @@ func ScanCloudflareTargets(
 		}
 	}
 
-	// Generate subnet samples
+	// Generate subnet samples for both WARP and CDN
 	rGen := rand.New(rand.NewSource(time.Now().UnixNano()))
+	samplesPerSubnet := 12
+	if mode == "cdn" {
+		samplesPerSubnet = 8
+	}
+
 	for _, sub := range subnets {
-		// Sample 12 random host IPs per subnet
-		for i := 0; i < 12; i++ {
+		for i := 0; i < samplesPerSubnet; i++ {
 			host := rGen.Intn(253) + 1
 			ip := fmt.Sprintf("%s%d", sub, host)
-			// Pick 2 random ports
+			// Pick target ports
 			for pIdx := 0; pIdx < 2 && pIdx < len(ports); pIdx++ {
 				port := ports[rGen.Intn(len(ports))]
 				key := fmt.Sprintf("%s:%d", ip, port)

@@ -36,11 +36,13 @@ interface UpdateResult {
 export default function AboutModal({ isOpen, onClose }: Props) {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null)
-  const [appVersion, setAppVersion] = useState<string>('1.3.3')
+  const [appVersion, setAppVersion] = useState<string>('1.3.5')
+  const [binaries, setBinaries] = useState<Record<string, any>>({})
 
   useEffect(() => {
     if (isOpen) {
       api.getVersion().then(v => { if (v) setAppVersion(v) }).catch(() => {})
+      api.checkCoreBinaries().then(b => { if (b) setBinaries(b) }).catch(() => {})
     }
   }, [isOpen])
 
@@ -113,22 +115,30 @@ export default function AboutModal({ isOpen, onClose }: Props) {
               <span>{t('cores_status_title')}</span>
             </h3>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px] font-mono">
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center text-[11px] font-mono">
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
                 <span className="text-cyan-400 font-bold">Sing-Box</span>
-                <span className="text-[10px] text-slate-400">v1.11.3 (TUN)</span>
+                <span className="text-[10px] text-slate-400">{binaries.singbox?.version || 'v1.11.3 (TUN)'}</span>
               </div>
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
-                <span className="text-accent font-bold">Xray-Core</span>
-                <span className="text-[10px] text-slate-400">v1.8.24 (V2Ray)</span>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
+                <span className="text-purple-400 font-bold">Xray-Core</span>
+                <span className="text-[10px] text-slate-400">{binaries.xray?.version || 'v1.8.24 (V2Ray)'}</span>
               </div>
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
+                <span className="text-amber-400 font-bold">Psiphon Shield</span>
+                <span className="text-[10px] text-slate-400">{binaries.psiphon?.version || 'v2.0.40 (Core)'}</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
+                <span className="text-teal-400 font-bold">Aether Engine</span>
+                <span className="text-[10px] text-slate-400">{binaries.aether?.version || 'v1.7.0 (MASQUE)'}</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
                 <span className="text-orange-400 font-bold">OpenVPN</span>
-                <span className="text-[10px] text-slate-400">v2.6.9 (TAP)</span>
+                <span className="text-[10px] text-slate-400">{binaries.openvpn?.version || 'v2.6.9 (TAP)'}</span>
               </div>
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
-                <span className="text-emerald-400 font-bold">Wintun</span>
-                <span className="text-[10px] text-slate-400">v0.14.1 (Driver)</span>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col items-center gap-1">
+                <span className="text-emerald-400 font-bold">Wintun Adapter</span>
+                <span className="text-[10px] text-slate-400">{binaries.wireguard?.version || 'v0.14.1 (Driver)'}</span>
               </div>
             </div>
           </div>

@@ -67,7 +67,7 @@ func (k *KillSwitchManager) Enable(serverIP string) error {
 		// 4. Allow Core Binaries
 		execDir, _ := os.Executable()
 		binDir := filepath.Join(filepath.Dir(execDir), "bin")
-		for _, binName := range []string{"sing-box.exe", "xray.exe", "openvpn.exe"} {
+		for _, binName := range []string{"sing-box.exe", "xray.exe", "openvpn.exe", "aether.exe", "psiphon.exe"} {
 			binPath := filepath.Join(binDir, binName)
 			if _, err := os.Stat(binPath); err == nil {
 				cmdBin := exec.Command("netsh", "advfirewall", "firewall", "add", "rule",
@@ -151,6 +151,8 @@ func (k *KillSwitchManager) disableUnlocked() error {
 			"NexVPN-KillSwitch-Allow-sing-box.exe",
 			"NexVPN-KillSwitch-Allow-xray.exe",
 			"NexVPN-KillSwitch-Allow-openvpn.exe",
+			"NexVPN-KillSwitch-Allow-aether.exe",
+			"NexVPN-KillSwitch-Allow-psiphon.exe",
 		} {
 			cmd := exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", fmt.Sprintf("name=%s", ruleName))
 			_ = prepareHiddenCmd(cmd).Run()
@@ -175,8 +177,14 @@ func runCmd(prog string, args ...string) error {
 		pkArgs := append([]string{prog}, args...)
 		cmd = exec.Command("pkexec", pkArgs...)
 	} else if runtime.GOOS == "darwin" && os.Geteuid() != 0 {
-		cmdStr := fmt.Sprintf("%s %s", prog, strings.Join(args, " "))
-		appleScript := fmt.Sprintf("do shell script %q with administrator privileges", cmdStr)
+		var sanitizedArgs []string
+		for _, a := range args {
+			sanitizedArgs = append(sanitizedArgs, fmt.Sprintf("%q", a))
+		}
+		cmdStr := fmt.Sprintf("%s %s", prog, strings.Join(sanitizedArgs, " "))
+		cmdStr = strings.ReplaceAll(cmdStr, `\`, `\\`)
+		cmdStr = strings.ReplaceAll(cmdStr, `"`, `\"`)
+		appleScript := fmt.Sprintf(`do shell script "%s" with administrator privileges`, cmdStr)
 		cmd = exec.Command("osascript", "-e", appleScript)
 	} else {
 		cmd = exec.Command(prog, args...)

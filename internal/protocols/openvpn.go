@@ -178,6 +178,14 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		"--route-delay", "2",
 	}
 
+	statusFile, err := os.CreateTemp(ensureNexVPNTempDir(), "openvpn-status-*.log")
+	var statusFilePath string
+	if err == nil {
+		statusFilePath = statusFile.Name()
+		statusFile.Close()
+		args = append(args, "--status", statusFilePath, "1", "--status-version", "3")
+	}
+
 	if credsPath != "" {
 		args = append(args, "--auth-user-pass", credsPath)
 	}
@@ -227,6 +235,11 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 	a.bytesTx = 0
 	a.lockFile = lockFilePath
 	a.mu.Unlock()
+
+	// Launch status reader goroutine to periodically update traffic statistics
+	if statusFilePath != "" {
+		go a.pollStatusFile(ctx, statusFilePath)
+	}
 
 	connectedCh := make(chan struct{}, 1)
 	errCh := make(chan error, 1)
@@ -383,4 +396,63 @@ func (a *OpenVPNAdapter) IsRunning() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.running
+}
+
+func (a *OpenVPNAdapter) pollStatusFile(ctx context.Context, statusPath string) {
+	defer os.Remove(statusPath)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.mu.RLock()
+			running := a.running
+			a.mu.RUnlock()
+			if !running {
+				return
+			}
+
+			data, err := os.ReadFile(statusPath)
+			if err != nil {
+				continue
+			}
+
+			lines := strings.Split(string(data), "\n")
+			var rx, tx int64
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "TCP/UDP read bytes,") {
+					var val int64
+					if n, _ := fmt.Sscanf(line, "TCP/UDP read bytes,%d", &val); n == 1 {
+						rx = val
+					}
+				} else if strings.HasPrefix(line, "TCP/UDP write bytes,") {
+					var val int64
+					if n, _ := fmt.Sscanf(line, "TCP/UDP write bytes,%d", &val); n == 1 {
+						tx = val
+					}
+				} else if rx == 0 && strings.HasPrefix(line, "TUN/TAP write bytes,") {
+					var val int64
+					if n, _ := fmt.Sscanf(line, "TUN/TAP write bytes,%d", &val); n == 1 {
+						rx = val
+					}
+				} else if tx == 0 && strings.HasPrefix(line, "TUN/TAP read bytes,") {
+					var val int64
+					if n, _ := fmt.Sscanf(line, "TUN/TAP read bytes,%d", &val); n == 1 {
+						tx = val
+					}
+				}
+			}
+
+			if rx > 0 || tx > 0 {
+				a.mu.Lock()
+				a.bytesRx = rx
+				a.bytesTx = tx
+				a.mu.Unlock()
+			}
+		}
+	}
 }

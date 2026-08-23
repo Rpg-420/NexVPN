@@ -58,6 +58,8 @@ var defaultTelegramSources = []string{
 	"https://raw.githubusercontent.com/Ebrahimn99/telegram-mtproto/main/proxies.txt",
 	"https://raw.githubusercontent.com/elliottophellia/telegram-mtproto-proxies/master/list.txt",
 	"https://raw.githubusercontent.com/ircfspace/telerx/main/proxies",
+	"https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+	"https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
 }
 
 // Default fallback proxies if offline or sources are unreachable
@@ -113,29 +115,41 @@ func FetchTelegramProxies(ctx context.Context, customSources []string) ([]Telegr
 		wg.Add(1)
 		go func(urlStr string) {
 			defer wg.Done()
-			fetchURL := urlStr
-			if strings.Contains(fetchURL, "?") {
-				fetchURL += fmt.Sprintf("&_t=%d", time.Now().Unix())
-			} else {
-				fetchURL += fmt.Sprintf("?_t=%d", time.Now().Unix())
+			candidates := []string{urlStr}
+			if strings.HasPrefix(urlStr, "https://raw.githubusercontent.com/") {
+				candidates = append(candidates, "https://ghproxy.net/"+urlStr)
 			}
 
-			req, err := http.NewRequestWithContext(ctx, "GET", fetchURL, nil)
-			if err != nil {
-				return
-			}
-			req.Header.Set("User-Agent", "NexVPN/1.3.3 Mozilla/5.0")
-			req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			req.Header.Set("Pragma", "no-cache")
+			var bodyBytes []byte
+			for _, u := range candidates {
+				fetchURL := u
+				if strings.Contains(fetchURL, "?") {
+					fetchURL += fmt.Sprintf("&_t=%d", time.Now().Unix())
+				} else {
+					fetchURL += fmt.Sprintf("?_t=%d", time.Now().Unix())
+				}
 
-			resp, err := client.Do(req)
-			if err != nil || resp.StatusCode != http.StatusOK {
-				return
-			}
-			defer resp.Body.Close()
+				req, err := http.NewRequestWithContext(ctx, "GET", fetchURL, nil)
+				if err != nil {
+					continue
+				}
+				req.Header.Set("User-Agent", "NexVPN/1.3.5 Mozilla/5.0")
+				req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				req.Header.Set("Pragma", "no-cache")
 
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
+				resp, err := client.Do(req)
+				if err != nil || resp.StatusCode != http.StatusOK {
+					continue
+				}
+				data, readErr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if readErr == nil && len(data) > 0 {
+					bodyBytes = data
+					break
+				}
+			}
+
+			if len(bodyBytes) == 0 {
 				return
 			}
 

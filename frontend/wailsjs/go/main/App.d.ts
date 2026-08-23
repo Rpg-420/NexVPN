@@ -35,6 +35,8 @@ export function Connect(arg1:string):Promise<void>;
 
 export function ConnectFastest(arg1:string):Promise<config.Profile>;
 
+export function ConnectPsiphon(arg1:string):Promise<void>;
+
 export function ConvertConfig(arg1:string,arg2:string):Promise<string>;
 
 export function CreateProxyChain(arg1:Array<string>,arg2:string):Promise<string>;
@@ -69,6 +71,8 @@ export function FetchTelegramProxies(arg1:Array<string>):Promise<Array<discovery
 
 export function FixNetworkIssues():Promise<parser.RepairResult>;
 
+export function GeneratePsiphonProfile(arg1:string):Promise<config.Profile>;
+
 export function GenerateShareableSubscription(arg1:string):Promise<string>;
 
 export function GenerateWarpOnWarpProfile(arg1:string,arg2:number,arg3:string,arg4:number):Promise<config.Profile>;
@@ -95,9 +99,13 @@ export function GetMobileRemoteInfo():Promise<main.MobileRemoteInfo>;
 
 export function GetProfileByID(arg1:string):Promise<config.Profile>;
 
+export function GetProfileShareURI(arg1:string):Promise<string>;
+
 export function GetProfiles():Promise<Array<config.Profile>>;
 
 export function GetProfilesByCategory(arg1:string):Promise<Array<config.Profile>>;
+
+export function GetPsiphonRegions():Promise<Array<string>>;
 
 export function GetSettings():Promise<config.Settings>;
 

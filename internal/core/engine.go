@@ -229,9 +229,10 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 		_ = oldAdapter.Stop()
 	}
 	cleanupStaleCores()
+	waitForPortFree(10808, 1500*time.Millisecond)
 	if currentState == StateConnected || currentState == StateDisconnecting {
 		_ = sysproxy.ClearSystemProxy()
-		time.Sleep(80 * time.Millisecond)
+		time.Sleep(60 * time.Millisecond)
 	}
 
 	_ = GetKillSwitch().Disable()
@@ -286,7 +287,11 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 			// Allow time for the Wintun adapter driver to initialize
 			time.Sleep(1200 * time.Millisecond)
 		} else {
-			if !probeProxy(150 * time.Second) {
+			timeout := 150 * time.Second
+			if targetProtocol == config.ProtocolPsiphon {
+				timeout = 240 * time.Second
+			}
+			if !probeProxy(10808, timeout) {
 				cancel()
 				errMsg := "proxy port 10808 did not become available — core may have failed to start"
 				e.AddLog("error", errMsg, "engine")
@@ -353,16 +358,43 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 	return nil
 }
 
-// probeProxy repeatedly checks whether the local SOCKS5 proxy port (127.0.0.1:10808) is accepting TCP sockets.
-func probeProxy(timeout time.Duration) bool {
+// waitForPortFree waits until a TCP port is released and available for listening
+func waitForPortFree(port int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 400*time.Millisecond)
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			_ = ln.Close()
+			return
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+}
+
+// probeProxy repeatedly checks whether the local SOCKS5 or HTTP proxy port is accepting TCP sockets.
+func probeProxy(port int, timeout time.Duration) bool {
+	if port <= 0 {
+		port = 10808
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		// Probe primary target port on 127.0.0.1
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 350*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			return true
 		}
-		time.Sleep(300 * time.Millisecond)
+
+		// Also check HTTP port 10809 if standard SOCKS port 10808 is targeted
+		if port == 10808 {
+			connHttp, errHttp := net.DialTimeout("tcp", "127.0.0.1:10809", 350*time.Millisecond)
+			if errHttp == nil {
+				connHttp.Close()
+				return true
+			}
+		}
+
+		time.Sleep(250 * time.Millisecond)
 	}
 	return false
 }

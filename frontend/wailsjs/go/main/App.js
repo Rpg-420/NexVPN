@@ -58,6 +58,10 @@ export function ConnectFastest(arg1) {
   return window['go']['main']['App']['ConnectFastest'](arg1);
 }
 
+export function ConnectPsiphon(arg1) {
+  return window['go']['main']['App']['ConnectPsiphon'](arg1);
+}
+
 export function ConvertConfig(arg1, arg2) {
   return window['go']['main']['App']['ConvertConfig'](arg1, arg2);
 }
@@ -126,6 +130,10 @@ export function FixNetworkIssues() {
   return window['go']['main']['App']['FixNetworkIssues']();
 }
 
+export function GeneratePsiphonProfile(arg1) {
+  return window['go']['main']['App']['GeneratePsiphonProfile'](arg1);
+}
+
 export function GenerateShareableSubscription(arg1) {
   return window['go']['main']['App']['GenerateShareableSubscription'](arg1);
 }
@@ -178,12 +186,20 @@ export function GetProfileByID(arg1) {
   return window['go']['main']['App']['GetProfileByID'](arg1);
 }
 
+export function GetProfileShareURI(arg1) {
+  return window['go']['main']['App']['GetProfileShareURI'](arg1);
+}
+
 export function GetProfiles() {
   return window['go']['main']['App']['GetProfiles']();
 }
 
 export function GetProfilesByCategory(arg1) {
   return window['go']['main']['App']['GetProfilesByCategory'](arg1);
+}
+
+export function GetPsiphonRegions() {
+  return window['go']['main']['App']['GetPsiphonRegions']();
 }
 
 export function GetSettings() {

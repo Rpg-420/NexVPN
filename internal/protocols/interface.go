@@ -35,6 +35,8 @@ func NewAdapter(protocol config.Protocol) (ProtocolAdapter, error) {
 		return NewOpenVPNAdapter(), nil
 	case config.ProtocolAether:
 		return NewAetherAdapter(), nil
+	case config.ProtocolPsiphon:
+		return NewPsiphonAdapter(), nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
 	}

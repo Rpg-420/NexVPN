@@ -34,56 +34,14 @@ interface AetherConfig {
   quick_reconnect: boolean
 }
 
-const FA_TRANSLATIONS: Record<string, string> = {
-  aether_title: 'مدیریت هسته Aether',
-  aether_subtitle: 'دور زدن فیلترینگ با پروتکل MASQUE و gool (Cloudflare nested tunnel)',
-  add_profile: 'افزودن سرور Aether',
-  profile_name: 'نام سرور',
-  protocol: 'پروتکل ارتباطی',
-  scan_mode: 'حالت اسکنر هوشمند (Scan Mode)',
-  socks_port: 'پورت SOCKS5 محلی',
-  http_port: 'پورت HTTP محلی',
-  upstream: 'پروکسی بالادستی (اختیاری - Upstream)',
-  quick_reconnect: 'اتصال مجدد سریع (Quick Reconnect)',
-  core_status: 'وضعیت هسته Aether',
-  core_installed: 'هسته نصب شده و آماده استفاده است.',
-  core_missing: 'فایل باینری Aether یافت نشد. لطفا برای استفاده هسته را دانلود کنید.',
-  download_core: 'دانلود و نصب هسته Aether',
-  saving: 'در حال ذخیره‌سازی...',
-  connecting: 'در حال اتصال...',
-  connected: 'متصل',
-  disconnected: 'قطع شده',
-  no_profiles: 'هیچ سرور Aether ثبت نشده است. برای شروع یکی ایجاد کنید.',
-}
-
-const EN_TRANSLATIONS: Record<string, string> = {
-  aether_title: 'Aether Engine Manager',
-  aether_subtitle: 'Censorship circumvention using MASQUE and gool (Cloudflare nested tunnel)',
-  add_profile: 'Add Aether Profile',
-  profile_name: 'Profile Name',
-  protocol: 'Transport Protocol',
-  scan_mode: 'Scanner Mode',
-  socks_port: 'Local SOCKS5 Port',
-  http_port: 'Local HTTP Port',
-  upstream: 'Upstream Proxy (Optional)',
-  quick_reconnect: 'Quick Reconnect',
-  core_status: 'Aether Core Status',
-  core_installed: 'Aether core is installed and ready.',
-  core_missing: 'Aether binary is missing. Please download to enable routing.',
-  download_core: 'Download & Install Aether Core',
-  saving: 'Saving...',
-  connecting: 'Connecting...',
-  connected: 'Connected',
-  disconnected: 'Disconnected',
-  no_profiles: 'No Aether profiles configured. Create one to get started.',
-}
-
 export default function AetherPage({ status, onStatusChange }: Props) {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [search, setSearch] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
   const [coreInstalled, setCoreInstalled] = useState(false)
   const [updatingCore, setUpdatingCore] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState<{ percent: number; speed: number; status: string } | null>(null)
 
   // Form states
   const [name, setName] = useState('')
@@ -94,9 +52,8 @@ export default function AetherPage({ status, onStatusChange }: Props) {
   const [upstream, setUpstream] = useState('')
   const [quickReconnect, setQuickReconnect] = useState(false)
 
-  const isFarsi = document.documentElement.lang === 'fa' || t('app_title') === 'نکس وی پی ان'
   const trans = (key: string) => {
-    return isFarsi ? (FA_TRANSLATIONS[key] || key) : (EN_TRANSLATIONS[key] || key)
+    return t(key)
   }
 
   const loadProfiles = useCallback(async () => {
@@ -124,10 +81,34 @@ export default function AetherPage({ status, onStatusChange }: Props) {
   useEffect(() => {
     loadProfiles()
     checkCoreStatus()
+
+    // Listen for core download progress
+    const win = window as any
+    if (win.runtime && win.runtime.EventsOn) {
+      const unsub = win.runtime.EventsOn('core:download_progress', (data: any) => {
+        if (data && data.key === 'aether') {
+          setDownloadProgress({
+            percent: data.percent || 0,
+            speed: data.speed || 0,
+            status: data.status || 'Downloading...',
+          })
+          if (data.percent >= 100) {
+            setTimeout(() => {
+              setDownloadProgress(null)
+              checkCoreStatus()
+            }, 1000)
+          }
+        }
+      })
+      return () => {
+        if (typeof unsub === 'function') unsub()
+      }
+    }
   }, [loadProfiles, checkCoreStatus])
 
   const handleInstallCore = useCallback(async () => {
     setUpdatingCore(true)
+    setDownloadProgress({ percent: 1, speed: 0, status: 'Connecting...' })
     try {
       await api.updateCoreEngine('aether')
       await checkCoreStatus()
@@ -135,6 +116,7 @@ export default function AetherPage({ status, onStatusChange }: Props) {
       console.error('Failed to download Aether core:', err)
     } finally {
       setUpdatingCore(false)
+      setDownloadProgress(null)
     }
   }, [checkCoreStatus])
 
@@ -196,19 +178,29 @@ export default function AetherPage({ status, onStatusChange }: Props) {
       quick_reconnect: quickReconnect,
     }
 
-    const newProfile: Omit<Profile, 'id' | 'created_at' | 'updated_at' | 'usage_count'> = {
-      name: name.trim(),
-      protocol: 'aether',
-      category: 'aether',
-      config_content: JSON.stringify(conf),
-      server: '127.0.0.1',
-      port: socksPort,
-    }
-
     try {
-      await api.addProfile(newProfile as Profile)
+      if (editingProfile) {
+        const updated: Profile = {
+          ...editingProfile,
+          name: name.trim(),
+          config_content: JSON.stringify(conf),
+          port: socksPort,
+        }
+        await api.updateProfile(updated)
+      } else {
+        const newProfile: Omit<Profile, 'id' | 'created_at' | 'updated_at' | 'usage_count'> = {
+          name: name.trim(),
+          protocol: 'aether',
+          category: 'aether',
+          config_content: JSON.stringify(conf),
+          server: '127.0.0.1',
+          port: socksPort,
+        }
+        await api.addProfile(newProfile as Profile)
+      }
       await loadProfiles()
       setShowAddModal(false)
+      setEditingProfile(null)
       // Reset form
       setName('')
       setAetherProtocol('masque')
@@ -218,7 +210,7 @@ export default function AetherPage({ status, onStatusChange }: Props) {
       setUpstream('')
       setQuickReconnect(false)
     } catch (err) {
-      console.error('Add profile error:', err)
+      console.error('Save profile error:', err)
     }
   }
 
@@ -276,10 +268,33 @@ export default function AetherPage({ status, onStatusChange }: Props) {
             ) : (
               <Download size={14} />
             )}
-            {trans('download_core')}
+            {updatingCore ? (downloadProgress?.status || 'Downloading...') : trans('download_core')}
           </button>
         )}
       </div>
+
+      {/* Live Download Progress Bar */}
+      {updatingCore && downloadProgress && (
+        <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl space-y-2 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between text-xs text-amber-200">
+            <span className="flex items-center gap-2 font-medium">
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+              <span>{downloadProgress.status} ({downloadProgress.percent}%)</span>
+            </span>
+            {downloadProgress.speed > 0 && (
+              <span className="font-mono text-gray-400 text-[11px]">
+                {(downloadProgress.speed / (1024 * 1024)).toFixed(2)} MB/s
+              </span>
+            )}
+          </div>
+          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-200"
+              style={{ width: `${downloadProgress.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Search Filter */}
       <div className="relative">
@@ -288,7 +303,7 @@ export default function AetherPage({ status, onStatusChange }: Props) {
         </span>
         <input
           type="text"
-          placeholder={t('search_server') || 'جستجو در سرورها...'}
+          placeholder={t('search')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2 bg-slate-900/50 border border-white/5 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
@@ -299,7 +314,7 @@ export default function AetherPage({ status, onStatusChange }: Props) {
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 bg-slate-950/20 border border-white/5 rounded-xl text-center">
           <Cpu className="text-slate-600 mb-3 animate-pulse" size={48} />
-          <p className="text-sm text-slate-400">{trans('no_profiles')}</p>
+          <p className="text-sm text-slate-400">{t('no_profiles_found')}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -337,12 +352,12 @@ export default function AetherPage({ status, onStatusChange }: Props) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {isConnectedThis || isConnectingThis ? (
                       <button
                         onClick={handleDisconnect}
                         className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
-                        title={t('disconnect') || 'قطع اتصال'}
+                        title={t('disconnect')}
                       >
                         <Square size={16} fill="currentColor" />
                       </button>
@@ -351,16 +366,33 @@ export default function AetherPage({ status, onStatusChange }: Props) {
                         onClick={() => handleConnect(p.id)}
                         disabled={status.state === 'connecting'}
                         className="p-2 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:bg-slate-800 text-cyan-400 disabled:text-slate-600 rounded-lg transition-all"
-                        title={t('connect') || 'اتصال'}
+                        title={t('connect')}
                       >
                         <Play size={16} fill="currentColor" />
                       </button>
                     )}
                     <button
+                      onClick={() => {
+                        setEditingProfile(p)
+                        setName(p.name)
+                        setAetherProtocol((conf.protocol as any) || 'masque')
+                        setScanMode((conf.scan_mode as any) || 'balanced')
+                        setSocksPort(conf.socks_port || 10808)
+                        setHttpPort(conf.http_port || 10809)
+                        setUpstream(conf.upstream || '')
+                        setQuickReconnect(!!conf.quick_reconnect)
+                        setShowAddModal(true)
+                      }}
+                      className="p-2 bg-slate-800/60 hover:bg-slate-700 text-slate-300 rounded-lg transition-all"
+                      title={t('edit')}
+                    >
+                      <SettingsIcon size={16} />
+                    </button>
+                    <button
                       onClick={() => handleDelete(p.id)}
                       disabled={isConnectedThis || isConnectingThis}
                       className="p-2 bg-red-500/5 hover:bg-red-500/15 disabled:bg-transparent text-red-500/60 disabled:text-slate-700 rounded-lg transition-all border border-transparent hover:border-red-500/10"
-                      title={t('delete') || 'حذف'}
+                      title={t('delete')}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -377,7 +409,9 @@ export default function AetherPage({ status, onStatusChange }: Props) {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-slate-900 border border-white/5 rounded-xl shadow-2xl overflow-hidden flex flex-col">
             <div className="flex justify-between items-center p-4 border-b border-white/5">
-              <h3 className="font-semibold text-white text-base">{trans('add_profile')}</h3>
+              <h3 className="font-semibold text-white text-base">
+                {editingProfile ? (t('edit') || 'ویرایش سرور') : trans('add_profile')}
+              </h3>
               <button 
                 onClick={() => setShowAddModal(false)}
                 className="text-slate-500 hover:text-white transition-all"

@@ -10,6 +10,7 @@ build/bin/
 !bin/*.exe
 !bin/*.dll
 !bin/*.dat
+bin/psiphon.exe
 
 # Node / Frontend
 node_modules/

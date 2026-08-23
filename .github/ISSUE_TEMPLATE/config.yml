@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Community Discussions & Q&A
+    url: https://github.com/Rpg-420/NexVPN/discussions
+    about: Ask questions, share configs, tips, and discuss ideas with the community.
+  - name: 📖 Official Documentation & Guides
+    url: https://Rpg-420.github.io/NexVPN/
+    about: Read our comprehensive user and developer guides.

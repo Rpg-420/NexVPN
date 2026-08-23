@@ -75,6 +75,7 @@ import ConfigConverterModal from '../components/ConfigConverterModal'
 import SmartISPOptimizerCard from '../components/SmartISPOptimizerCard'
 import NearbySyncModal from '../components/NearbySyncModal'
 import FloatingMiniWidget from '../components/FloatingMiniWidget'
+import ProfileQRModal from '../components/ProfileQRModal'
 import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
 
 // ─── Profile Search Selector ─────────────────────────────────────────────────
@@ -283,10 +284,10 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
   }
 
   const handlePanicWipe = async () => {
-    if (window.confirm('⚠️ PANIC ACTION: Are you sure you want to disconnect, clear all proxies, and wipe session logs immediately?')) {
+    if (window.confirm(t('panic_wipe_confirm'))) {
       try {
         await api.panicWipe()
-        showToast('Panic Wipe Completed: System restored to clean direct state.')
+        showToast(t('panic_wipe_success'))
         sound.playDisconnect()
       } catch (err) {
         console.error(err)
@@ -612,7 +613,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
               className={`btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-bold transition ${
                 showToolsDropdown ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50' : 'text-slate-300 border-slate-700/60 hover:text-cyan-300'
               }`}
-              title="More Network Tools & Utilities"
+              title={t('more_tools')}
             >
               <Wrench size={13} className="text-cyan-400" />
               <span>{t('tools')}</span>
@@ -901,13 +902,13 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
                       <AlertTriangle size={14} className="text-rose-400 shrink-0 animate-pulse" />
-                      <span>{t('connection_failed') || 'خطای اتصال به سرور'}</span>
+                      <span>{t('connection_failed')}</span>
                     </div>
                     <button
                       onClick={() => setShowEmergencyModal(true)}
                       className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
                     >
-                      🩺 {t('open_doctor') || 'پزشک هوشمند'}
+                      🩺 {t('open_doctor')}
                     </button>
                   </div>
                   <p className="text-[11px] text-rose-200/90 leading-relaxed font-sans font-medium">
@@ -1303,7 +1304,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         onClose={() => setShowOnboarding(false)}
         onCompleted={() => {
           loadDashboardData()
-          showToast('Setup completed! Welcome to NexVPN.')
+          showToast(t('setup_completed_welcome'))
         }}
       />
 
@@ -1313,7 +1314,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         profiles={profiles}
         onSuccess={() => {
           loadDashboardData()
-          showToast('Chained node created successfully!')
+          showToast(t('chain_created_success'))
         }}
       />
 
@@ -1328,7 +1329,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         settings={currentSettings}
         onSettingsUpdated={updated => {
           setCurrentSettings(updated)
-          showToast('Anti-DPI settings saved!')
+          showToast(t('anti_dpi_saved'))
         }}
       />
 
@@ -1339,7 +1340,7 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         onSettingsUpdated={updated => {
           setCurrentSettings(updated)
           setGameMode(updated.game_mode_enabled || false)
-          showToast('Gaming Accelerator updated!')
+          showToast(t('gaming_updated'))
         }}
       />
 
@@ -1358,6 +1359,12 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         isOpen={showNearbyModal}
         onClose={() => setShowNearbyModal(false)}
         onProfilesImported={loadDashboardData}
+      />
+
+      <ProfileQRModal
+        profile={profiles.find(p => p.id === selectedProfileId) || (status.profile_id ? profiles.find(p => p.id === status.profile_id) || null : null)}
+        isOpen={showQRModal}
+        onClose={() => setShowQRModal(false)}
       />
     </div>
   )

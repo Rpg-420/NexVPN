@@ -341,25 +341,49 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		},
 	)
 
+	outboundType, _ := activeOutbound["type"].(string)
+
 	// Smart Zero-Pollution Dual DNS Setup
-	// Remote DNS uses clean UDP/TCP through proxy tunnel to eliminate TLS IP-SAN cert errors
-	primaryDNSAddr := "udp://1.1.1.1"
+	// For WireGuard / WARP outbounds, use DoH (https://1.1.1.1/dns-query) or UDP to prevent TCP timeout
+	primaryDNSAddr := "tcp://1.1.1.1"
+	if outboundType == "wireguard" || outboundType == "warp" {
+		primaryDNSAddr = "https://1.1.1.1/dns-query"
+	}
 	if settings.DNSServer != "" {
 		primaryDNSAddr = settings.DNSServer
-		if primaryDNSAddr == "https://1.1.1.1/dns-query" || primaryDNSAddr == "1.1.1.1" {
-			primaryDNSAddr = "udp://1.1.1.1"
+		if primaryDNSAddr == "1.1.1.1" {
+			if outboundType == "wireguard" || outboundType == "warp" {
+				primaryDNSAddr = "https://1.1.1.1/dns-query"
+			} else {
+				primaryDNSAddr = "tcp://1.1.1.1"
+			}
 		} else if primaryDNSAddr == "8.8.8.8" {
-			primaryDNSAddr = "udp://8.8.8.8"
+			if outboundType == "wireguard" || outboundType == "warp" {
+				primaryDNSAddr = "https://8.8.8.8/dns-query"
+			} else {
+				primaryDNSAddr = "tcp://8.8.8.8"
+			}
 		}
 	}
 
-	fallbackDNSAddr := "udp://8.8.8.8"
+	fallbackDNSAddr := "tcp://8.8.8.8"
+	if outboundType == "wireguard" || outboundType == "warp" {
+		fallbackDNSAddr = "https://8.8.8.8/dns-query"
+	}
 	if settings.DNSFallback != "" {
 		fallbackDNSAddr = settings.DNSFallback
 		if fallbackDNSAddr == "8.8.8.8" {
-			fallbackDNSAddr = "udp://8.8.8.8"
-		} else if fallbackDNSAddr == "1.1.1.1" || fallbackDNSAddr == "https://1.1.1.1/dns-query" {
-			fallbackDNSAddr = "udp://1.1.1.1"
+			if outboundType == "wireguard" || outboundType == "warp" {
+				fallbackDNSAddr = "https://8.8.8.8/dns-query"
+			} else {
+				fallbackDNSAddr = "tcp://8.8.8.8"
+			}
+		} else if fallbackDNSAddr == "1.1.1.1" {
+			if outboundType == "wireguard" || outboundType == "warp" {
+				fallbackDNSAddr = "https://1.1.1.1/dns-query"
+			} else {
+				fallbackDNSAddr = "tcp://1.1.1.1"
+			}
 		}
 	}
 
@@ -376,6 +400,10 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 			"detour":  "direct",
 		},
 		{
+			"tag":     "dns-fakeip",
+			"address": "fakeip",
+		},
+		{
 			"tag":              "dns-fallback",
 			"address":          fallbackDNSAddr,
 			"address_resolver": "dns-direct",
@@ -387,8 +415,13 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		},
 	}
 
-	// DNS Rules — ONLY route Iranian domestic domains & server hostname to local DNS; ALL other traffic resolves through dns-remote
-	dnsRules := []map[string]interface{}{}
+	// DNS Rules — FakeIP for TUN inbound, domestic domains & server hostname to local DNS; other traffic resolves through dns-remote
+	dnsRules := []map[string]interface{}{
+		{
+			"inbound": []string{"tun-in"},
+			"server":  "dns-fakeip",
+		},
+	}
 
 	if serverHost != "" && !isIPAddress(serverHost) {
 		dnsRules = append(dnsRules, map[string]interface{}{
@@ -418,6 +451,11 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 	}
 
 	// Routing Rules
+	lanCIDRs := []string{"192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16"}
+	if settings.BypassLAN && activeOutbound["type"] != "wireguard" {
+		lanCIDRs = append(lanCIDRs, "10.0.0.0/8", "172.16.0.0/12")
+	}
+
 	routeRules := []map[string]interface{}{
 		{
 			"port":     []int{53},
@@ -428,8 +466,7 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 			"outbound": "dns-out",
 		},
 		{
-			// LAN & Loopback private range only — DO NOT include 172.16.0.0/12 or 10.0.0.0/8 to avoid breaking WireGuard VPN tunnel
-			"ip_cidr":  []string{"192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16"},
+			"ip_cidr":  lanCIDRs,
 			"outbound": "direct",
 		},
 	}
@@ -549,6 +586,11 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 			"final":             "dns-remote",
 			"strategy":          ipStrategy,
 			"independent_cache": true,
+			"fakeip": map[string]interface{}{
+				"enabled":     true,
+				"inet4_range": "198.18.0.0/15",
+				"inet6_range": "fc00::/18",
+			},
 		},
 		"inbounds":  inbounds,
 		"outbounds": outbounds,
@@ -1076,6 +1118,9 @@ func parseWireguardOutbound(raw string) (map[string]interface{}, error) {
 		if len(resList) > 0 {
 			outbound["reserved"] = resList
 		}
+	} else {
+		// Default Cloudflare WARP reserved bytes
+		outbound["reserved"] = []int{0, 0, 0}
 	}
 
 	return outbound, nil
@@ -1904,10 +1949,160 @@ func FetchSubscription(subURL string) ([]*ParsedNode, error) {
 	}
 
 	if len(nodes) == 0 {
+		// Attempt Clash / Mihomo YAML subscription parsing
+		clashNodes := parseClashYAMLNodes(body)
+		if len(clashNodes) > 0 {
+			return clashNodes, nil
+		}
 		return nil, fmt.Errorf("no valid nodes found in subscription")
 	}
 
 	return nodes, nil
+}
+
+// parseClashYAMLNodes parses standard Clash and Mihomo YAML subscriptions
+func parseClashYAMLNodes(content string) []*ParsedNode {
+	var nodes []*ParsedNode
+	lines := strings.Split(content, "\n")
+	inProxies := false
+
+	var currentMap map[string]string
+	saveCurrent := func() {
+		if currentMap == nil {
+			return
+		}
+		node := buildNodeFromClashMap(currentMap)
+		if node != nil {
+			nodes = append(nodes, node)
+		}
+		currentMap = nil
+	}
+
+	for _, rawLine := range lines {
+		line := strings.TrimRight(rawLine, "\r ")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "proxies:") {
+			inProxies = true
+			continue
+		}
+
+		if inProxies && (strings.HasPrefix(trimmed, "proxy-groups:") || strings.HasPrefix(trimmed, "rules:") || strings.HasPrefix(trimmed, "rule-providers:")) {
+			saveCurrent()
+			break
+		}
+
+		if inProxies {
+			if strings.HasPrefix(trimmed, "- ") {
+				saveCurrent()
+				currentMap = make(map[string]string)
+				trimmed = strings.TrimPrefix(trimmed, "- ")
+			}
+
+			if currentMap != nil {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) == 2 {
+					k := strings.ToLower(strings.TrimSpace(parts[0]))
+					v := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+					currentMap[k] = v
+				}
+			}
+		}
+	}
+	saveCurrent()
+	return nodes
+}
+
+func buildNodeFromClashMap(m map[string]string) *ParsedNode {
+	protoType := strings.ToLower(m["type"])
+	name := m["name"]
+	if name == "" {
+		name = fmt.Sprintf("%s Node", strings.ToUpper(protoType))
+	}
+	server := m["server"]
+	port, _ := strconv.Atoi(m["port"])
+	if server == "" || port == 0 {
+		return nil
+	}
+
+	uuidStr := m["uuid"]
+	password := m["password"]
+	sni := m["servername"]
+	if sni == "" {
+		sni = m["sni"]
+	}
+	if sni == "" {
+		sni = server
+	}
+
+	network := m["network"]
+	if network == "" {
+		network = "tcp"
+	}
+	tlsEnabled := m["tls"] == "true" || m["reality"] == "true"
+
+	switch protoType {
+	case "vless":
+		sec := "none"
+		if m["reality"] == "true" || m["public-key"] != "" {
+			sec = "reality"
+		} else if tlsEnabled {
+			sec = "tls"
+		}
+		rawURI := fmt.Sprintf("vless://%s@%s:%d?type=%s&security=%s&sni=%s#%s", uuidStr, server, port, network, sec, sni, url.QueryEscape(name))
+		if node, err := ParseURI(rawURI); err == nil {
+			return node
+		}
+	case "vmess":
+		vObj := map[string]interface{}{
+			"v":    "2",
+			"ps":   name,
+			"add":  server,
+			"port": port,
+			"id":   uuidStr,
+			"aid":  0,
+			"net":  network,
+			"type": "none",
+			"host": sni,
+			"tls":  m["tls"],
+			"sni":  sni,
+		}
+		jsonBytes, _ := json.Marshal(vObj)
+		rawURI := "vmess://" + base64.StdEncoding.EncodeToString(jsonBytes)
+		if node, err := ParseURI(rawURI); err == nil {
+			return node
+		}
+	case "trojan":
+		rawURI := fmt.Sprintf("trojan://%s@%s:%d?security=tls&sni=%s#%s", password, server, port, sni, url.QueryEscape(name))
+		if node, err := ParseURI(rawURI); err == nil {
+			return node
+		}
+	case "ss", "shadowsocks":
+		cipher := m["cipher"]
+		if cipher == "" {
+			cipher = "aes-128-gcm"
+		}
+		userInfo := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", cipher, password)))
+		rawURI := fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, server, port, url.QueryEscape(name))
+		if node, err := ParseURI(rawURI); err == nil {
+			return node
+		}
+	case "hysteria2", "hy2":
+		rawURI := fmt.Sprintf("hysteria2://%s@%s:%d?sni=%s#%s", password, server, port, sni, url.QueryEscape(name))
+		if node, err := ParseURI(rawURI); err == nil {
+			return node
+		}
+	case "tuic":
+		rawURI := fmt.Sprintf("tuic://%s:%s@%s:%d?sni=%s#%s", uuidStr, password, server, port, sni, url.QueryEscape(name))
+		if node, err := ParseURI(rawURI); err == nil {
+			return node
+		}
+	}
+
+	return nil
 }
 
 // SmartPing intelligently pings TCP or UDP/WireGuard endpoints with adaptive probing

@@ -1,50 +1,124 @@
-# راهنمای توسعه‌دهندگان NexVPN Pro
+# راهنمای جامع فنی و توسعه‌دهندگان NexVPN Pro
 
-پروژه NexVPN با استفاده از **Wails**، **React** و زبان **Go** توسعه یافته است. معماری این برنامه کاملاً ماژولار بوده و برای پشتیبانی از چندین موتور مسیریابی مختلف و یکپارچگی عمیق با سیستم‌عامل‌های مختلف طراحی شده است.
+به مستندات فنی و مهندسی **NexVPN Pro** خوش آمدید. این راهنما به تشریح جزئیات معماری نرم‌افزار، ساختار پکیج‌های Go، گذرگاه رویدادهای Wails، نحوه افزودن پروتکل‌های جدید و خطوط لوله CI/CD می‌پردازد.
 
-## ساختار پوشه‌ها
-- `frontend/`: کدهای فرانت‌اند (React + TypeScript).
-- `internal/`: منطق بک‌اند (Go).
-  - `config/`: مدیریت استیت‌ها، ذخیره‌سازی و ساختار داده‌ها.
-  - `core/`: موتور اصلی (`engine.go`, `dispatcher.go`)، شروع خودکار، کیل‌سوئیچ و مدیریت باینری‌ها.
-  - `parser/`: پارسرهای Split tunneling، تولیدکنندگان کانفیگ و سیستم پزشک شبکه (`doctor.go`).
-  - `protocols/`: آداپتورهای پروتکل‌ها (`interface.go`, `singbox.go`, `aether.go`, `openvpn.go`).
-  - `sysproc/`: مدیریت پروسس‌ها در سطح سیستم‌عامل و Job Objectها (برای ویندوز).
-  - `sysproxy/`: تغییر پروکسی سیستمی (`networksetup` در مک، رجیستری در ویندوز، `gsettings`/D-Bus در لینوکس).
-- `install_linux.sh`: اسکریپت کانفیگ Polkit و `setcap` برای اجرای بدون پسورد در لینوکس.
+---
 
-## معماری موتورهای چند-هسته‌ای (Multi-Core)
-برنامه NexVPN به یک هسته ثابت محدود نیست. در فایل `internal/protocols/interface.go`، اینترفیس `ProtocolAdapter` به این شکل تعریف شده است:
+## 🏛️ ساختار معماری و لایه‌ها
+
+نرم‌افزار NexVPN Pro از یک معماری دو لایه و واکنشی (Reactive) بهره می‌برد:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│             React 18 + TypeScript + TailwindCSS             │
+│        (صفحات، مدال‌ها، گیج‌های زنده، موتور چندزبانه)       │
+└──────────────────────────────┬──────────────────────────────┘
+                               │  Wails v2 Bidirectional IPC
+┌──────────────────────────────┴──────────────────────────────┐
+│                      هسته بک‌اند زبان Go                    │
+│                                                             │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌───────────────┐  │
+│  │ دیسپچر موتورها  │ │ هاب اسکنرها     │ │ امنیت سیستم   │  │
+│  │ • Sing-box      │ │ • تلگرام        │ │ • کیل‌سوئیچ   │  │
+│  │ • Xray-core     │ │ • آی‌پی تمیز    │ │ • سپر DNS     │  │
+│  │ • Aether MASQUE │ │ • فرگمنت TLS    │ │ • دکتر شبکه   │  │
+│  │ • OpenVPN       │ │ • کانفیگ رایگان │ │ • تونل برنامـه│  │
+│  │ • Psiphon       │ │ • اپراتور یاب   │ │ • سینی ویندوز │  │
+│  └─────────────────┘ └─────────────────┘ └───────────────┘  │
+└──────────────────────────────┬──────────────────────────────┘
+                               │  فراخوانی‌های سیستمی OS
+┌──────────────────────────────┴──────────────────────────────┐
+│                    درایورهای لایه سیستم‌عامل                 │
+│  • ویندوز: کارت شبکه Wintun، فایروال Netsh، رجیستری WinINet  │
+│  • لینوکس: کارت شبکه TUN/Netlink، سرویس Polkit، فایروال Iptables │
+│  • مک: فایروال PF (pfctl)، سرویس SystemConfiguration        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📂 تشریح پکیج‌های داخلی پروژه
+
+### ریشه پروژه (Root)
+- `app.go`: نقطه اتصال Wails به بک‌اند، متدهای اصلی اتصال، قطع و برودکست وضعیت.
+- `app_discovery.go`: پردازش‌های ناهمگام و موازی برای اسکرپر تلگرام، اسکنر کلودفلر و تست سرورها.
+- `app_extra.go`: کنترل سرور HTTP ریموت موبایل، تست سرعت، سیستم بک‌آپ والت و ویجت دسکتاپ.
+- `version.go`: تعریف نسخه واحد برنامه `AppVersion = "1.3.5"`.
+- `main.go`: پیکربندی پنجره Wails، فعال‌سازی شفافیت و بارگذاری استاتیک فایل‌ها.
+
+### پکیج‌های پوشه `internal/`
+- **`internal/core/`**:
+  - `engine.go`: ماشین وضعیت اتصال (`idle`, `connecting`, `connected`, `error`) و پایشگر ترافیک زنده.
+  - `dispatcher.go`: انتخاب خودکار و اجرای مناسب‌ترین آداپتور پروتکل.
+  - `killswitch.go`: مدیریت فایروال سیستمی جهت مسدودسازی نشت ترافیک.
+  - `dns_leak.go`: تست فعال نشت DNS در برابر ۵ ریزالور جهانی.
+  - `health_monitor.go`: بررسی سلامت تونل با ارسال پینگ‌های دوره‌ای در پس‌زمینه.
+  - `remote_server.go`: وب‌سرور داخلی برای جفت‌سازی گوشی موبایل با پین و بارکد QR.
+- **`internal/protocols/`**:
+  - `interface.go`: اینترفیس استاندارد `ProtocolAdapter`.
+  - `singbox.go`: مدیریت هسته Sing-box و ایجاد کانفیگ‌های TUN و Clash API.
+  - `xray.go`: مدیریت هسته Xray-core برای VLESS Reality, VMess, gRPC.
+  - `aether.go`: مدیریت هسته اختصاصی MASQUE HTTP/3.
+  - `openvpn.go`: مدیریت هسته OpenVPN و سوکت منیجمنت.
+  - `psiphon.go`: آداپتور اتصال اضطراری Psiphon.
+- **`internal/discovery/`**:
+  - `cloudflare.go`: اسکنر چند‌نخی رنج‌های IP کلودفلر.
+  - `fragment_scanner.go`: بنچمارک پارامترهای مختلف سایز و تاخیر فرگمنت TLS.
+  - `telegram.go`: استخراج‌کننده پروکسی‌ها از کانال‌های عمومی تلگرام.
+  - `free_configs.go`: سابسکریپشن یاب و اگرگیتور سرورهای رایگان.
+  - `isp.go`: تشخیص خودکار اپراتور مخابراتی بر اساس IP عمومی.
+- **`internal/parser/`**:
+  - `parser.go`: پارسر جامع انواع لینک‌های کانفیگ (`vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`, `tuic://`, `warp://`).
+  - `doctor.go`: موتور عیب‌یابی و تعمیر خودکار شبکه سیستم.
+
+---
+
+## 🔌 نحوه افزودن پروتکل جدید
+
+برای اضافه کردن یک پروتکل یا هسته جدید، کافیست اینترفیس زیر را پیاده‌سازی نمایید:
+
 ```go
 type ProtocolAdapter interface {
     Name() config.Protocol
     Start(ctx context.Context, configContent string) error
     Stop() error
-    GetStats() (int64, int64, error)
+    GetStats() (bytesRx int64, bytesTx int64, err error)
     IsRunning() bool
     SetLogger(fn LoggerFunc)
     SetOnExit(fn OnExitFunc)
 }
 ```
-هنگامی که کاربر روی اتصال کلیک می‌کند، فایل `engine.go` نوع پروتکل را تشخیص داده و آن را به آداپتور مربوطه (`AetherAdapter`, `SingBoxAdapter` یا `OpenVPNAdapter`) محول می‌کند.
 
-## افزودن یک هسته/پروتکل جدید
-۱. **ایجاد آداپتور**: فایل `internal/protocols/mycore.go` را بسازید و اینترفیس `ProtocolAdapter` را پیاده‌سازی کنید.
-۲. **ثبت آداپتور**: آن را به `internal/protocols/interface.go` و `internal/core/dispatcher.go` اضافه کنید.
-۳. **فرانت‌اند**: تایپ‌های TypeScript را در `frontend/src/types/index.ts` بروزرسانی کرده و یک صفحه React برای مدیریت کانفیگ‌های آن بسازید.
-۴. **مدیریت باینری**: لینک دانلود و بررسی هش باینری هسته را به `internal/core/binary_downloader.go` اضافه کنید.
+۱. فایل `internal/protocols/newprotocol.go` را بسازید.
+۲. متدهای اینترفیس فوق را پیاده‌سازی کنید.
+۳. در فایل `internal/protocols/interface.go` و تابع `NewAdapter()` آداپتور خود را رجیستر کنید.
+۴. منطق پارس کردن URL آن را در `internal/parser/parser.go` اضافه کنید.
 
-## یکپارچه‌سازی Polkit در لینوکس
-برای ایجاد TUN و دستکاری iptables در لینوکس معمولاً به دسترسی روت نیاز است. برای جلوگیری از نمایش مداوم پنجره درخواست پسورد (sudo/GNOME) در NexVPN از روش‌های زیر استفاده شده است:
-۱. استفاده از قابلیت‌های کرنل (`setcap cap_net_admin,cap_net_bind_service=+ep`) برای باینری‌ها.
-۲. ایجاد فایل Polkit Policy (`/usr/share/polkit-1/actions/dev.nexvpn.policy`) که مسیر دقیق باینری‌ها را برای اجرای Passwordless مجاز می‌کند.
-۳. پاک کردن متغیر `DBUS_SYSTEM_BUS_ADDRESS` قبل از اجرای هسته‌ها (مانند sing-box) تا از تریگر شدن هشدارهای امنیتی NetworkManager D-Bus جلوگیری شود و سیستم با آرامش کامل از `netlink` استفاده کند.
+---
 
-## بیلد و توسعه
+## 📡 گذرگاه ارتباطی Wails (IPC Events)
+
+ارتباط میان هسته Go و رابط کاربری React از طریق ایونت‌های ناهمگام انجام می‌شود:
+
+| نام رویداد | جهت | نوع داده | شرح |
+| :--- | :--- | :--- | :--- |
+| `status:changed` | Go ➔ TS | `ConnectionStatus` | تغییر وضعیت اتصال (متصل، قطع، در حال اتصال) |
+| `stats:update` | Go ➔ TS | `TrafficStats` | بایت‌های ارسال/دریافت و سرعت لحظه‌ای |
+| `health:update` | Go ➔ TS | `HealthStatus` | پینگ، جیتر و درصد پکت‌لاس زنده |
+| `log:entry` | Go ➔ TS | `LogEntry` | لاگ‌های زنده ترمینال هسته‌ها |
+| `session:recorded`| Go ➔ TS | `ConnectionSession`| ذخیره آمار نشست اتصال در دیتابیس |
+
+---
+
+## 🏗️ ساخت و کامپایل بیلد نهایی
+
 ```bash
-# محیط توسعه با قابلیت Hot-Reload
-wails dev
+# ویندوز (تک فایل اجرایی یا نصبی)
+wails build -platform windows/amd64 -clean
 
-# بیلد نسخه نهایی (Production)
-wails build -clean -platform windows/amd64,linux/amd64,darwin/arm64
+# لینوکس (به همراه کتابخانه‌های گرافیکی WebKit2GTK)
+wails build -platform linux/amd64 -tags webkit2_41 -clean
+
+# مک (باینری Universal برای چیپ‌های M1/M2/M3 و اینتل)
+wails build -platform darwin/universal -clean
 ```

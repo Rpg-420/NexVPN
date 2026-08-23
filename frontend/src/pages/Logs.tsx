@@ -105,7 +105,7 @@ export default function Logs() {
             <Terminal size={22} className="text-accent" />
             {t('logs_title')}
           </h1>
-          <p className="page-subtitle">{logs.length} total entries recorded</p>
+          <p className="page-subtitle">{t('logs_subtitle', { count: logs.length })}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -115,7 +115,7 @@ export default function Logs() {
             title={t('copy_logs')}
           >
             {isCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-            {isCopied ? 'Copied' : t('copy_logs')}
+            {isCopied ? t('remote_pin_copied') : t('copy_logs')}
           </button>
 
           <button
@@ -172,7 +172,7 @@ export default function Logs() {
               onChange={e => setAutoScroll(e.target.checked)}
               className="rounded"
             />
-            <span>Auto-scroll</span>
+            <span>{t('auto_scroll')}</span>
           </label>
         </div>
       </div>
@@ -184,7 +184,7 @@ export default function Logs() {
         style={{ direction: 'ltr', textAlign: 'left' }}
       >
         {filteredLogs.length === 0 ? (
-          <div className="text-slate-500 text-center py-12">No logs recorded yet.</div>
+          <div className="text-slate-500 text-center py-12">{t('no_logs_recorded')}</div>
         ) : (
           filteredLogs.map((e, idx) => (
             <div key={idx} className="flex items-start gap-2.5 hover:bg-white/5 px-2 py-0.5 rounded transition">

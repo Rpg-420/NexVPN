@@ -3,118 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>راهنمای توسعه‌دهندگان (FA) | NexVPN Pro</title>
+    <title>راهنمای توسعه‌دهندگان | مستندات رسمی NexVPN Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['Inter', 'Vazirmatn', 'sans-serif'] },
-                    colors: { brand: { 900: '#0B0F19', primary: '#00E5FF', purple: '#9D4EDD' } }
+                    fontFamily: { sans: ['Vazirmatn', 'Inter', 'sans-serif'] },
+                    colors: {
+                        dark: { 950: '#030712', 900: '#0B0F19', 800: '#111827' },
+                        cyan: { 400: '#22D3EE', 500: '#00F0FF' },
+                        purple: { 400: '#C084FC', 500: '#A855F7' }
+                    }
                 }
             }
         }
     </script>
     <style>
-        body { background-color: #0B0F19; color: #E5E7EB; }
-        .glass-panel { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        #content h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; color: white; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; }
-        #content h2 { font-size: 1.8rem; font-weight: 700; margin-top: 2.5rem; margin-bottom: 1rem; color: #00E5FF; }
-        #content h3 { font-size: 1.4rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; color: #9D4EDD; }
-        #content p { margin-bottom: 1.25rem; line-height: 1.7; color: #D1D5DB; }
-        #content ul, #content ol { margin-bottom: 1.25rem; list-style-type: disc; }
-        #content ul, #content ol { margin-right: 1.5rem; margin-left: 0; }
-        #content li { margin-bottom: 0.5rem; color: #D1D5DB; }
-        #content a { color: #00E5FF; text-decoration: underline; text-underline-offset: 4px; }
-        #content a:hover { color: #9D4EDD; }
-        #content pre { background: #111827; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1.5rem; border: 1px solid rgba(255,255,255,0.1); }
-        #content code { font-family: monospace; font-size: 0.9em; background: rgba(255,255,255,0.1); padding: 0.15rem 0.3rem; border-radius: 0.25rem; }
-        #content pre code { background: transparent; padding: 0; }
+        body { background-color: #030712; color: #E5E7EB; font-family: 'Vazirmatn', sans-serif; }
+        .glass { background: rgba(11, 15, 25, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .glass-panel { background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(14px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        
+        #content h1 { font-size: 2.25rem; font-weight: 900; margin-bottom: 1.5rem; color: #FFFFFF; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem; }
+        #content h2 { font-size: 1.6rem; font-weight: 800; margin-top: 2.5rem; margin-bottom: 1rem; color: #00F0FF; }
+        #content h3 { font-size: 1.25rem; font-weight: 700; margin-top: 1.75rem; margin-bottom: 0.75rem; color: #C084FC; }
+        #content p { margin-bottom: 1.25rem; line-height: 1.9; color: #D1D5DB; font-size: 0.95rem; }
+        #content ul, #content ol { margin-bottom: 1.25rem; list-style-type: disc; margin-right: 1.5rem; }
+        #content li { margin-bottom: 0.5rem; color: #D1D5DB; font-size: 0.95rem; }
+        #content a { color: #00F0FF; text-decoration: underline; text-underline-offset: 4px; }
+        #content a:hover { color: #A855F7; }
+        #content pre { background: #0B0F19; padding: 1.25rem; border-radius: 0.75rem; overflow-x: auto; margin-bottom: 1.5rem; border: 1px solid rgba(255,255,255,0.1); direction: ltr; text-align: left; }
+        #content code { font-family: monospace; font-size: 0.85em; background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 0.3rem; color: #00F0FF; direction: ltr; display: inline-block; }
+        #content pre code { background: transparent; padding: 0; color: #E5E7EB; display: block; }
+        #content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+        #content th, #content td { border: 1px solid rgba(255,255,255,0.1); padding: 0.75rem; text-align: right; font-size: 0.875rem; }
+        #content th { background: rgba(255,255,255,0.05); color: #00F0FF; }
     </style>
 </head>
-<body class="antialiased selection:bg-brand-purple selection:text-white">
-    <nav class="fixed w-full z-50 glass-panel border-b-0">
+<body class="antialiased selection:bg-purple-500/30 selection:text-purple-200">
+    <nav class="fixed w-full z-50 glass border-b border-white/10">
         <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                <a href="index.html" class="flex-shrink-0 font-bold text-xl tracking-tighter text-white hover:opacity-80 transition">
-                    &larr; Back to Home
+                <a href="index.html" class="flex items-center gap-2 font-bold text-sm text-gray-300 hover:text-white transition">
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i> بازگشت به صفحه اصلی
                 </a>
-                <div class="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-purple">
-                    NexVPN Docs
+                <div class="flex items-center gap-4">
+                    <a href="developer-guide-en.html" class="text-xs font-semibold text-gray-400 hover:text-purple-400 transition">🇬🇧 English Version</a>
+                    <span class="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-cyan-400">
+                        مستندات توسعه‌دهندگان نکس‌وی‌پی‌ان
+                    </span>
                 </div>
             </div>
         </div>
     </nav>
-    <main class="pt-24 pb-16 min-h-screen">
+    <main class="pt-28 pb-20 min-h-screen">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="glass-panel p-8 sm:p-12 rounded-2xl shadow-2xl">
-                <div id="content"></div>
+            <div class="glass-panel p-8 sm:p-12 rounded-3xl shadow-2xl">
+                <div id="content" class="animate-pulse">در حال بارگذاری مستندات فنی...</div>
             </div>
         </div>
     </main>
     
-    <script type="text/markdown" id="md-content">
-# راهنمای توسعه‌دهندگان NexVPN Pro
-
-پروژه NexVPN با استفاده از **Wails**، **React** و زبان **Go** توسعه یافته است. معماری این برنامه کاملاً ماژولار بوده و برای پشتیبانی از چندین موتور مسیریابی مختلف و یکپارچگی عمیق با سیستم‌عامل‌های مختلف طراحی شده است.
-
-## ساختار پوشه‌ها
-- \`frontend/\`: کدهای فرانت‌اند (React + TypeScript).
-- \`internal/\`: منطق بک‌اند (Go).
-  - \`config/\`: مدیریت استیت‌ها، ذخیره‌سازی و ساختار داده‌ها.
-  - \`core/\`: موتور اصلی (\`engine.go\`, \`dispatcher.go\`)، شروع خودکار، کیل‌سوئیچ و مدیریت باینری‌ها.
-  - \`parser/\`: پارسرهای Split tunneling، تولیدکنندگان کانفیگ و سیستم پزشک شبکه (\`doctor.go\`).
-  - \`protocols/\`: آداپتورهای پروتکل‌ها (\`interface.go\`, \`singbox.go\`, \`aether.go\`, \`openvpn.go\`).
-  - \`sysproc/\`: مدیریت پروسس‌ها در سطح سیستم‌عامل و Job Objectها (برای ویندوز).
-  - \`sysproxy/\`: تغییر پروکسی سیستمی (\`networksetup\` در مک، رجیستری در ویندوز، \`gsettings\`/D-Bus در لینوکس).
-- \`install_linux.sh\`: اسکریپت کانفیگ Polkit و \`setcap\` برای اجرای بدون پسورد در لینوکس.
-
-## معماری موتورهای چند-هسته‌ای (Multi-Core)
-برنامه NexVPN به یک هسته ثابت محدود نیست. در فایل \`internal/protocols/interface.go\`، اینترفیس \`ProtocolAdapter\` به این شکل تعریف شده است:
-\`\`\`go
-type ProtocolAdapter interface {
-    Name() config.Protocol
-    Start(ctx context.Context, configContent string) error
-    Stop() error
-    GetStats() (int64, int64, error)
-    IsRunning() bool
-    SetLogger(fn LoggerFunc)
-    SetOnExit(fn OnExitFunc)
-}
-\`\`\`
-هنگامی که کاربر روی اتصال کلیک می‌کند، فایل \`engine.go\` نوع پروتکل را تشخیص داده و آن را به آداپتور مربوطه (\`AetherAdapter\`, \`SingBoxAdapter\` یا \`OpenVPNAdapter\`) محول می‌کند.
-
-## افزودن یک هسته/پروتکل جدید
-۱. **ایجاد آداپتور**: فایل \`internal/protocols/mycore.go\` را بسازید و اینترفیس \`ProtocolAdapter\` را پیاده‌سازی کنید.
-۲. **ثبت آداپتور**: آن را به \`internal/protocols/interface.go\` و \`internal/core/dispatcher.go\` اضافه کنید.
-۳. **فرانت‌اند**: تایپ‌های TypeScript را در \`frontend/src/types/index.ts\` بروزرسانی کرده و یک صفحه React برای مدیریت کانفیگ‌های آن بسازید.
-۴. **مدیریت باینری**: لینک دانلود و بررسی هش باینری هسته را به \`internal/core/binary_downloader.go\` اضافه کنید.
-
-## یکپارچه‌سازی Polkit در لینوکس
-برای ایجاد TUN و دستکاری iptables در لینوکس معمولاً به دسترسی روت نیاز است. برای جلوگیری از نمایش مداوم پنجره درخواست پسورد (sudo/GNOME) در NexVPN از روش‌های زیر استفاده شده است:
-۱. استفاده از قابلیت‌های کرنل (\`setcap cap_net_admin,cap_net_bind_service=+ep\`) برای باینری‌ها.
-۲. ایجاد فایل Polkit Policy (\`/usr/share/polkit-1/actions/dev.nexvpn.policy\`) که مسیر دقیق باینری‌ها را برای اجرای Passwordless مجاز می‌کند.
-۳. پاک کردن متغیر \`DBUS_SYSTEM_BUS_ADDRESS\` قبل از اجرای هسته‌ها (مانند sing-box) تا از تریگر شدن هشدارهای امنیتی NetworkManager D-Bus جلوگیری شود و سیستم با آرامش کامل از \`netlink\` استفاده کند.
-
-## بیلد و توسعه
-\`\`\`bash
-# محیط توسعه با قابلیت Hot-Reload
-wails dev
-
-# بیلد نسخه نهایی (Production)
-wails build -clean -platform windows/amd64,linux/amd64,darwin/arm64
-\`\`\`
-
-    </script>
-
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const rawMd = document.getElementById('md-content').innerHTML;
-            const cleanMd = rawMd.replace(/\\/g, '\\').replace(/\`/g, '`');
-            document.getElementById('content').innerHTML = marked.parse(cleanMd);
-        });
+        fetch('DEVELOPER_GUIDE_FA.md')
+            .then(res => res.text())
+            .then(md => {
+                document.getElementById('content').classList.remove('animate-pulse');
+                document.getElementById('content').innerHTML = marked.parse(md);
+            })
+            .catch(() => {
+                document.getElementById('content').innerHTML = '<h1>امکان بارگذاری مستندات فراهم نشد.</h1>';
+            });
     </script>
 </body>
 </html>

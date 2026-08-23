@@ -36,7 +36,7 @@ func FetchSubscriptionWithUserInfo(ctx context.Context, urlStr string) (*Subscri
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.3.3 Clash/1.18")
+	req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.3.5 Clash/1.18")
 
 	resp, err := client.Do(req)
 	if err != nil {

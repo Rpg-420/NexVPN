@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -461,18 +462,40 @@ func (a *App) StartMobileRemote(port int) (string, error) {
 type MobileRemoteInfo struct {
 	Running bool   `json:"running"`
 	URL     string `json:"url"`
+	AuthURL string `json:"auth_url"`
+	PIN     string `json:"pin"`
 }
 
-// GetMobileRemoteInfo returns the status and URL of the smartphone remote controller
+// GetMobileRemoteInfo returns the status, PIN and URL of the smartphone remote controller
 func (a *App) GetMobileRemoteInfo() MobileRemoteInfo {
 	if a.engine == nil || a.store == nil {
-		return MobileRemoteInfo{Running: false, URL: ""}
+		return MobileRemoteInfo{Running: false, URL: "", AuthURL: "", PIN: ""}
 	}
 	server := core.GetRemoteServer(a.engine, a.store)
 	return MobileRemoteInfo{
 		Running: server.IsRunning(),
 		URL:     server.GetURL(),
+		AuthURL: server.GetURLWithToken(),
+		PIN:     server.GetAuthPIN(),
 	}
+}
+
+// GetProfileShareURI returns the raw URI or configuration content for QR code mobile export
+func (a *App) GetProfileShareURI(profileID string) (string, error) {
+	if a.store == nil {
+		return "", fmt.Errorf("store not initialized")
+	}
+	profile, err := a.store.GetProfile(profileID)
+	if err != nil {
+		return "", err
+	}
+	if profile.RawURI != "" {
+		return strings.TrimSpace(profile.RawURI), nil
+	}
+	if profile.ConfigContent != "" {
+		return strings.TrimSpace(profile.ConfigContent), nil
+	}
+	return "", fmt.Errorf("no shareable content found for this profile")
 }
 
 // StopMobileRemote terminates mobile controller server
@@ -583,9 +606,20 @@ func (a *App) GenerateShareableSubscription(category string) (string, error) {
 // NOTE: CheckCoreBinaries is defined once in app_extra.go at line 95.
 // The duplicate definition below has been removed to fix a compile error.
 
-// UpdateCoreEngine downloads and updates a core binary (singbox, xray, openvpn)
+// UpdateCoreEngine downloads and updates a core binary (singbox, xray, openvpn, aether, psiphon)
 func (a *App) UpdateCoreEngine(coreKey string) (string, error) {
-	return core.UpdateCoreEngine(coreKey)
+	return core.UpdateCoreEngineWithProgress(coreKey, func(percent int, downloadedBytes int64, totalBytes int64, speedBytesPerSec int64, status string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "core:download_progress", map[string]interface{}{
+				"key":        coreKey,
+				"percent":    percent,
+				"downloaded": downloadedBytes,
+				"total":      totalBytes,
+				"speed":      speedBytesPerSec,
+				"status":     status,
+			})
+		}
+	})
 }
 
 // UpdateGeoData updates GeoIP and GeoSite routing databases
@@ -657,5 +691,60 @@ func (a *App) GetSubscriptionInfo(subUrl string) (*parser.SubscriptionUserInfo, 
 	}
 	return res.UserInfo, nil
 }
+
+// GetPsiphonRegions returns list of available countries and regions for Psiphon
+func (a *App) GetPsiphonRegions() []string {
+	return []string{
+		"AUTO", "US", "DE", "GB", "NL", "CA", "FR", "JP", "SG", "AT", "CH", "IT", "ES", "PL", "SE", "RO", "BE", "IN",
+	}
+}
+
+// GeneratePsiphonProfile creates or updates a Psiphon emergency profile
+func (a *App) GeneratePsiphonProfile(region string) (*config.Profile, error) {
+	if region == "" {
+		region = "AUTO"
+	}
+	region = strings.ToUpper(strings.TrimSpace(region))
+
+	cfgObj := map[string]interface{}{
+		"egress_region":   region,
+		"socks_port":      10808,
+		"http_port":       10809,
+		"tunnel_protocol": "SSH",
+	}
+	cfgBytes, _ := json.Marshal(cfgObj)
+
+	profileName := "Psiphon Emergency Shield"
+	if region != "AUTO" {
+		profileName = fmt.Sprintf("Psiphon Emergency (%s)", region)
+	}
+
+	profile := &config.Profile{
+		Name:          profileName,
+		Protocol:      config.ProtocolPsiphon,
+		Category:      config.CategoryPsiphon,
+		ConfigContent: string(cfgBytes),
+		Server:        "Psiphon Cloud Network",
+		Group:         "Emergency Shield",
+		Description:   "Emergency censorship circumvention multi-hop tunnel",
+	}
+
+	id, err := a.AddProfile(*profile)
+	if err != nil {
+		return nil, err
+	}
+	profile.ID = id
+	return profile, nil
+}
+
+// ConnectPsiphon starts Psiphon emergency connection directly for a given region
+func (a *App) ConnectPsiphon(region string) error {
+	prof, err := a.GeneratePsiphonProfile(region)
+	if err != nil {
+		return err
+	}
+	return a.Connect(prof.ID)
+}
+
 
 

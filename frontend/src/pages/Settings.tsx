@@ -89,6 +89,7 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
   const [binaries, setBinaries] = useState<Record<string, BinaryInfo>>({})
   const [isInstallingCores, setIsInstallingCores] = useState(false)
   const [updatingCore, setUpdatingCore] = useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<{ key: string; percent: number; speed: number; status: string } | null>(null)
   const [updatingGeo, setUpdatingGeo] = useState(false)
   const [geoUpdated, setGeoUpdated] = useState(false)
   const [newAppInput, setNewAppInput] = useState('')
@@ -106,10 +107,35 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
     api.checkCoreBinaries().then(b => {
       if (b) setBinaries(b)
     }).catch(err => console.error('Failed to check binaries:', err))
+
+    // Listen for core download progress
+    const win = window as any
+    if (win.runtime && win.runtime.EventsOn) {
+      const unsub = win.runtime.EventsOn('core:download_progress', (data: any) => {
+        if (data && data.key) {
+          setDownloadProgress({
+            key: data.key,
+            percent: data.percent || 0,
+            speed: data.speed || 0,
+            status: data.status || 'Downloading...',
+          })
+          if (data.percent >= 100) {
+            setTimeout(() => {
+              setDownloadProgress(null)
+              api.checkCoreBinaries().then(b => { if (b) setBinaries(b) })
+            }, 1000)
+          }
+        }
+      })
+      return () => {
+        if (typeof unsub === 'function') unsub()
+      }
+    }
   }, [])
 
   const handleUpdateCore = async (key: string) => {
     setUpdatingCore(key)
+    setDownloadProgress({ key, percent: 1, speed: 0, status: 'Connecting...' })
     try {
       await api.updateCoreEngine(key)
       const updated = await api.checkCoreBinaries()
@@ -118,6 +144,7 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
       console.error(`Update ${key} error:`, err)
     } finally {
       setUpdatingCore(null)
+      setDownloadProgress(null)
     }
   }
 
@@ -462,6 +489,66 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
                       />
                       <span className="toggle-slider" />
                     </label>
+                  }
+                />
+
+                {/* Bypass LAN / Local IP Ranges */}
+                <SettingRow
+                  id="bypass-lan-row"
+                  icon={<Layers size={16} />}
+                  label={t('bypass_lan_label')}
+                  description={t('bypass_lan_desc')}
+                  control={
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={settings.bypass_lan !== false}
+                        onChange={e => update('bypass_lan', e.target.checked)}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
+                  }
+                />
+
+                {/* Custom Direct Domains */}
+                <SettingRow
+                  id="custom-direct-domains-row"
+                  icon={<Globe size={16} />}
+                  label={t('custom_direct_domains_label')}
+                  description={t('custom_direct_domains_desc')}
+                  control={
+                    <input
+                      type="text"
+                      className="form-control font-mono text-xs"
+                      style={{ width: '280px', fontSize: '11px' }}
+                      placeholder="e.g. example.com, mybank.ir"
+                      value={(settings.custom_direct_domains || []).join(', ')}
+                      onChange={e => {
+                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                        update('custom_direct_domains', arr)
+                      }}
+                    />
+                  }
+                />
+
+                {/* Custom Proxy Domains */}
+                <SettingRow
+                  id="custom-proxy-domains-row"
+                  icon={<Shield size={16} />}
+                  label={t('custom_proxy_domains_label')}
+                  description={t('custom_proxy_domains_desc')}
+                  control={
+                    <input
+                      type="text"
+                      className="form-control font-mono text-xs"
+                      style={{ width: '280px', fontSize: '11px' }}
+                      placeholder="e.g. youtube.com, openai.com"
+                      value={(settings.custom_proxy_domains || []).join(', ')}
+                      onChange={e => {
+                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                        update('custom_proxy_domains', arr)
+                      }}
+                    />
                   }
                 />
 
@@ -1271,6 +1358,29 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
                 </button>
               </div>
               <div className="card-body" style={{ padding: 0 }}>
+                {/* Global / Active Download Progress Banner */}
+                {downloadProgress && (
+                  <div className="p-3.5 bg-cyan-950/30 border-b border-cyan-500/20 space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs text-cyan-200">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                        <span>در حال دریافت {binaries[downloadProgress.key]?.name || downloadProgress.key}: {downloadProgress.status} ({downloadProgress.percent}%)</span>
+                      </span>
+                      {downloadProgress.speed > 0 && (
+                        <span className="font-mono text-cyan-400/80 text-[11px]">
+                          {(downloadProgress.speed / (1024 * 1024)).toFixed(2)} MB/s
+                        </span>
+                      )}
+                    </div>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-200"
+                        style={{ width: `${downloadProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {Object.entries(binaries).map(([key, info]) => (
                   <div
                     key={key}
@@ -1302,10 +1412,10 @@ export default function SettingsPage({ onSettingsSaved }: SettingsPageProps = {}
                         type="button"
                         className="btn btn-secondary btn-sm text-[11px] px-2.5 py-1 flex items-center gap-1"
                         onClick={() => handleUpdateCore(key)}
-                        disabled={updatingCore === key}
+                        disabled={updatingCore === key || (downloadProgress?.key === key)}
                       >
-                        <RefreshCw size={11} className={updatingCore === key ? 'animate-spin' : ''} />
-                        {updatingCore === key ? t('updating') : t('update_core_btn')}
+                        <RefreshCw size={11} className={updatingCore === key || (downloadProgress?.key === key) ? 'animate-spin' : ''} />
+                        {updatingCore === key || (downloadProgress?.key === key) ? (downloadProgress?.percent ? `${downloadProgress.percent}%` : t('updating')) : t('update_core_btn')}
                       </button>
 
                       <span

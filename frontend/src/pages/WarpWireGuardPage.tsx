@@ -399,7 +399,7 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
             title="Discovery Hub Cloudflare Scanner"
           >
             <Search size={13} />
-            <span>🚀 {t('tab_cloudflare_ips') || 'اسکنر دیسکاوری هاب'}</span>
+            <span>🚀 {t('tab_cloudflare_ips')}</span>
           </button>
         </div>
       </div>
@@ -711,9 +711,10 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
           <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center space-y-4">
             <h3 className="font-bold text-slate-200 text-sm truncate">{sharingProfile.name}</h3>
             {qrImageUrl && (
-              <div
-                className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg"
-                dangerouslySetInnerHTML={{ __html: qrImageUrl }}
+              <img
+                src={qrImageUrl}
+                alt="QR Code"
+                className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg w-[220px] h-[220px]"
               />
             )}
             <button className="btn btn-secondary w-full text-xs" onClick={() => setSharingProfile(null)}>

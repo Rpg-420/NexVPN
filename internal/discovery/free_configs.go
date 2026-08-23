@@ -42,28 +42,31 @@ type FreeConfigTestProgress struct {
 }
 
 var defaultFreeConfigSources = []string{
-	// Curated public aggregator feeds
+	// Curated verified active aggregator feeds
 	"https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/V2RAY_RAW.txt",
 	"https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/verified/configs.txt",
-	"https://raw.githubusercontent.com/prominbro/sub/refs/heads/main/212.txt",
-	"https://raw.githubusercontent.com/free1zona/Keyfreetee/refs/heads/main/razlo4ka7",
 	"https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub1.txt",
 	"https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub2.txt",
 	"https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub3.txt",
 	"https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub4.txt",
+	"https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub5.txt",
 	"https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/normal/mix",
 	"https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/normal/vless",
 	"https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/normal/vmess",
 	"https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/normal/trojan",
-	"https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
-	"https://raw.githubusercontent.com/morteza-s-a/free-v2ray-collector/main/sub/mix",
-	"https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
-	"https://raw.githubusercontent.com/freefq/free/master/v2",
-	"https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
-	"https://raw.githubusercontent.com/LalatinaHub/Mineral/master/result/nodes",
+	"https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/normal/shadowsocks",
 	"https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/reality",
 	"https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/vless",
 	"https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/hysteria2",
+	"https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
+	"https://raw.githubusercontent.com/morteza-s-a/free-v2ray-collector/main/sub/mix",
+	"https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt",
+	"https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+	"https://raw.githubusercontent.com/LalatinaHub/Mineral/master/result/nodes",
+	"https://raw.githubusercontent.com/freefq/free/master/v2",
+	"https://raw.githubusercontent.com/IranianCypherpunks/sub/main/config",
+	"https://raw.githubusercontent.com/ndsphon/v2ray-collector/main/sub/mix",
+	"https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
 }
 
 // FetchFreeConfigs downloads and parses configs from curated sources
@@ -73,7 +76,7 @@ func FetchFreeConfigs(ctx context.Context, customSources []string) ([]FreeConfig
 		sources = customSources
 	}
 
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := &http.Client{Timeout: 9 * time.Second}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var allConfigs []FreeConfigItem
@@ -83,20 +86,35 @@ func FetchFreeConfigs(ctx context.Context, customSources []string) ([]FreeConfig
 		wg.Add(1)
 		go func(srcIndex int, urlStr string) {
 			defer wg.Done()
-			req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
-			if err != nil {
-				return
-			}
-			req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.3.3 Clash/1.18")
 
-			resp, err := client.Do(req)
-			if err != nil || resp.StatusCode != http.StatusOK {
-				return
+			// Try primary URL, then mirror if failed
+			candidates := []string{urlStr}
+			if strings.HasPrefix(urlStr, "https://raw.githubusercontent.com/") {
+				mirror := "https://ghproxy.net/" + urlStr
+				candidates = append(candidates, mirror)
 			}
-			defer resp.Body.Close()
 
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
+			var bodyBytes []byte
+			for _, u := range candidates {
+				req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+				if err != nil {
+					continue
+				}
+				req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.3.5 Clash/1.18")
+
+				resp, err := client.Do(req)
+				if err != nil || resp.StatusCode != http.StatusOK {
+					continue
+				}
+				data, readErr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if readErr == nil && len(data) > 0 {
+					bodyBytes = data
+					break
+				}
+			}
+
+			if len(bodyBytes) == 0 {
 				return
 			}
 

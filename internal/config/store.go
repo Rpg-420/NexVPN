@@ -22,6 +22,7 @@ const (
 	ProtocolHysteria2 Protocol = "hysteria2"
 	ProtocolWARP      Protocol = "warp"
 	ProtocolAether    Protocol = "aether"
+	ProtocolPsiphon   Protocol = "psiphon"
 )
 
 type ProfileCategory string
@@ -31,6 +32,7 @@ const (
 	CategoryWireGuardWarp ProfileCategory = "wireguard_warp"
 	CategoryOpenVPN       ProfileCategory = "openvpn"
 	CategoryAether        ProfileCategory = "aether"
+	CategoryPsiphon       ProfileCategory = "psiphon"
 )
 
 type Profile struct {
@@ -762,7 +764,7 @@ func (s *Store) ExportFullBackupJSON() (string, error) {
 	defer s.mu.RUnlock()
 
 	bundle := FullBackupBundle{
-		Version:      "1.3.3",
+		Version:      "1.3.5",
 		ExportedAt:   time.Now(),
 		Profiles:     s.data.Profiles,
 		Settings:     s.data.Settings,
