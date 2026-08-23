@@ -38,7 +38,7 @@ jobs:
         run: go test ./...
 
       - name: Build Windows Binary
-        run: wails build -s -platform windows/amd64
+        run: wails build -skipbindings -platform windows/amd64
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -79,7 +79,7 @@ jobs:
           npm run build
 
       - name: Build Linux Binary
-        run: wails build -s -platform linux/amd64 -tags webkit2_41
+        run: wails build -skipbindings -platform linux/amd64 -tags webkit2_41
 
       - name: Upload Linux Artifact
         uses: actions/upload-artifact@v4
