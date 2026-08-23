@@ -127,7 +127,7 @@ NexVPN ترافیک شما را در سه سطح مختلف مدیریت می‌
 برای بیلد اختصاصی پروژه به ابزارهای زیر نیاز دارید:
 - زبان [Go نسخه 1.22 یا بالاتر](https://golang.org/doc/install)
 - [Node.js نسخه 20 به بالا](https://nodejs.org/)
-- ابزار [Wails CLI](https://wails.io/docs/gettingstarted/installation) (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+- ابزار [Wails CLI](https://wails.io/docs/gettingstarted/installation) (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0`)
 
 ```bash
 # ۱. کلون کردن مخزن

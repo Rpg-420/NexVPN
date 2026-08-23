@@ -155,7 +155,7 @@ graph TD
 ### Prerequisites
 - [Go 1.22+](https://golang.org/doc/install)
 - [Node.js 20+ LTS](https://nodejs.org/)
-- [Wails CLI v2](https://wails.io/docs/gettingstarted/installation) (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+- [Wails CLI v2](https://wails.io/docs/gettingstarted/installation) (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0`)
 
 ```bash
 # 1. Clone the repository

@@ -40,7 +40,7 @@ NexVPN Pro uses a modern hybrid desktop architecture:
 - **Node.js**: Version 20 LTS or higher ([Download](https://nodejs.org/))
 - **Wails CLI v2**:
   ```bash
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
   ```
 - **Platform Specifics**:
   - **Windows**: WebView2 runtime (pre-installed on Windows 10/11).
