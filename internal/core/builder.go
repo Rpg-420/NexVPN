@@ -55,8 +55,8 @@ func (b *SingBoxConfigBuilder) WithStandardInbounds(proxyMode string, gameModeEn
 			"type":                       "tun",
 			"tag":                        "tun-in",
 			"interface_name":             "NexVPN-TUN",
-			"inet4_address":              "172.19.0.1/30",
-			"inet6_address":              "fdfe:dcba:9876::1/126",
+			"inet4_address":              []string{"172.19.0.1/30"},
+			"inet6_address":              []string{"fdfe:dcba:9876::1/126"},
 			"auto_route":                 true,
 			"strict_route":               false,
 			"stack":                      tunStack,
@@ -117,6 +117,21 @@ func (b *SingBoxConfigBuilder) WithRoutingRules(settings config.Settings) *SingB
 		{"ip_cidr": []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"}, "outbound": "direct"},
 	}
 
+	// Custom user block domains
+	if len(settings.CustomBlockDomains) > 0 {
+		rules = append(rules, map[string]interface{}{"domain_keyword": settings.CustomBlockDomains, "outbound": "block"})
+	}
+
+	// Custom user direct domains
+	if len(settings.CustomDirectDomains) > 0 {
+		rules = append(rules, map[string]interface{}{"domain_keyword": settings.CustomDirectDomains, "outbound": "direct"})
+	}
+
+	// Custom user proxy domains
+	if len(settings.CustomProxyDomains) > 0 {
+		rules = append(rules, map[string]interface{}{"domain_keyword": settings.CustomProxyDomains, "outbound": "proxy"})
+	}
+
 	// Domestic Iran & Zero-Disconnect Banking bypass
 	if settings.RoutingMode != "global" {
 		rules = append(rules,
@@ -126,6 +141,7 @@ func (b *SingBoxConfigBuilder) WithRoutingRules(settings config.Settings) *SingB
 				"varzesh3", "bank", "bmi.ir", "sep.ir", "asanpardakht", "zarinpal",
 				"sadadpsp", "pec.shaparak", "behpardakht", "irankish", "pasargad",
 				"mellat", "tejarat", "saman", "melli", "parsian", "nobitex", "wallex",
+				"bazaar", "tamin.ir", "sanjesh.org", "medu.ir", "epolice.ir",
 			}, "outbound": "direct"},
 			map[string]interface{}{"geoip": []string{"ir"}, "outbound": "direct"},
 		)

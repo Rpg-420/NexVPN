@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -17,27 +19,33 @@ import (
 )
 
 type RemoteServer struct {
-	mu         sync.RWMutex
-	httpServer *http.Server
-	port       int
-	running    bool
-	authToken  string
-	authPin    string
-	engine     *Engine
-	store      *config.Store
+	mu           sync.RWMutex
+	httpServer   *http.Server
+	port         int
+	running      bool
+	authToken    string
+	authPin      string
+	authAttempts int
+	authResetAt  time.Time
+	engine       *Engine
+	store        *config.Store
 }
 
-var globalRemoteServer *RemoteServer
+var (
+	globalRemoteServer     *RemoteServer
+	globalRemoteServerOnce sync.Once
+)
 
 func GetRemoteServer(engine *Engine, store *config.Store) *RemoteServer {
-	if globalRemoteServer == nil {
+	globalRemoteServerOnce.Do(func() {
 		globalRemoteServer = &RemoteServer{
-			port:   10815,
-			engine: engine,
-			store:  store,
+			port:        10815,
+			engine:      engine,
+			store:       store,
+			authResetAt: time.Now().Add(time.Minute),
 		}
 		globalRemoteServer.generateCredentials()
-	}
+	})
 	return globalRemoteServer
 }
 
@@ -87,12 +95,24 @@ func (rs *RemoteServer) Start(port int) error {
 	mux.HandleFunc("/api/connect", rs.handleConnect)
 	mux.HandleFunc("/api/disconnect", rs.handleDisconnect)
 
+	// Dynamic Subscription Endpoints (for mobile iOS/Android clients)
+	mux.HandleFunc("/sub", rs.handleSubscription)
+	mux.HandleFunc("/sub/all", rs.handleSubscription)
+	mux.HandleFunc("/api/subscription", rs.handleSubscription)
+
 	// Responsive Web Mobile UI
 	mux.HandleFunc("/", rs.handleWebUI)
 
+	// Bind only to the loopback interface by default. LAN exposure must be an explicit,
+	// separately reviewed feature because this server controls the VPN engine.
 	server := &http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
-		Handler: mux,
+		Addr:              fmt.Sprintf("127.0.0.1:%d", port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
 	}
 
 	rs.httpServer = server
@@ -125,16 +145,20 @@ func (rs *RemoteServer) IsRunning() bool {
 }
 
 func (rs *RemoteServer) GetURL() string {
-	lanIP := getLocalLANIP()
-	return fmt.Sprintf("http://%s:%d", lanIP, rs.port)
+	rs.mu.RLock()
+	port := rs.port
+	running := rs.running
+	rs.mu.RUnlock()
+	if !running {
+		return ""
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
 func (rs *RemoteServer) GetURLWithToken() string {
-	rs.mu.RLock()
-	token := rs.authToken
-	rs.mu.RUnlock()
-	lanIP := getLocalLANIP()
-	return fmt.Sprintf("http://%s:%d/?token=%s", lanIP, rs.port, token)
+	// Do not put bearer credentials in URLs. Callers must use Authorization or
+	// X-NexVPN-Token headers after an explicit pairing step.
+	return rs.GetURL()
 }
 
 func getLocalLANIP() string {
@@ -153,6 +177,24 @@ func getLocalLANIP() string {
 		}
 	}
 	return "127.0.0.1"
+}
+
+func secureEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func (rs *RemoteServer) allowAuthAttempt() bool {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if time.Now().After(rs.authResetAt) {
+		rs.authAttempts = 0
+		rs.authResetAt = time.Now().Add(time.Minute)
+	}
+	if rs.authAttempts >= 5 {
+		return false
+	}
+	rs.authAttempts++
+	return true
 }
 
 func (rs *RemoteServer) isAuthorized(r *http.Request) bool {
@@ -174,11 +216,7 @@ func (rs *RemoteServer) isAuthorized(r *http.Request) bool {
 		}
 	}
 
-	// 2. Check Query parameter
-	if queryToken := r.URL.Query().Get("token"); queryToken == validToken {
-		return true
-	}
-
+	// Tokens must not be accepted in URLs: URLs are commonly logged and leaked via referrers.
 	return false
 }
 
@@ -192,6 +230,7 @@ func (rs *RemoteServer) handleAuth(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PIN string `json:"pin"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.PIN == "" {
 		http.Error(w, `{"error":"Missing PIN"}`, http.StatusBadRequest)
 		return
@@ -202,7 +241,7 @@ func (rs *RemoteServer) handleAuth(w http.ResponseWriter, r *http.Request) {
 	token := rs.authToken
 	rs.mu.RUnlock()
 
-	if strings.TrimSpace(req.PIN) != validPin {
+	if !rs.allowAuthAttempt() || !secureEqual(strings.TrimSpace(req.PIN), validPin) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -276,6 +315,7 @@ func (rs *RemoteServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProfileID string `json:"profile_id"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ProfileID == "" {
 		http.Error(w, `{"error":"Missing profile_id"}`, http.StatusBadRequest)
 		return
@@ -398,15 +438,9 @@ func (rs *RemoteServer) handleWebUI(w http.ResponseWriter, r *http.Request) {
 
 <script>
 let currentStatus = 'disconnected';
-let profiles = [];
-let authToken = localStorage.getItem('nex_auth_token') || '';
-
-// If token in URL query, grab and store it
-const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get('token')) {
-  authToken = urlParams.get('token');
-  localStorage.setItem('nex_auth_token', authToken);
-}
+let profiles = [];let authToken = localStorage.getItem('nex_auth_token') || '';
+// Tokens are intentionally accepted only in request headers. Query-string tokens
+// are not imported because URLs can leak through browser history and referrers.
 
 function showMain() {
   document.getElementById('auth-screen').style.display = 'none';
@@ -548,4 +582,46 @@ if (authToken) {
 </body>
 </html>`
 	_, _ = w.Write([]byte(html))
+}
+
+// handleSubscription serves all valid profile URI links as a standard base64 subscription
+// Protected by token authentication to prevent LAN credential leakage (C4 fix)
+func (rs *RemoteServer) handleSubscription(w http.ResponseWriter, r *http.Request) {
+	if !rs.isAuthorized(r) {
+		http.Error(w, `{"error":"Unauthorized - token required for subscription"}`, http.StatusUnauthorized)
+		return
+	}
+	if rs.store == nil {
+		http.Error(w, "store not available", http.StatusInternalServerError)
+		return
+	}
+
+	profiles := rs.store.GetProfiles()
+	var links []string
+	for _, p := range profiles {
+		if p.RawURI != "" {
+			links = append(links, strings.TrimSpace(p.RawURI))
+		}
+	}
+
+	if len(links) == 0 {
+		http.Error(w, "no exportable subscription links available in NexVPN", http.StatusNotFound)
+		return
+	}
+
+	bundle := strings.Join(links, "\n")
+	b64 := base64.StdEncoding.EncodeToString([]byte(bundle))
+
+	var totalTraffic int64
+	if rs.engine != nil {
+		st := rs.engine.GetStats()
+		totalTraffic = st.BytesReceived + st.BytesSent
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `inline; filename="nexvpn_sub.txt"`)
+	w.Header().Set("Profile-Update-Interval", "12")
+	w.Header().Set("Subscription-Userinfo", fmt.Sprintf("upload=0; download=%d; total=107374182400; expire=%d", totalTraffic, time.Now().Add(30*24*time.Hour).Unix()))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(b64))
 }

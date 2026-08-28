@@ -162,6 +162,8 @@ type Store struct {
 	historyFile string
 	data        StoreData
 	idIndex     map[string]int
+
+	history []ConnectionSession
 }
 
 func NewStore() *Store {
@@ -235,7 +237,7 @@ func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := os.MkdirAll(s.dataDir, 0755); err != nil {
+	if err := os.MkdirAll(s.dataDir, 0700); err != nil {
 		return err
 	}
 
@@ -250,6 +252,15 @@ func (s *Store) Load() error {
 
 	if err := json.Unmarshal(content, &s.data); err != nil {
 		return err
+	}
+
+	if s.historyFile == "" {
+		s.historyFile = filepath.Join(s.dataDir, "history.json")
+	}
+	if data, err := os.ReadFile(s.historyFile); err == nil {
+		_ = json.Unmarshal(data, &s.history)
+	} else {
+		s.history = []ConnectionSession{}
 	}
 
 	// Migrate categories for legacy profiles
@@ -290,14 +301,23 @@ func InferCategory(proto Protocol) ProfileCategory {
 
 func (s *Store) saveUnlocked() error {
 	s.rebuildIndexLocked()
-	if err := os.MkdirAll(s.dataDir, 0755); err != nil {
+	if err := os.MkdirAll(s.dataDir, 0700); err != nil {
 		return err
 	}
 	bytes, err := json.MarshalIndent(s.data, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.dataFile, bytes, 0644)
+	// Atomic write via tmp + rename to prevent corruption on crash/power loss
+	tmpFile := s.dataFile + ".tmp"
+	if err := os.WriteFile(tmpFile, bytes, 0600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpFile, s.dataFile); err != nil {
+		_ = os.Remove(tmpFile)
+		return err
+	}
+	return nil
 }
 
 func (s *Store) Save() error {
@@ -379,6 +399,20 @@ func (s *Store) AddProfileBatch(profiles []Profile) ([]string, error) {
 		p := &profiles[i]
 		if p.ID == "" {
 			p.ID = uuid.New().String()
+		} else {
+			for {
+				duplicate := false
+				for _, existing := range s.data.Profiles {
+					if existing.ID == p.ID {
+						duplicate = true
+						break
+					}
+				}
+				if !duplicate {
+					break
+				}
+				p.ID = uuid.New().String()
+			}
 		}
 		if p.Category == "" {
 			p.Category = InferCategory(p.Protocol)
@@ -440,6 +474,30 @@ func (s *Store) UpdateProfile(p Profile) error {
 		}
 	}
 	return fmt.Errorf("profile %s not found", p.ID)
+}
+
+// UpdateProfileBatch updates multiple existing profiles in a single atomic file write
+func (s *Store) UpdateProfileBatch(profiles []Profile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	updateMap := make(map[string]Profile, len(profiles))
+	for _, p := range profiles {
+		updateMap[p.ID] = p
+	}
+
+	for i, existing := range s.data.Profiles {
+		if updated, ok := updateMap[existing.ID]; ok {
+			if updated.Category == "" {
+				updated.Category = InferCategory(updated.Protocol)
+			}
+			updated.UpdatedAt = now
+			s.data.Profiles[i] = updated
+		}
+	}
+
+	return s.saveUnlocked()
 }
 
 func (s *Store) DeleteProfile(id string) error {
@@ -707,54 +765,40 @@ func (s *Store) ExportAllProfiles(category ProfileCategory) string {
 // RecordConnectionSession saves a completed session to history.json
 func (s *Store) RecordConnectionSession(session ConnectionSession) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
-	if s.historyFile == "" {
-		s.historyFile = filepath.Join(s.dataDir, "history.json")
+	s.history = append([]ConnectionSession{session}, s.history...)
+	if len(s.history) > 100 {
+		s.history = s.history[:100]
 	}
 
-	var history []ConnectionSession
-	if data, err := os.ReadFile(s.historyFile); err == nil {
-		_ = json.Unmarshal(data, &history)
-	}
+	historyCopy := make([]ConnectionSession, len(s.history))
+	copy(historyCopy, s.history)
+	s.mu.Unlock()
 
-	// Prepend newest session, cap at 100 entries
-	history = append([]ConnectionSession{session}, history...)
-	if len(history) > 100 {
-		history = history[:100]
-	}
-
-	bytes, err := json.MarshalIndent(history, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.historyFile, bytes, 0600)
+	go func() {
+		bytes, err := json.MarshalIndent(historyCopy, "", "  ")
+		if err == nil {
+			_ = os.WriteFile(s.historyFile, bytes, 0600)
+		}
+	}()
+	return nil
 }
 
 // GetConnectionHistory retrieves all recorded connection sessions
 func (s *Store) GetConnectionHistory() []ConnectionSession {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	if s.historyFile == "" {
-		s.historyFile = filepath.Join(s.dataDir, "history.json")
-	}
-
-	var history []ConnectionSession
-	if data, err := os.ReadFile(s.historyFile); err == nil {
-		_ = json.Unmarshal(data, &history)
-	}
-	return history
+	result := make([]ConnectionSession, len(s.history))
+	copy(result, s.history)
+	return result
 }
 
 // ClearConnectionHistory deletes all session logs
 func (s *Store) ClearConnectionHistory() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.history = []ConnectionSession{}
+	s.mu.Unlock()
 
-	if s.historyFile == "" {
-		s.historyFile = filepath.Join(s.dataDir, "history.json")
-	}
 	return os.WriteFile(s.historyFile, []byte("[]"), 0600)
 }
 

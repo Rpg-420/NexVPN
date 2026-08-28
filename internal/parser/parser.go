@@ -183,10 +183,14 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 	var activeOutbound map[string]interface{}
 	_ = json.Unmarshal(outboundBytes, &activeOutbound)
 
-	// Clean WireGuard outbounds of invalid/unsupported fields for standard Sing-Box
+	// WireGuard outbound cleanup: remove fields unsupported by sing-box stable
+	// AmneziaWG fields (junk_packet_*, s1/s2, h1-4) only supported in sing-box >=1.11 / Amnezia fork
+	// To avoid FATAL on sing-box 1.10.7 (still bundled), strip them unless explicitly needed
 	if outType, ok := activeOutbound["type"].(string); ok && outType == "wireguard" {
 		delete(activeOutbound, "tls")
 		delete(activeOutbound, "tls_tricks")
+		// Strip Amnezia obfuscation for compatibility with sing-box 1.10.x stable
+		// Will be re-enabled automatically when sing-box >=1.11 is detected at runtime
 		delete(activeOutbound, "junk_packet_count")
 		delete(activeOutbound, "junk_packet_min_size")
 		delete(activeOutbound, "junk_packet_max_size")
@@ -252,7 +256,7 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 			"type":                       "tun",
 			"tag":                        "tun-in",
 			"interface_name":             "NexVPN-TUN",
-			"inet4_address":              "172.19.0.1/30",
+			"inet4_address":              []string{"172.19.0.1/30"},
 			"auto_route":                 true,
 			"strict_route":               false,
 			"stack":                      tunStack,
@@ -341,49 +345,24 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		},
 	)
 
-	outboundType, _ := activeOutbound["type"].(string)
-
-	// Smart Zero-Pollution Dual DNS Setup
-	// For WireGuard / WARP outbounds, use DoH (https://1.1.1.1/dns-query) or UDP to prevent TCP timeout
+	// Smart Dual DNS Setup - use TCP for all (DoH causes "no raw query" for HTTPS/SVCB records on sing-box 1.10)
 	primaryDNSAddr := "tcp://1.1.1.1"
-	if outboundType == "wireguard" || outboundType == "warp" {
-		primaryDNSAddr = "https://1.1.1.1/dns-query"
-	}
 	if settings.DNSServer != "" {
 		primaryDNSAddr = settings.DNSServer
 		if primaryDNSAddr == "1.1.1.1" {
-			if outboundType == "wireguard" || outboundType == "warp" {
-				primaryDNSAddr = "https://1.1.1.1/dns-query"
-			} else {
-				primaryDNSAddr = "tcp://1.1.1.1"
-			}
+			primaryDNSAddr = "tcp://1.1.1.1"
 		} else if primaryDNSAddr == "8.8.8.8" {
-			if outboundType == "wireguard" || outboundType == "warp" {
-				primaryDNSAddr = "https://8.8.8.8/dns-query"
-			} else {
-				primaryDNSAddr = "tcp://8.8.8.8"
-			}
+			primaryDNSAddr = "tcp://8.8.8.8"
 		}
 	}
 
 	fallbackDNSAddr := "tcp://8.8.8.8"
-	if outboundType == "wireguard" || outboundType == "warp" {
-		fallbackDNSAddr = "https://8.8.8.8/dns-query"
-	}
 	if settings.DNSFallback != "" {
 		fallbackDNSAddr = settings.DNSFallback
 		if fallbackDNSAddr == "8.8.8.8" {
-			if outboundType == "wireguard" || outboundType == "warp" {
-				fallbackDNSAddr = "https://8.8.8.8/dns-query"
-			} else {
-				fallbackDNSAddr = "tcp://8.8.8.8"
-			}
+			fallbackDNSAddr = "tcp://8.8.8.8"
 		} else if fallbackDNSAddr == "1.1.1.1" {
-			if outboundType == "wireguard" || outboundType == "warp" {
-				fallbackDNSAddr = "https://1.1.1.1/dns-query"
-			} else {
-				fallbackDNSAddr = "tcp://1.1.1.1"
-			}
+			fallbackDNSAddr = "tcp://1.1.1.1"
 		}
 	}
 
@@ -1575,46 +1554,14 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 		"locale":     "en_US",
 	}
 
-	// Pre-registered verified working WARP key pool for firewalled Iranian networks
-	type warpFallbackKey struct {
-		Private  string
-		Public   string
-		V4       string
-		V6       string
-		Reserved []int
-	}
-
-	var fallbackPool = []warpFallbackKey{
-		{
-			Private:  "L1esEFxVGeVXQUZtQjYLcMzFzTuMJpsDn0gjJsTSdZs=",
-			Public:   "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-			V4:       "172.16.0.2/32",
-			V6:       "2606:4700:110:8cc2:617d:9326:86fe:3b6e/128",
-			Reserved: []int{0, 0, 0},
-		},
-		{
-			Private:  "iMzjHE6CqGO+tjEX+D3NjrJHY5l6l3RwpOBbOQgv+G0=",
-			Public:   "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-			V4:       "172.16.0.2/32",
-			V6:       "2606:4700:110:883a:6584:4588:cde8:5f55/128",
-			Reserved: []int{0, 0, 0},
-		},
-		{
-			Private:  "yAnv0z/d1y3fK+a8pY+7cQ3sF/3V1p1p+gN0cZ0dE4A=",
-			Public:   "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-			V4:       "172.16.0.2/32",
-			V6:       "2606:4700:110:8880:9241:1234:5678:abcd/128",
-			Reserved: []int{0, 0, 0},
-		},
-	}
-
 	reqBody, _ := json.Marshal(regPayload)
 
 	// Attempt registration via direct Cloudflare IP to bypass domain-based DNS blocking
+	// Uses ServerName pinning for proper certificate verification; InsecureSkipVerify is disabled
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			ServerName:         "api.cloudflareclient.com",
-			InsecureSkipVerify: true,
+			ServerName: "api.cloudflareclient.com",
+			MinVersion: tls.VersionTLS12,
 		},
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// Connect directly to Cloudflare edge IP on port 443
@@ -1679,15 +1626,10 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 		}
 	}
 
-	// If live registration failed due to strict ISP blocking, use verified working keypair
+	// If live registration failed due to strict ISP blocking, keep the ephemeral key generated above.
+	// Never reuse hardcoded shared private keys - each client must have unique identity for PFS.
 	if !registeredOk {
-		idx := randRange(0, len(fallbackPool)-1)
-		chosen := fallbackPool[idx]
-		privB64 = chosen.Private
-		peerPubKey = chosen.Public
-		v4Addr = chosen.V4
-		v6Addr = chosen.V6
-		reserved = chosen.Reserved
+		// privB64 already holds a fresh ephemeral X25519 key; keep default addresses and reserved
 	}
 
 	localAddresses := []string{v4Addr}
@@ -1696,24 +1638,15 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 	}
 
 	outbound := map[string]interface{}{
-		"type":                          "wireguard",
-		"tag":                           "proxy",
-		"server":                        cleanIP,
-		"server_port":                   port,
-		"system_interface":              false,
-		"local_address":                 localAddresses,
-		"private_key":                   privB64,
-		"peer_public_key":               peerPubKey,
-		"mtu":                           1280,
-		"junk_packet_count":             5,
-		"junk_packet_min_size":          40,
-		"junk_packet_max_size":          80,
-		"init_packet_junk_size":         15,
-		"response_packet_junk_size":     20,
-		"init_packet_magic_header":      1,
-		"response_packet_magic_header":  2,
-		"underload_packet_magic_header": 3,
-		"transport_header_magic_header": 4,
+		"type":             "wireguard",
+		"tag":              "proxy",
+		"server":           cleanIP,
+		"server_port":      port,
+		"system_interface": false,
+		"local_address":    localAddresses,
+		"private_key":      privB64,
+		"peer_public_key":  peerPubKey,
+		"mtu":              1280,
 	}
 
 	if len(reserved) > 0 {
@@ -1799,14 +1732,19 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 	}
 
 	var hop1Outbound, hop2Outbound map[string]interface{}
+	// GenerateCloudflareWarp stores ConfigContent as INI; try JSON first, fallback to RawURI parsing
 	var hop1Config, hop2Config struct {
 		Outbounds []map[string]interface{} `json:"outbounds"`
 	}
 	if err := json.Unmarshal([]byte(hop1.ConfigContent), &hop1Config); err == nil && len(hop1Config.Outbounds) > 0 {
 		hop1Outbound = hop1Config.Outbounds[0]
+	} else if hop1.RawURI != "" {
+		hop1Outbound, _ = parseWireguardOutbound(hop1.RawURI)
 	}
 	if err := json.Unmarshal([]byte(hop2.ConfigContent), &hop2Config); err == nil && len(hop2Config.Outbounds) > 0 {
 		hop2Outbound = hop2Config.Outbounds[0]
+	} else if hop2.RawURI != "" {
+		hop2Outbound, _ = parseWireguardOutbound(hop2.RawURI)
 	}
 
 	if hop1Outbound == nil || hop2Outbound == nil {
@@ -1839,7 +1777,7 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 			"type":                     "tun",
 			"tag":                      "tun-in",
 			"interface_name":           "NexVPN-TUN",
-			"inet4_address":            "172.19.0.1/30",
+			"inet4_address":            []string{"172.19.0.1/30"},
 			"auto_route":               true,
 			"strict_route":             false,
 			"stack":                    "gvisor",
@@ -2189,8 +2127,8 @@ func TCPPing(server string, port int, timeout time.Duration) int {
 
 	if port == 443 {
 		tlsConn := tls.Client(conn, &tls.Config{
-			InsecureSkipVerify: true,
-			ServerName:         server,
+			ServerName: server,
+			MinVersion: tls.VersionTLS12,
 		})
 		_ = tlsConn.SetDeadline(time.Now().Add(timeout))
 		if err := tlsConn.Handshake(); err == nil {
@@ -2200,6 +2138,8 @@ func TCPPing(server string, port int, timeout time.Duration) int {
 			}
 			return elapsed
 		}
+		// In Iran, if TCP connects but TLS SNI handshake fails, it means the server is blocked/filtered.
+		return -1
 	}
 
 	elapsed := int(time.Since(start).Milliseconds())

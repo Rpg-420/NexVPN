@@ -18,15 +18,26 @@ import (
 )
 
 const (
-	SyncBroadcastPort = 10816
-	SyncMagicHeader   = "NEXVPN_P2P_SYNC_V2:"
-	syncSharedKeyPass = "NexVPN-LAN-P2P-Secure-Key-v2"
+	SyncBroadcastPort   = 10816
+	maxSyncProfiles     = 500
+	maxSyncPayloadBytes = 1 << 20
+	SyncMagicHeader     = "NEXVPN_P2P_SYNC_V2:"
+	syncSharedKeyPass   = "NexVPN-LAN-P2P-Secure-Key-v2"
 )
 
 type SyncPayload struct {
 	DeviceName string           `json:"device_name"`
 	Timestamp  int64            `json:"timestamp"`
 	Profiles   []config.Profile `json:"profiles"`
+}
+
+func validSyncPayload(payload SyncPayload) bool {
+	if strings.TrimSpace(payload.DeviceName) == "" || payload.Timestamp <= 0 || len(payload.Profiles) == 0 || len(payload.Profiles) > maxSyncProfiles {
+		return false
+	}
+	// Reject obviously stale/replayed broadcasts.
+	now := time.Now().Unix()
+	return payload.Timestamp >= now-10*60 && payload.Timestamp <= now+60
 }
 
 func deriveSyncKey() []byte {
@@ -92,6 +103,9 @@ func BroadcastProfilesToLAN(profiles []config.Profile, deviceName string) (int, 
 		Profiles:   profiles,
 	}
 
+	if len(profiles) > maxSyncProfiles {
+		return 0, fmt.Errorf("too many profiles to broadcast")
+	}
 	bytes, err := json.Marshal(payload)
 	if err != nil {
 		return 0, err
@@ -157,13 +171,16 @@ func ListenForNearbyProfiles(ctx context.Context, timeout time.Duration) (*SyncP
 			return nil, err
 		}
 
+		if n > maxSyncPayloadBytes {
+			continue
+		}
 		data := string(buf[:n])
 		if len(data) > len(SyncMagicHeader) && strings.HasPrefix(data, SyncMagicHeader) {
 			encContent := data[len(SyncMagicHeader):]
 			decrypted, err := decryptSyncPayload(encContent)
 			if err == nil {
 				var payload SyncPayload
-				if err := json.Unmarshal(decrypted, &payload); err == nil && len(payload.Profiles) > 0 {
+				if err := json.Unmarshal(decrypted, &payload); err == nil && validSyncPayload(payload) {
 					return &payload, nil
 				}
 			}
