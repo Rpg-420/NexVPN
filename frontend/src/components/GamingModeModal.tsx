@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Gamepad2,
   Zap,
@@ -10,6 +10,7 @@ import { api } from '../lib/api'
 import { sound } from '../lib/sound'
 import { t } from '../lib/i18n'
 import type { Settings } from '../types'
+import { ModalShell } from '../components/ui/modal-shell'
 
 interface Props {
   isOpen: boolean
@@ -90,6 +91,8 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
           }
         }
       }).catch(err => console.error('Failed to load gaming settings:', err))
+
+      api.getGamingOptimizationStatus().catch(() => {})
     }
   }, [isOpen])
 
@@ -107,6 +110,13 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
         dns_server: chosenDNS?.dohUrl || chosenDNS?.primary || current.dns_server,
         dns_fallback: chosenDNS?.secondary || current.dns_fallback,
       }
+
+      if (gameMode) {
+        await api.applyGamingOptimizations().catch(() => {})
+      } else {
+        await api.revertGamingOptimizations().catch(() => {})
+      }
+
       await api.saveSettings(updated)
       onSettingsUpdated(updated)
       setSuccessMsg(t('gaming_success'))
@@ -123,27 +133,31 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      className="max-h-[90vh]"
+    >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-800/80 bg-neutral-950/40">
+        <div className="flex items-center justify-between p-6 border-b border-border bg-background">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <div className="bg-success/20 w-10 h-10 rounded-2xl border border-success/30 flex items-center justify-center text-success">
               <Gamepad2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 {t('gaming_modal_title')}
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                  <Flame className="w-3 h-3 text-emerald-400 animate-pulse" /> {t('gaming_badge')}
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-success/20 text-success border border-success/30 flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-success animate-pulse" /> {t('gaming_badge')}
                 </span>
               </h3>
-              <p className="text-xs text-neutral-400">{t('gaming_modal_sub')}</p>
+              <p className="text-xs text-muted-foreground">{t('gaming_modal_sub')}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-neutral-800/60 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-all"
+            className="p-2 rounded-xl bg-muted hover:bg-muted/90 text-muted-foreground hover:text-foreground transition-all"
           >
             <X className="w-4 h-4" />
           </button>
@@ -152,23 +166,23 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
           {/* Game Mode Master Switch */}
-          <div className="flex items-center justify-between p-4 rounded-2xl bg-neutral-950/50 border border-neutral-800">
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
             <div className="space-y-0.5">
-              <div className="text-sm font-bold text-white flex items-center gap-2">
+              <div className="text-sm font-bold text-foreground flex items-center gap-2">
                 {t('gaming_enable_title')}
               </div>
-              <div className="text-xs text-neutral-400">
+              <div className="text-xs text-muted-foreground">
                 {t('gaming_enable_sub')}
               </div>
             </div>
             <button
               onClick={() => setGameMode(!gameMode)}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                gameMode ? 'bg-emerald-500' : 'bg-neutral-700'
+                gameMode ? 'bg-success' : 'bg-muted'
               }`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                className={`inline-block h-4 w-4 transform rounded-full bg-card transition-transform ${
                   gameMode ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
@@ -177,7 +191,7 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
 
           {/* DNS Presets */}
           <div className="space-y-3">
-            <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
               {t('gaming_resolvers_title')}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -187,21 +201,21 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
                   onClick={() => setSelectedDNS(dns.id)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
                     selectedDNS === dns.id
-                      ? 'bg-emerald-500/10 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                      : 'bg-neutral-800/40 border-neutral-800 hover:bg-neutral-800/80 hover:border-neutral-700'
+                      ? 'bg-success/10 border-success/50 shadow-sm'
+                      : 'bg-muted border-border hover:bg-muted hover:border-border'
                   }`}
                 >
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
                         {dns.latencyBadge}
                       </span>
-                      {selectedDNS === dns.id && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      {selectedDNS === dns.id && <CheckCircle2 className="w-4 h-4 text-success" />}
                     </div>
-                    <div className="text-xs font-bold text-white pt-1">{dns.name}</div>
-                    <p className="text-[11px] text-neutral-400 leading-relaxed">{dns.description}</p>
+                    <div className="text-xs font-bold text-foreground pt-1">{dns.name}</div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{dns.description}</p>
                   </div>
-                  <div className="mt-3 pt-2 border-t border-neutral-800/60 text-[10px] font-mono text-emerald-300 flex justify-between">
+                  <div className="mt-3 pt-2 border-t border-border text-[10px] font-mono text-success flex justify-between">
                     <span>IP: {dns.primary}</span>
                     <span>Secondary: {dns.secondary}</span>
                   </div>
@@ -211,19 +225,19 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
           </div>
 
           {/* Features Highlights */}
-          <div className="p-4 rounded-2xl bg-neutral-950/40 border border-neutral-800 space-y-2 text-xs text-neutral-300">
-            <div className="font-bold text-neutral-200 flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-emerald-400" /> Active Gaming Optimizations:
+          <div className="p-4 rounded-2xl bg-background border border-border space-y-2 text-xs text-muted-foreground">
+            <div className="font-bold text-foreground flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-success" /> Active Gaming Optimizations:
             </div>
-            <ul className="list-disc list-inside space-y-1 text-neutral-400 pl-1 text-[11px]">
-              <li><strong className="text-neutral-200">UDP Packet Prioritization:</strong> Zero queue buffering for Discord voice & online matchmaking.</li>
-              <li><strong className="text-neutral-200">Anti-Sanction Unblocking:</strong> Full access to Steam, Epic Games, PlayStation Network & EA Play.</li>
-              <li><strong className="text-neutral-200">MSS Clamping (1360):</strong> Prevents fragmentation packet drops on Mobile 4G/5G connections.</li>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground ps-1 text-[11px]">
+              <li><strong className="text-foreground">UDP Packet Prioritization:</strong> Zero queue buffering for Discord voice & online matchmaking.</li>
+              <li><strong className="text-foreground">Anti-Sanction Unblocking:</strong> Full access to Steam, Epic Games, PlayStation Network & EA Play.</li>
+              <li><strong className="text-foreground">MSS Clamping (1360):</strong> Prevents fragmentation packet drops on Mobile 4G/5G connections.</li>
             </ul>
           </div>
 
           {successMsg && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+            <div className="p-3 rounded-xl bg-success/10 border border-success/20 text-success text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" />
               <span>{successMsg}</span>
             </div>
@@ -231,22 +245,21 @@ export default function GamingModeModal({ isOpen, onClose, settings, onSettingsU
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-neutral-800/80 bg-neutral-950/40">
+        <div className="flex items-center justify-end gap-3 p-5 border-t border-border bg-background">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-white transition"
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition"
           >
             {t('cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-neutral-950 text-xs font-bold shadow-lg shadow-emerald-500/20 hover:opacity-95 transition disabled:opacity-50"
+            className="bg-primary px-6 py-2.5 rounded-xl text-primary-foreground text-xs font-bold shadow-sm hover:opacity-95 transition disabled:opacity-50"
           >
             {isSaving ? t('fragment_applying') : t('gaming_save_btn')}
           </button>
         </div>
-      </div>
-    </div>
+      </ModalShell>
   )
 }

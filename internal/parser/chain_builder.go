@@ -88,41 +88,39 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 			"tag":         "mixed-in",
 			"listen":      "127.0.0.1",
 			"listen_port": 10808,
-			"sniff":       true,
 		},
 		{
 			"type":        "http",
 			"tag":         "http-in",
 			"listen":      "127.0.0.1",
 			"listen_port": 10809,
-			"sniff":       true,
 		},
 		{
-			"type":                       "tun",
-			"tag":                        "tun-in",
-			"interface_name":             "NexVPN-TUN",
-			"inet4_address":              "172.19.0.1/30",
-			"inet6_address":              "fdfe:dcba:9876::1/126",
-			"auto_route":                 true,
-			"strict_route":               false,
-			"stack":                      tunStack,
-			"mtu":                        tunMTU,
-			"sniff":                      true,
-			"sniff_override_destination": false,
-			"endpoint_independent_nat":   true,
+			"type":                     "tun",
+			"tag":                      "tun-in",
+			"interface_name":           tunIfaceName(settings),
+			"address":                  []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"},
+			"auto_route":               true,
+			"strict_route":             false,
+			"stack":                    tunStack,
+			"mtu":                      tunMTU,
+			"endpoint_independent_nat": true,
 		},
 	}
 
 	// Standard outbounds
 	outbounds := append(chainedOutbounds,
 		map[string]interface{}{"type": "direct", "tag": "direct"},
-		map[string]interface{}{"type": "dns", "tag": "dns-out"},
+
 		map[string]interface{}{"type": "block", "tag": "block"},
 	)
 
 	// Routing rules
 	routeRules := []map[string]interface{}{
-		{"protocol": []string{"dns"}, "outbound": "dns-out"},
+		{"action": "sniff"},
+		{"port": []int{53}, "action": "hijack-dns"},
+		{"network": "udp", "port": []int{53}, "action": "hijack-dns"},
+		{"protocol": []string{"dns"}, "action": "hijack-dns"},
 		{"ip_cidr": []string{"192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16"}, "outbound": "direct"},
 	}
 
@@ -154,20 +152,20 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 		"outbounds": outbounds,
 		"dns": map[string]interface{}{
 			"servers": []map[string]interface{}{
-				{"tag": "dns-direct", "address": "local", "detour": "direct"},
-				{"tag": "dns-remote", "address": "udp://1.1.1.1", "address_resolver": "dns-direct", "detour": "proxy"},
+				{"tag": "dns-direct", "type": "local", "detour": "direct"},
+				{"tag": "dns-remote", "type": "tcp", "server": "1.1.1.1", "detour": "proxy"},
 			},
 			"rules": []map[string]interface{}{
 				{"domain_suffix": []string{".ir"}, "server": "dns-direct"},
-				{"outbound": "direct", "server": "dns-direct"},
 			},
 			"final":    "dns-remote",
 			"strategy": "ipv4_only",
 		},
 		"route": map[string]interface{}{
-			"auto_detect_interface": true,
-			"final":                 "proxy",
-			"rules":                 routeRules,
+			"auto_detect_interface":   true,
+			"default_domain_resolver": "dns-direct",
+			"final":                   "proxy",
+			"rules":                   routeRules,
 		},
 	}
 
@@ -177,7 +175,7 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 	}
 
 	if chainName == "" {
-		chainName = fmt.Sprintf("Proxy Chain: %s", strings.Join(hopNames, " ➔ "))
+		chainName = fmt.Sprintf("Proxy Chain: %s", strings.Join(hopNames, " âž” "))
 	}
 
 	profile := &config.Profile{
@@ -186,7 +184,7 @@ func BuildMultiHopChain(hops []config.Profile, chainName string, settings config
 		Category:      config.CategoryV2Ray,
 		Group:         "Proxy Chains",
 		ConfigContent: string(jsonBytes),
-		Description:   fmt.Sprintf("Nested Multi-Hop Tunnel: %s", strings.Join(hopNames, " ➔ ")),
+		Description:   fmt.Sprintf("Nested Multi-Hop Tunnel: %s", strings.Join(hopNames, " âž” ")),
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}

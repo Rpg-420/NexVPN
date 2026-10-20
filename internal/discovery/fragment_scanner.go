@@ -40,16 +40,16 @@ var defaultFragmentCandidates = []struct {
 	size  string
 	sleep string
 }{
-	{"10-30", "10-20"},   // MCI Aggressive
-	{"50-100", "5-15"},   // Irancell Stealth
-	{"100-200", "5-10"},  // Fixed / ADSL Mild
-	{"1-5", "15-30"},     // Extreme DPI Bypass
-	{"20-50", "10-20"},   // Balanced Medium
-	{"30-60", "5-15"},    // Fast Mobile
-	{"80-150", "5-10"},   // Fast Stable
-	{"10-20", "20-40"},   // Heavy Censorship
-	{"50-80", "10-25"},   // Standard TLS
-	{"150-300", "2-8"},   // High Bandwidth
+	{"10-30", "10-20"},  // MCI Aggressive
+	{"50-100", "5-15"},  // Irancell Stealth
+	{"100-200", "5-10"}, // Fixed / ADSL Mild
+	{"1-5", "15-30"},    // Extreme DPI Bypass
+	{"20-50", "10-20"},  // Balanced Medium
+	{"30-60", "5-15"},   // Fast Mobile
+	{"80-150", "5-10"},  // Fast Stable
+	{"10-20", "20-40"},  // Heavy Censorship
+	{"50-80", "10-25"},  // Standard TLS
+	{"150-300", "2-8"},  // High Bandwidth
 }
 
 type probeTarget struct {
@@ -95,9 +95,9 @@ func buildClientHello(sni string) []byte {
 		0x16,       // ContentType: Handshake (22)
 		0x03, 0x01, // Version: TLS 1.0 (Record header)
 		0x00, 0x00, // Record Length (placeholder at [3..4])
-		0x01,                   // HandshakeType: ClientHello (1)
-		0x00, 0x00, 0x00,       // Handshake Body Length (placeholder at [6..8])
-		0x03, 0x03,             // Client Version: TLS 1.2
+		0x01,             // HandshakeType: ClientHello (1)
+		0x00, 0x00, 0x00, // Handshake Body Length (placeholder at [6..8])
+		0x03, 0x03, // Client Version: TLS 1.2
 		// 32-byte Random
 		0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,

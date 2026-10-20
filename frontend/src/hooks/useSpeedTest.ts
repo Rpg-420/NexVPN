@@ -61,8 +61,9 @@ export function useSpeedTest(isOpen: boolean) {
           error_msg: err?.message || 'Failed to start speed test',
         }))
       }
-    } else {
-      // Dev / Mock Mode Stream Simulation
+    } else if ((import.meta as any)?.env?.DEV) {
+      // Dev-only mock stream. NEVER reachable in a production build: if the real
+      // binding is missing there we must surface an error, not invented numbers.
       let tick = 0
       mockIntervalRef.current = window.setInterval(() => {
         tick++
@@ -107,6 +108,15 @@ export function useSpeedTest(isOpen: boolean) {
           }))
         }
       }, 200)
+    } else {
+      // Production without the Wails binding: fail loudly rather than fabricate.
+      setMetrics(prev => ({
+        ...prev,
+        state: 'error',
+        phase: 'error',
+        progress: 0,
+        error_msg: 'Speed test backend is unavailable (Wails binding missing).',
+      }))
     }
   }, [stopMockSimulation])
 

@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   QrCode,
   Copy,
   Check,
   X,
-  Share2,
-  Server,
   Smartphone,
-  Layers,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import { generateQRCodeSVG } from '../lib/qrcode'
 import type { Profile } from '../types'
 import CountryFlag from './CountryFlag'
+import { ModalShell } from '../components/ui/modal-shell'
 
 interface Props {
   profile: Profile | null
@@ -54,25 +52,29 @@ export default function ProfileQRModal({ profile, isOpen, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-sm"
+    >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-neutral-800 bg-neutral-950/40">
+        <div className="flex items-center justify-between p-5 border-b border-border bg-background">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+            <div className="w-9 h-9 rounded-2xl border border-border bg-muted flex items-center justify-center text-muted-foreground shrink-0">
               <QrCode className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold text-white truncate flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-foreground truncate flex items-center gap-1.5">
                 <CountryFlag codeOrName={profile.country_code || profile.name} className="w-4 h-3 rounded-sm shrink-0" />
+                <CountryFlag codeOrName={profile.country_code || profile.name} size="xs" className="shrink-0" />
                 <span className="truncate">{profile.name}</span>
               </h3>
-              <p className="text-[11px] text-neutral-400 uppercase font-mono tracking-wider">{profile.protocol}</p>
+              <p className="text-[11px] text-muted-foreground uppercase font-mono tracking-wider">{profile.protocol}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-neutral-800/60 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-all shrink-0"
+            className="p-1.5 rounded-xl bg-muted hover:bg-muted/90 text-muted-foreground hover:text-foreground transition-all shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -81,11 +83,11 @@ export default function ProfileQRModal({ profile, isOpen, onClose }: Props) {
         {/* Body */}
         <div className="p-6 flex flex-col items-center text-center space-y-4">
           {isLoading ? (
-            <div className="py-12 text-xs text-neutral-400">{t('generating')}</div>
+            <div className="py-12 text-xs text-muted-foreground">{t('generating')}</div>
           ) : shareURI ? (
             <>
               {/* QR Container */}
-              <div className="p-3.5 bg-white rounded-2xl shadow-2xl shadow-cyan-500/10">
+              <div className="p-3.5 bg-card rounded-2xl shadow-2xl">
                 <img
                   src={generateQRCodeSVG(shareURI, 180)}
                   alt="Profile QR Code"
@@ -94,11 +96,11 @@ export default function ProfileQRModal({ profile, isOpen, onClose }: Props) {
               </div>
 
               <div className="space-y-1">
-                <h4 className="text-xs font-bold text-white flex items-center justify-center gap-1.5">
-                  <Smartphone className="w-4 h-4 text-cyan-400" />
+                <h4 className="text-xs font-bold text-foreground flex items-center justify-center gap-1.5">
+                  <Smartphone className="w-4 h-4 text-primary" />
                   {t('qr_modal_scan_title')}
                 </h4>
-                <p className="text-[11px] text-neutral-400 max-w-xs mx-auto leading-relaxed">
+                <p className="text-[11px] text-muted-foreground max-w-xs mx-auto leading-relaxed">
                   {t('qr_modal_scan_desc')}
                 </p>
               </div>
@@ -107,30 +109,29 @@ export default function ProfileQRModal({ profile, isOpen, onClose }: Props) {
               <button
                 type="button"
                 onClick={handleCopy}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary/10 hover:bg-primary/20 border border-border text-primary text-xs font-semibold transition"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
                 <span>{copied ? t('qr_modal_copied') : t('qr_modal_copy')}</span>
               </button>
             </>
           ) : (
-            <div className="py-8 text-xs text-rose-400">
+            <div className="py-8 text-xs text-destructive">
               {t('qr_modal_no_uri')}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-neutral-800 bg-neutral-950/20 flex justify-end">
+        <div className="p-4 border-t border-border bg-background flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-200 transition"
+            className="w-full py-2 px-4 rounded-xl bg-muted hover:bg-muted/90 text-xs font-semibold text-foreground transition"
           >
             {t('close')}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   )
 }

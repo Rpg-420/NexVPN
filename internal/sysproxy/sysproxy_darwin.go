@@ -28,6 +28,25 @@ func getDarwinActiveServices() []string {
 	return services
 }
 
+// isStaleNexVPNProxy: on macOS, clearSystemProxyPlatform only flips each network
+// service's proxy toggle off (it never overwrites a stored third-party proxy host),
+// so unconditionally allowing the cleanup here carries much less risk than on Windows.
+func isStaleNexVPNProxy() bool {
+	return true
+}
+
+// IsSystemProxyEnabled reports whether any active network service has its web
+// proxy switched on.
+func IsSystemProxyEnabled() bool {
+	for _, svc := range getDarwinActiveServices() {
+		out, err := exec.Command("networksetup", "-getwebproxy", svc).Output()
+		if err == nil && strings.Contains(strings.ToLower(string(out)), "enabled: yes") {
+			return true
+		}
+	}
+	return false
+}
+
 func setSystemProxyPlatform(host string, port int) error {
 	if host == "" {
 		host = "127.0.0.1"

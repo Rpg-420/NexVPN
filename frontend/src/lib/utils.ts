@@ -1,4 +1,29 @@
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import type { Protocol } from '../types'
+
+/**
+ * Merge Tailwind class names, resolving conflicts (later wins) while keeping
+ * conditional classes readable. Standard shadcn/ui helper.
+ */
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs))
+}
+
+/**
+ * Builds a rejection handler for a fire-and-forget backend call.
+ *
+ * Several `api.*` calls are deliberately not awaited — the UI must not block on
+ * a version string or a binary listing — but leaving the promise without a
+ * handler meant a failure surfaced only as an anonymous "Uncaught (in promise)"
+ * in the console, with nothing naming the call that failed. This labels it, so
+ * the next report of "something failed on startup" can be acted on.
+ */
+export function reportFailure(label: string) {
+  return (err: unknown) => {
+    console.error(`[NexVPN] ${label} failed:`, err)
+  }
+}
 
 export function formatBytes(bytes: number, decimals = 1): string {
   if (bytes === 0) return '0 B'

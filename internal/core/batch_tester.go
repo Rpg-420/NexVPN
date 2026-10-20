@@ -234,7 +234,10 @@ func testProfileLatency(p config.Profile, timeout time.Duration) int {
 	port := p.Port
 
 	if server == "" && p.RawURI != "" {
-		if u, err := url.Parse(p.RawURI); err == nil {
+		if node, err := parser.ParseURI(p.RawURI); err == nil && node != nil {
+			server = node.Server
+			port = node.Port
+		} else if u, err := url.Parse(p.RawURI); err == nil {
 			server = u.Hostname()
 			if pStr := u.Port(); pStr != "" {
 				port, _ = strconv.Atoi(pStr)
@@ -249,7 +252,11 @@ func testProfileLatency(p config.Profile, timeout time.Duration) int {
 		port = 443
 	}
 
-	return parser.TCPPing(server, port, timeout)
+	// The number in the server list is a latency, not a TLS verdict, so it comes
+	// from the warm minimum-of-samples probe. The TLS-aware `parser.TCPPing` stays
+	// where it belongs — the smart-ping path, where an endpoint that refuses the
+	// handshake really is blocked.
+	return parser.MeasureLatency(server, port, timeout)
 }
 
 func testProfileRealDelay(ctx context.Context, p config.Profile, timeout time.Duration) int {
@@ -257,7 +264,10 @@ func testProfileRealDelay(ctx context.Context, p config.Profile, timeout time.Du
 	port := p.Port
 
 	if server == "" && p.RawURI != "" {
-		if u, err := url.Parse(p.RawURI); err == nil {
+		if node, err := parser.ParseURI(p.RawURI); err == nil && node != nil {
+			server = node.Server
+			port = node.Port
+		} else if u, err := url.Parse(p.RawURI); err == nil {
 			server = u.Hostname()
 			if pStr := u.Port(); pStr != "" {
 				port, _ = strconv.Atoi(pStr)

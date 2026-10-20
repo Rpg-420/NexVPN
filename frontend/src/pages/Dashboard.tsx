@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import {
   Power,
   Shield,
@@ -14,10 +14,7 @@ import {
   Radio,
   Sparkles,
   Layers,
-  MapPin,
-  Cpu,
   Gauge,
-  CheckCircle2,
   RefreshCw,
   Wifi,
   Wrench,
@@ -29,7 +26,6 @@ import {
   Gamepad2,
   TrendingUp,
   Smartphone,
-  Share2,
   X,
   History,
   Archive,
@@ -39,44 +35,58 @@ import {
   SortAsc,
   Scan,
   ArrowRightLeft,
+  ChevronDown,
 } from 'lucide-react'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import { translateBackendError } from '../lib/backendErrors'
 import { sound } from '../lib/sound'
-import { sendDesktopNotification, requestNotificationPermission } from '../lib/notification'
+import { requestNotificationPermission } from '../lib/notification'
 import { generateQRCodeSVG } from '../lib/qrcode'
 import type { ConnectionStatus, TrafficStats, Settings, IPInfo, Profile } from '../types'
 import {
+  cn,
   formatBytes,
   formatSpeed,
   formatDuration,
   getProtocolName,
   getProtocolEmoji,
-  getCountryFlag,
 } from '../lib/utils'
-import CountryFlag from '../components/CountryFlag'
-import SpeedTestModal from '../components/SpeedTestModal'
-import LANShareModal from '../components/LANShareModal'
-import RadarModal from '../components/RadarModal'
-import EmergencyRepairModal from '../components/EmergencyRepairModal'
-import QuotaManagerModal from '../components/QuotaManagerModal'
-import CloudSyncModal from '../components/CloudSyncModal'
-import DNSLeakModal from '../components/DNSLeakModal'
-import ConnectionHistoryModal from '../components/ConnectionHistoryModal'
-import FullBackupModal from '../components/FullBackupModal'
-import OnboardingWizardModal from '../components/OnboardingWizardModal'
-import ProxyChainModal from '../components/ProxyChainModal'
-import MobileRemoteModal from '../components/MobileRemoteModal'
-import FragmentStudioModal from '../components/FragmentStudioModal'
-import GamingModeModal from '../components/GamingModeModal'
-import ScreenQRScannerModal from '../components/ScreenQRScannerModal'
-import ConfigConverterModal from '../components/ConfigConverterModal'
+import CountryFlag, { cleanServerName } from '../components/CountryFlag'
+import { usePingProgress } from '../hooks/usePingProgress'
+import { pinnedFirst } from '../lib/profilePin'
+
+// Lazy-loaded modal components for performance and small bundle size
+const SpeedTestModal = lazy(() => import('../components/SpeedTestModal'))
+const LANShareModal = lazy(() => import('../components/LANShareModal'))
+const RadarModal = lazy(() => import('../components/RadarModal'))
+const EmergencyRepairModal = lazy(() => import('../components/EmergencyRepairModal'))
+const QuotaManagerModal = lazy(() => import('../components/QuotaManagerModal'))
+const CloudSyncModal = lazy(() => import('../components/CloudSyncModal'))
+const DNSLeakModal = lazy(() => import('../components/DNSLeakModal'))
+const ConnectionHistoryModal = lazy(() => import('../components/ConnectionHistoryModal'))
+const FullBackupModal = lazy(() => import('../components/FullBackupModal'))
+const OnboardingWizardModal = lazy(() => import('../components/OnboardingWizardModal'))
+const ProxyChainModal = lazy(() => import('../components/ProxyChainModal'))
+const MobileRemoteModal = lazy(() => import('../components/MobileRemoteModal'))
+const FragmentStudioModal = lazy(() => import('../components/FragmentStudioModal'))
+const GamingModeModal = lazy(() => import('../components/GamingModeModal'))
+const ScreenQRScannerModal = lazy(() => import('../components/ScreenQRScannerModal'))
+const ConfigConverterModal = lazy(() => import('../components/ConfigConverterModal'))
+const NearbySyncModal = lazy(() => import('../components/NearbySyncModal'))
+const ProfileQRModal = lazy(() => import('../components/ProfileQRModal'))
+const ServiceUnlockModal = lazy(() => import('../components/ServiceUnlockModal'))
+const GlobeWidget = lazy(() => import('../components/GlobeWidget'))
+
 import SmartISPOptimizerCard from '../components/SmartISPOptimizerCard'
-import NearbySyncModal from '../components/NearbySyncModal'
 import FloatingMiniWidget from '../components/FloatingMiniWidget'
-import ProfileQRModal from '../components/ProfileQRModal'
+import CyberWaveVisualizer from '../components/CyberWaveVisualizer'
+import { ModalShell } from '../components/ui/modal-shell'
+import { Button } from '../components/ui/button'
+import { Progress } from '../components/ui/progress'
 import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
+import { useTimers } from '../lib/useTimers'
+import { Card } from '@/components/ui/card'
 
 // ─── Profile Search Selector ─────────────────────────────────────────────────
 // Searchable dropdown with latency sorting and group display
@@ -94,10 +104,39 @@ function ProfileSearchSelector({
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortMode>('default')
   const [open, setOpen] = useState(false)
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Extract unique countries from available profiles
+  const countries = useMemo(() => {
+    const counts: Record<string, number> = {}
+    profiles.forEach(p => {
+      let code = (p.country_code || '').toUpperCase().trim()
+      if (!code || code.length !== 2) {
+        const match = p.name.match(/\b([A-Z]{2})\b/)
+        if (match) code = match[1].toUpperCase()
+      }
+      if (code && code.length === 2) {
+        counts[code] = (counts[code] || 0) + 1
+      }
+    })
+    return Object.entries(counts)
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => b.count - a.count)
+  }, [profiles])
 
   const filtered = useMemo(() => {
     let list = [...profiles]
+    if (selectedCountry) {
+      list = list.filter(p => {
+        let code = (p.country_code || '').toUpperCase().trim()
+        if (!code || code.length !== 2) {
+          const match = p.name.match(/\b([A-Z]{2})\b/)
+          if (match) code = match[1].toUpperCase()
+        }
+        return code === selectedCountry
+      })
+    }
     if (query.trim()) {
       const q = query.toLowerCase()
       list = list.filter(
@@ -116,8 +155,12 @@ function ProfileSearchSelector({
     } else if (sort === 'name') {
       list.sort((a, b) => a.name.localeCompare(b.name))
     }
+    // Pinned profiles lead here too, so the star set on the list pages is
+    // visible in the one place the user picks a server from. Applied last so
+    // the chosen sort order survives within each group — see lib/profilePin.ts.
+    list.sort(pinnedFirst)
     return list
-  }, [profiles, query, sort])
+  }, [profiles, selectedCountry, query, sort])
 
   const selected = profiles.find(p => p.id === selectedProfileId)
 
@@ -139,39 +182,45 @@ function ProfileSearchSelector({
         id="dashboard-profile-select"
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:border-cyan-500/50 transition text-xs font-semibold text-slate-200 text-left rtl:text-right"
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/50 transition text-xs font-semibold text-foreground text-start rtl:text-end"
       >
-        <Server size={13} className="text-cyan-400 shrink-0" />
-        <span className="flex-1 truncate">
-          {selected
-            ? `${getCountryFlag(selected.country_code)} ${selected.name}${selected.latency_ms ? ` (${selected.latency_ms}ms)` : ''}`
-            : t('select_server_prompt')}
+        <Server size={13} className="text-primary shrink-0" />
+        <span className="flex-1 truncate flex items-center gap-2">
+          {selected ? (
+            <>
+              <CountryFlag codeOrName={selected.country_code || selected.name} size="xs" />
+              <span className="truncate">{cleanServerName(selected.name)}</span>
+              {selected.latency_ms ? <span className="text-[10px] text-muted-foreground font-mono">({selected.latency_ms}ms)</span> : null}
+            </>
+          ) : (
+            t('select_server_prompt')
+          )}
         </span>
-        <span className="text-slate-500 text-[9px]">▼</span>
+        <span className="text-muted-foreground text-[9px]">▼</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 bottom-full mb-1.5 w-full rounded-2xl bg-slate-950/95 backdrop-blur-xl border border-slate-700 shadow-2xl shadow-black/80 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="absolute z-50 bottom-full mb-1.5 w-full rounded-2xl bg-background backdrop-blur-xl border border-border shadow-2xl shadow-black/80 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
           {/* Search + sort row */}
-          <div className="flex items-center gap-1.5 p-2 border-b border-slate-800">
-            <div className="flex items-center gap-1 flex-1 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1">
-              <Search size={12} className="text-slate-500 shrink-0" />
+          <div className="flex items-center gap-1.5 p-2 border-b border-border">
+            <div className="flex items-center gap-1 flex-1 bg-card border border-border rounded-xl px-2 py-1">
+              <Search size={12} className="text-muted-foreground shrink-0" />
               <input
                 autoFocus
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder={t('search') || 'Search profiles...'}
-                className="flex-1 bg-transparent text-xs text-slate-200 outline-none placeholder-slate-600"
+                className="flex-1 bg-transparent text-xs text-foreground outline-none placeholder-muted-foreground"
               />
               {query && (
-                <button onClick={() => setQuery('')} className="text-slate-500 hover:text-slate-300">
+                <button aria-label="Clear search" onClick={() => setQuery('')} className="text-muted-foreground hover:text-muted-foreground">
                   <X size={11} />
                 </button>
               )}
             </div>
             <button
               onClick={() => setSort(s => s === 'latency' ? 'name' : s === 'name' ? 'default' : 'latency')}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-cyan-400 transition text-[9px] font-bold flex items-center gap-1"
+              className="p-1.5 rounded-lg bg-muted hover:bg-muted/90 text-muted-foreground hover:text-primary transition text-[9px] font-bold flex items-center gap-1"
               title="Sort: default → latency → name"
             >
               <SortAsc size={12} />
@@ -179,26 +228,60 @@ function ProfileSearchSelector({
             </button>
           </div>
 
+          {/* Quick Country Filter Pills */}
+          {countries.length > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border overflow-x-auto no-scrollbar bg-card">
+              <button
+                type="button"
+                onClick={() => setSelectedCountry(null)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold shrink-0 transition flex items-center gap-1 ${
+                  selectedCountry === null
+                    ? 'bg-primary text-primary-foreground font-extrabold shadow-sm'
+                    : 'bg-muted text-muted-foreground hover:text-foreground border border-border'
+                }`}
+              >
+                <span>{t('all_countries')}</span>
+                <span className="opacity-75 text-[9px]">({profiles.length})</span>
+              </button>
+              {countries.map(({ code, count }) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setSelectedCountry(selectedCountry === code ? null : code)}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium shrink-0 transition ${
+                    selectedCountry === code
+                      ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                      : 'bg-muted text-muted-foreground hover:text-primary border border-border'
+                  }`}
+                >
+                  <CountryFlag codeOrName={code} size="xs" />
+                  <span>{code}</span>
+                  <span className="opacity-70 text-[9px]">({count})</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Profile list */}
           <div className="max-h-52 overflow-y-auto">
             {filtered.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-slate-500">{t('no_results') || 'No matching profiles'}</div>
+              <div className="px-3 py-4 text-center text-xs text-muted-foreground">{t('no_results') || 'No matching profiles'}</div>
             ) : (
               filtered.map(p => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => { onSelect(p.id); setOpen(false); setQuery('') }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left rtl:text-right transition hover:bg-slate-800 ${
-                    p.id === selectedProfileId ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-300'
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-start rtl:text-end transition hover:bg-muted ${
+                    p.id === selectedProfileId ? 'bg-info/10 text-primary' : 'text-muted-foreground'
                   }`}
                 >
-                  <span className="text-base leading-none shrink-0">{getCountryFlag(p.country_code)}</span>
-                  <span className="flex-1 truncate font-semibold">{p.name}</span>
-                  {p.group && <span className="text-[10px] text-slate-500 truncate max-w-[60px]">{p.group}</span>}
+                  <CountryFlag codeOrName={p.country_code || p.name} size="xs" className="shrink-0" />
+                  <span className="flex-1 truncate font-semibold">{cleanServerName(p.name)}</span>
+                  {p.group && <span className="text-[10px] text-muted-foreground truncate max-w-[60px]">{p.group}</span>}
                   {p.latency_ms && p.latency_ms > 0 && (
                     <span className={`text-[10px] font-mono font-bold shrink-0 ${
-                      p.latency_ms < 150 ? 'text-emerald-400' : p.latency_ms < 300 ? 'text-amber-400' : 'text-rose-400'
+                      p.latency_ms < 150 ? 'text-success' : p.latency_ms < 300 ? 'text-warning' : 'text-destructive'
                     }`}>{p.latency_ms}ms</span>
                   )}
                 </button>
@@ -207,7 +290,7 @@ function ProfileSearchSelector({
           </div>
 
           {filtered.length < profiles.length && (
-            <div className="px-3 py-1.5 text-center text-[10px] text-slate-600 border-t border-slate-800">
+            <div className="px-3 py-1.5 text-center text-[10px] text-muted-foreground border-t border-border">
               {filtered.length} / {profiles.length} profiles
             </div>
           )}
@@ -222,31 +305,23 @@ interface Props {
   status: ConnectionStatus
   stats: TrafficStats
   onOpenDoctor?: () => void
-  onOpenAppSelector?: () => void
 }
 
-interface SpeedPoint {
-  t: number
-  down: number
-  up: number
-}
-
-const MAX_POINTS = 25
-
-export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelector }: Props) {
+export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
   const [selectedProfileId, setSelectedProfileId] = useState<string>('')
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [speedHistory, setSpeedHistory] = useState<SpeedPoint[]>([])
   const [isActioning, setIsActioning] = useState(false)
   const [realDelay, setRealDelay] = useState<number | null>(null)
   const [isTestingDelay, setIsTestingDelay] = useState(false)
-  const [routingMode, setRoutingMode] = useState<string>('bypass_iran')
   const [proxyMode, setProxyMode] = useState<string>('tun')
   const [gameMode, setGameMode] = useState<boolean>(false)
   const [ipInfo, setIpInfo] = useState<IPInfo | null>(null)
   const [isLoadingIP, setIsLoadingIP] = useState(false)
   const [copiedIP, setCopiedIP] = useState(false)
   const [isPingingAll, setIsPingingAll] = useState(false)
+  // The sweep runs over every category at once, so it can take a while and the
+  // only feedback used to be the button's spinner.
+  const pingProgress = usePingProgress(isPingingAll)
   const [dashboardToast, setDashboardToast] = useState<string | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
   const [copiedQRLink, setCopiedQRLink] = useState(false)
@@ -273,14 +348,15 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
   const [showScreenQRModal, setShowScreenQRModal] = useState(false)
   const [showConverterModal, setShowConverterModal] = useState(false)
   const [showNearbyModal, setShowNearbyModal] = useState(false)
+  const [showServiceUnlockModal, setShowServiceUnlockModal] = useState(false)
+  const [showFloatingWidget, setShowFloatingWidget] = useState(false)
   const [showToolsDropdown, setShowToolsDropdown] = useState(false)
   const [currentSettings, setCurrentSettings] = useState<Settings>({} as Settings)
-  const tickRef = useRef(0)
-  const lastNotifiedStateRef = useRef<string>('')
+  const safeTimeout = useTimers()
 
   const showToast = (msg: string) => {
     setDashboardToast(msg)
-    setTimeout(() => setDashboardToast(null), 4000)
+    safeTimeout(() => setDashboardToast(null), 4000)
   }
 
   const handlePanicWipe = async () => {
@@ -294,6 +370,50 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
       }
     }
   }
+
+  const [connectingElapsed, setConnectingElapsed] = useState(0)
+
+  // Track connection attempt elapsed time
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+    if (status.state === 'connecting') {
+      setConnectingElapsed(0)
+      timer = setInterval(() => {
+        setConnectingElapsed(prev => prev + 1)
+      }, 1000)
+    } else {
+      setConnectingElapsed(0)
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [status.state])
+
+  // Listen to global open-modal events dispatched from Command Palette
+  useEffect(() => {
+    const handleOpenModal = (e: Event) => {
+      const modal = (e as CustomEvent).detail
+      if (modal === 'speedtest') setShowSpeedTestModal(true)
+      else if (modal === 'lanshare') setShowLANShareModal(true)
+      else if (modal === 'radar') setShowRadarModal(true)
+      else if (modal === 'repair') setShowEmergencyModal(true)
+      else if (modal === 'quota') setShowQuotaModal(true)
+      else if (modal === 'cloud') setShowCloudModal(true)
+      else if (modal === 'dnsleak') setShowDNSLeakModal(true)
+      else if (modal === 'history') setShowHistoryModal(true)
+      else if (modal === 'backup') setShowBackupModal(true)
+      else if (modal === 'chain') setShowChainModal(true)
+      else if (modal === 'remote') setShowRemoteModal(true)
+      else if (modal === 'fragment') setShowFragmentStudio(true)
+      else if (modal === 'gaming') setShowGamingModal(true)
+      else if (modal === 'screenqr') setShowScreenQRModal(true)
+      else if (modal === 'converter') setShowConverterModal(true)
+      else if (modal === 'nearby') setShowNearbyModal(true)
+      else if (modal === 'serviceunlock') setShowServiceUnlockModal(true)
+    }
+    window.addEventListener('nexvpn:open-modal', handleOpenModal)
+    return () => window.removeEventListener('nexvpn:open-modal', handleOpenModal)
+  }, [])
 
   // Request desktop notification permission on mount
   useEffect(() => {
@@ -357,7 +477,6 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
         }
       }
       if (s) {
-        if (s.routing_mode) setRoutingMode(s.routing_mode)
         if (s.proxy_mode) setProxyMode(s.proxy_mode)
         if (s.game_mode_enabled !== undefined) setGameMode(s.game_mode_enabled)
         if (s.monthly_quota_gb) setMonthlyQuotaGB(s.monthly_quota_gb)
@@ -370,21 +489,6 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
   useEffect(() => {
     loadDashboardData()
   }, [loadDashboardData])
-
-  // Update speed history on stats change
-  useEffect(() => {
-    setSpeedHistory(prev => {
-      const next = [
-        ...prev,
-        {
-          t: tickRef.current++,
-          down: stats.speed_download,
-          up: stats.speed_upload,
-        },
-      ]
-      return next.slice(-MAX_POINTS)
-    })
-  }, [stats.speed_download, stats.speed_upload])
 
   // When connection state changes, re-fetch live IP
   useEffect(() => {
@@ -423,9 +527,9 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
           await api.connect(idToConnect)
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Connect toggle error:', err)
-      showToast(err?.message || t('error'))
+      showToast(err instanceof Error ? err.message : t('error'))
     } finally {
       setIsActioning(false)
     }
@@ -450,28 +554,6 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
       await api.setProxyMode(newMode)
     } catch (err) {
       console.error('Failed to change proxy mode:', err)
-    }
-  }
-
-  const handleRoutingChange = async (newMode: string) => {
-    setRoutingMode(newMode)
-    try {
-      const s = await api.getSettings()
-      await api.saveSettings({ ...s, routing_mode: newMode })
-    } catch (err) {
-      console.error('Failed to change routing mode:', err)
-    }
-  }
-
-  const handleToggleGameMode = async () => {
-    const next = !gameMode
-    setGameMode(next)
-    try {
-      const s = await api.getSettings()
-      await api.saveSettings({ ...s, game_mode_enabled: next })
-      showToast(next ? t('game_mode_active') : t('game_mode_inactive'))
-    } catch (err) {
-      console.error('Failed to toggle game mode:', err)
     }
   }
 
@@ -503,6 +585,10 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
     }
   }
 
+  const handleCancelPingAll = () => {
+    api.cancelPingAll().catch(() => {})
+  }
+
   const handleAutoConnectFastest = async () => {
     if (profiles.length === 0) return
     const sorted = [...profiles].sort((a, b) => {
@@ -520,7 +606,6 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
 
   const isConnected = status.state === 'connected'
   const isConnecting = status.state === 'connecting'
-  const isDisconnected = status.state === 'disconnected'
   const isError = status.state === 'error'
 
   const activeProfile = profiles.find(p => p.id === (status.profile_id || selectedProfileId))
@@ -543,223 +628,295 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
   const usedGB = (totalUsedBytes / (1024 * 1024 * 1024)).toFixed(2)
   const quotaPercent = monthlyQuotaGB > 0 ? Math.min(100, Math.round((parseFloat(usedGB) / monthlyQuotaGB) * 100)) : 0
 
+  // Shared row styling for the Network Tools menu, so its fourteen entries stay
+  // visually identical instead of each carrying its own accent colour.
+  const toolItemClass =
+    'flex items-center gap-2 rounded-md p-2 text-start text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground rtl:text-end'
+  const toolIconClass = 'h-3.5 w-3.5 shrink-0 text-muted-foreground'
+
   return (
     <div className="page space-y-4 animate-fade-in">
       {/* Toast Notification */}
       {dashboardToast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-cyan-500/50 shadow-2xl shadow-cyan-500/20 text-slate-100 text-xs px-4 py-2 rounded-xl flex items-center gap-2 backdrop-blur-md animate-fade-in">
-          <Sparkles size={14} className="text-cyan-400 animate-pulse" />
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-card border border-primary/50 shadow-2xl text-foreground text-xs px-4 py-2 rounded-xl flex items-center gap-2 backdrop-blur-md animate-fade-in">
+          <Sparkles size={14} className="text-primary animate-pulse" />
           <span>{dashboardToast}</span>
         </div>
       )}
-      {/* Sleek Professional Sticky Action Toolbar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between flex-wrap gap-2 py-2.5 px-3 bg-slate-950/85 backdrop-blur-xl border border-slate-800/80 rounded-2xl shadow-lg shadow-black/30">
-        {/* Left Side: Real-Time Server / Network Status Tag */}
+      {/* Action toolbar.
+          Previously six buttons in four different hues, each filled or tinted:
+          amber for Smart Connect, green for Gaming, amber again for Anti-DPI,
+          green for Speed Test, cyan for Tools, red for Panic Wipe. Nothing was
+          encoded by those colours — the same hue meant different things in
+          adjacent buttons. Now only the primary action is filled, utilities are
+          neutral, and the one genuinely destructive action is the only one
+          that carries a status colour. */}
+      <div className="surface-toolbar sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            {t('control_hub')}
-          </span>
+          <span
+            aria-hidden="true"
+            className={cn(
+              'h-2 w-2 shrink-0 rounded-full',
+              isConnected
+                ? 'bg-success'
+                : isConnecting
+                ? 'animate-pulse bg-warning'
+                : isError
+                ? 'bg-destructive'
+                : 'bg-muted-foreground/50'
+            )}
+          />
+          <span className="text-xs font-medium text-foreground">{t('control_hub')}</span>
         </div>
 
-        {/* Right Side: Clean Organized Button Bar */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-1.5">
           {profiles.length > 0 && !isConnected && (
-            <button
-              onClick={handleAutoConnectFastest}
-              className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-bold text-orange-400 border-orange-500/30 hover:bg-orange-500/10 shadow-sm"
-              title={t('auto_connect_fastest')}
-            >
-              <Zap size={13} className="fill-orange-400 text-orange-400" />
+            <Button size="sm" onClick={handleAutoConnectFastest} title={t('auto_connect_fastest')}>
+              <Zap className="h-3.5 w-3.5" />
               <span>{t('smart_connect')}</span>
-            </button>
+            </Button>
           )}
 
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setShowGamingModal(true)}
-            className={`btn btn-sm flex items-center gap-1.5 text-xs font-bold transition ${
-              gameMode
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                : 'btn-secondary text-slate-300 border-slate-700/60 hover:text-emerald-300'
-            }`}
             title="Gaming Accelerator & Anti-Sanction DNS"
+            className={gameMode ? 'border-primary bg-primary/10 text-primary' : undefined}
           >
-            <Gamepad2 size={13} className={gameMode ? 'text-emerald-400 animate-pulse' : 'text-emerald-400'} />
+            <Gamepad2 className="h-3.5 w-3.5" />
             <span>{t('gaming')}</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setShowFragmentStudio(true)}
-            className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-bold text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
             title="DPI Evasion & TLS Fragment Studio"
           >
-            <Sparkles size={13} className="text-amber-400" />
+            <Sparkles className="h-3.5 w-3.5" />
             <span>{t('anti_dpi')}</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setShowSpeedTestModal(true)}
-            className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
             title={t('speed_test_btn')}
           >
-            <Gauge size={13} />
+            <Gauge className="h-3.5 w-3.5" />
             <span>{t('speed_test')}</span>
-          </button>
+          </Button>
 
           {/* All Network Tools Dropdown Menu */}
           <div className="relative">
-            <button
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => setShowToolsDropdown(!showToolsDropdown)}
-              className={`btn btn-secondary btn-sm flex items-center gap-1.5 text-xs font-bold transition ${
-                showToolsDropdown ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50' : 'text-slate-300 border-slate-700/60 hover:text-cyan-300'
-              }`}
               title={t('more_tools')}
+              aria-expanded={showToolsDropdown}
+              aria-haspopup="menu"
+              className={showToolsDropdown ? 'border-primary bg-primary/10 text-primary' : undefined}
             >
-              <Wrench size={13} className="text-cyan-400" />
+              <Wrench className="h-3.5 w-3.5" />
               <span>{t('tools')}</span>
-              <span className="text-[9px] opacity-70">▼</span>
-            </button>
+              <ChevronDown
+                className={cn(
+                  'h-3 w-3 opacity-60 transition-transform',
+                  showToolsDropdown && 'rotate-180'
+                )}
+              />
+            </Button>
 
             {showToolsDropdown && (
               <>
-                <div className="fixed inset-0 z-30" onClick={() => setShowToolsDropdown(false)} />
-                <div className="absolute ltr:right-0 rtl:left-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-2 z-40 animate-fade-in grid grid-cols-2 gap-1.5 text-xs">
+                {/* A real <button> rather than a div with role="button": it is
+                    reachable by keyboard and Escape/Enter dismiss it. */}
+                <button
+                  type="button"
+                  aria-label={t('more_tools')}
+                  className="fixed inset-0 z-30 cursor-default"
+                  onClick={() => setShowToolsDropdown(false)}
+                />
+                <div
+                  role="menu"
+                  className="absolute z-40 mt-2 grid w-72 grid-cols-2 gap-0.5 rounded-xl border border-border bg-popover p-1.5 text-xs shadow-xl animate-fade-in ltr:end-0 rtl:start-0"
+                >
                   {onOpenDoctor && (
                     <button
+                      role="menuitem"
                       onClick={() => { setShowToolsDropdown(false); onOpenDoctor() }}
-                      className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                      className={toolItemClass}
                     >
-                      <ShieldCheck size={14} className="text-blue-400 shrink-0" />
-                      <span className="truncate">{t('doctor')}</span>
+                      <ShieldCheck className={toolIconClass} />
+                      <span className="truncate font-medium">{t('doctor')}</span>
                     </button>
                   )}
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowDNSLeakModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Shield size={14} className="text-cyan-400 shrink-0" />
-                    <span className="truncate">{t('dns_leak')}</span>
+                    <Shield className={toolIconClass} />
+                    <span className="truncate font-medium">{t('dns_leak')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowRadarModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Radio size={14} className="text-pink-400 shrink-0" />
-                    <span className="truncate">{t('radar')}</span>
+                    <Radio className={toolIconClass} />
+                    <span className="truncate font-medium">{t('radar')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowLANShareModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Wifi size={14} className="text-purple-400 shrink-0" />
-                    <span className="truncate">{t('wifi_share')}</span>
+                    <Wifi className={toolIconClass} />
+                    <span className="truncate font-medium">{t('wifi_share')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowRemoteModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Smartphone size={14} className="text-sky-400 shrink-0" />
-                    <span className="truncate">{t('remote_hub')}</span>
+                    <Smartphone className={toolIconClass} />
+                    <span className="truncate font-medium">{t('remote_hub')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowChainModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Link2 size={14} className="text-amber-400 shrink-0" />
-                    <span className="truncate">{t('multi_hop')}</span>
+                    <Link2 className={toolIconClass} />
+                    <span className="truncate font-medium">{t('multi_hop')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowQuotaModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <PieChart size={14} className="text-emerald-400 shrink-0" />
-                    <span className="truncate">{t('quota')}</span>
+                    <PieChart className={toolIconClass} />
+                    <span className="truncate font-medium">{t('quota')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowCloudModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Cloud size={14} className="text-sky-400 shrink-0" />
-                    <span className="truncate">{t('cloud_hub')}</span>
+                    <Cloud className={toolIconClass} />
+                    <span className="truncate font-medium">{t('cloud_hub')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowHistoryModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <History size={14} className="text-indigo-400 shrink-0" />
-                    <span className="truncate">{t('history')}</span>
+                    <History className={toolIconClass} />
+                    <span className="truncate font-medium">{t('history')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowBackupModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Archive size={14} className="text-blue-400 shrink-0" />
-                    <span className="truncate">{t('backup')}</span>
+                    <Archive className={toolIconClass} />
+                    <span className="truncate font-medium">{t('backup')}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowScreenQRModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <Scan size={14} className="text-cyan-400 shrink-0" />
-                    <span className="truncate">{t('screen_qr_title') || 'Scan QR'}</span>
+                    <Scan className={toolIconClass} />
+                    <span className="truncate font-medium">{t('screen_qr_title') || 'Scan QR'}</span>
                   </button>
 
                   <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowConverterModal(true) }}
-                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-slate-200 text-left rtl:text-right transition"
+                    className={toolItemClass}
                   >
-                    <ArrowRightLeft size={14} className="text-amber-400 shrink-0" />
-                    <span className="truncate">{t('config_converter_title') || 'Converter'}</span>
+                    <ArrowRightLeft className={toolIconClass} />
+                    <span className="truncate font-medium">{t('config_converter_title') || 'Converter'}</span>
                   </button>
 
                   <button
+                    role="menuitem"
+                    onClick={() => { setShowToolsDropdown(false); setShowServiceUnlockModal(true) }}
+                    className={cn(toolItemClass, 'col-span-2')}
+                  >
+                    <Activity className={toolIconClass} />
+                    <span className="truncate font-medium">{t('service_unblock_btn') || 'AI & Service Unlock Matrix'}</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
                     onClick={() => { setShowToolsDropdown(false); setShowNearbyModal(true) }}
-                    className="col-span-2 flex items-center gap-2 p-2 rounded-xl hover:bg-slate-800 text-purple-300 text-left rtl:text-right transition"
+                    className={cn(toolItemClass, 'col-span-2')}
                   >
-                    <Radio size={14} className="text-purple-400 shrink-0" />
-                    <span className="truncate">{t('nearby_share_title') || 'Nearby Wi-Fi Share (P2P)'}</span>
+                    <Radio className={toolIconClass} />
+                    <span className="truncate font-medium">{t('nearby_share_title') || 'Nearby Wi-Fi Share (P2P)'}</span>
                   </button>
 
                   <button
-                    onClick={() => { setShowToolsDropdown(false); setShowEmergencyModal(true) }}
-                    className="col-span-2 flex items-center gap-2 p-2 rounded-xl hover:bg-rose-950/40 text-rose-300 text-left rtl:text-right transition border-t border-slate-800 mt-1"
+                    role="menuitem"
+                    onClick={() => { setShowToolsDropdown(false); setShowFloatingWidget(prev => !prev) }}
+                    className={cn(toolItemClass, 'col-span-2')}
                   >
-                    <Wrench size={14} className="text-rose-400 shrink-0" />
-                    <span className="truncate">{t('emergency_repair')}</span>
+                    <Zap className={toolIconClass} />
+                    <span className="truncate font-medium">{t('floating_desktop_widget')}</span>
+                  </button>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => { setShowToolsDropdown(false); setShowEmergencyModal(true) }}
+                    className={cn(
+                      toolItemClass,
+                      'col-span-2 mt-0.5 border-t border-border text-destructive hover:bg-destructive/10 hover:text-destructive'
+                    )}
+                  >
+                    <Wrench className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate font-medium">{t('emergency_repair')}</span>
                   </button>
                 </div>
               </>
             )}
           </div>
 
-          {/* Panic Wipe Emergency Button */}
-          <button
+          {/* Panic Wipe — the only toolbar action that keeps a status colour,
+              because it is the only one that destroys data. */}
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handlePanicWipe}
-            className="btn btn-sm flex items-center gap-1 text-xs font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/25 transition"
             title="Instantly Disconnect, Wipe Sessions & Kill System Proxy"
+            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
-            <AlertTriangle size={13} className="text-rose-400" />
+            <AlertTriangle className="h-3.5 w-3.5" />
             <span>{t('panic_wipe')}</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Hero Layout: Connection Orb on Left, Live Chart & Selector on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Connection Core Card */}
-        <div className="lg:col-span-5 card flex flex-col items-center justify-between p-6 text-center relative">
+        <Card className="lg:col-span-5 flex flex-col items-center justify-between p-6 text-center relative">
           {/* Top Info Header */}
-          <div className="w-full flex items-center justify-between text-xs text-muted mb-2">
+          <div className="w-full flex items-center justify-between text-xs text-muted-foreground mb-2">
             <span className="font-semibold uppercase tracking-wider">{t('protocol')}</span>
             <span className="badge badge-muted text-[11px] font-mono">
               {activeProfile ? `${getProtocolEmoji(activeProfile.protocol)} ${getProtocolName(activeProfile.protocol)}` : 'Smart Dual Core'}
@@ -780,26 +937,26 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                 title={isConnected ? t('click_to_disconnect') : t('click_to_connect')}
               >
                 <Power
-                  size={46}
-                  className={`transition-all duration-300 ${
+                  size={44}
+                  className={`transition-colors duration-300 ${
                     isConnected
-                      ? 'text-emerald-400 drop-shadow-[0_0_15px_rgba(16,185,129,0.9)] scale-110'
+                      ? 'text-success'
                       : isConnecting
-                      ? 'text-amber-400 animate-spin'
+                      ? 'animate-spin text-warning'
                       : isError
-                      ? 'text-rose-400'
-                      : 'text-slate-300 hover:text-cyan-300'
+                      ? 'text-destructive'
+                      : 'text-muted-foreground'
                   }`}
                 />
                 <span
-                  className={`connect-btn-label font-bold text-xs tracking-wide transition-colors ${
+                  className={`connect-btn-label text-xs font-medium tracking-wide transition-colors ${
                     isConnected
-                      ? 'text-emerald-400'
+                      ? 'text-success'
                       : isConnecting
-                      ? 'text-amber-400'
+                      ? 'text-warning'
                       : isError
-                      ? 'text-rose-400'
-                      : 'text-slate-300'
+                      ? 'text-destructive'
+                      : 'text-muted-foreground'
                   }`}
                 >
                   {isConnected
@@ -810,9 +967,15 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                     ? t('error')
                     : t('connect')}
                 </span>
+                {isConnecting && (
+                  <span className="text-[10px] font-mono font-medium text-warning -mt-0.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-warning animate-ping inline-block" />
+                    <span>{connectingElapsed}s</span>
+                  </span>
+                )}
                 {isConnected && (
-                  <span className="text-[10px] font-mono text-emerald-400/90 -mt-1 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                  <span className="text-[10px] font-mono text-success/90 -mt-1 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success animate-ping inline-block" />
                     {t('active_status')}
                   </span>
                 )}
@@ -822,21 +985,20 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
 
           {/* Connection Duration & Real Delay Status */}
           {isConnected ? (
-            <div className="w-full flex flex-col items-center gap-2 pt-2 border-t border-white/5">
-              <div className="flex items-center gap-2 font-mono text-xl font-extrabold text-slate-100">
-                <Clock size={16} className="text-accent" />
+            <div className="w-full flex flex-col items-center gap-2 pt-2 border-t border-border">
+              <div className="flex items-center gap-2 font-mono text-xl font-extrabold text-foreground">
+                <Clock size={16} className="text-primary" />
                 <span>{formatDuration(status.duration || 0)}</span>
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  className="btn btn-secondary btn-sm text-[11px] py-1 px-2.5"
+                <Button variant="secondary" size="sm" className="text-[11px] py-1 px-2.5"
                   onClick={handleTestRealDelay}
                   disabled={isTestingDelay}
                 >
-                  <Radio size={12} className="text-emerald-400" />
+                  <Radio size={12} className="text-success" />
                   {isTestingDelay ? t('testing_delay') : t('real_delay_test')}
-                </button>
+                </Button>
                 {realDelay !== null && (
                   <span
                     className={`badge font-mono text-xs ${
@@ -853,41 +1015,41 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
               </div>
 
               {/* Active Connected Server Info Pill */}
-              <div className="w-full p-2.5 rounded-2xl bg-slate-900/80 border border-cyan-500/20 flex items-center justify-between gap-2 mt-1">
-                <div className="flex items-center gap-2.5 min-w-0 text-left rtl:text-right">
-                  <CountryFlag codeOrName={activeProfile?.country_code || activeProfile?.name} size="lg" />
+              <div className="w-full p-3 rounded-xl bg-muted/50 border border-border flex items-center justify-between gap-2 mt-1">
+                <div className="flex items-center gap-3 min-w-0 text-start rtl:text-end">
+                  <CountryFlag codeOrName={activeProfile?.country_code || activeProfile?.name} size="md" />
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-100 truncate" title={activeProfile?.name || status.profile_name}>
-                      {activeProfile?.name || status.profile_name || 'Active Node'}
+                    <div className="text-xs font-medium text-foreground truncate" title={activeProfile?.name || status.profile_name}>
+                      {cleanServerName(activeProfile?.name || status.profile_name) || 'Active Node'}
                     </div>
-                    <div className="text-[10px] font-mono text-cyan-400/90 truncate">
+                    <div className="text-[10px] font-mono text-muted-foreground truncate">
                       {activeProfile?.server || status.server || 'Protected Gateway'}
                     </div>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 shrink-0">
+                <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border shrink-0">
                   {activeProfile?.protocol ? getProtocolName(activeProfile.protocol) : status.protocol ? getProtocolName(status.protocol) : 'VPN Node'}
                 </span>
               </div>
 
               {healthStatus && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-black/40 border border-white/10 text-xs font-mono mt-0.5">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl segmented-pill text-xs font-mono mt-0.5 shadow-sm">
                   <span
                     className={`w-2 h-2 rounded-full ${
                       healthStatus.quality_score >= 80
-                        ? 'bg-emerald-400 animate-pulse'
+                        ? 'bg-success animate-pulse'
                         : healthStatus.quality_score >= 50
-                        ? 'bg-amber-400'
-                        : 'bg-red-400'
+                        ? 'bg-warning'
+                        : 'bg-destructive'
                     }`}
                   />
-                  <span className="text-slate-300 font-bold">Quality: {healthStatus.quality_score}%</span>
-                  <span className="text-slate-500">•</span>
-                  <span className="text-slate-400 capitalize">{healthStatus.quality_level}</span>
+                  <span className="text-foreground dark:text-muted-foreground font-bold">Quality: {healthStatus.quality_score}%</span>
+                  <span className="text-muted-foreground">•</span>
+                  <span className="text-muted-foreground capitalize">{healthStatus.quality_level}</span>
                   {healthStatus.jitter_ms > 0 && (
                     <>
-                      <span className="text-slate-500">•</span>
-                      <span className="text-slate-400">Jitter {healthStatus.jitter_ms}ms</span>
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-muted-foreground">Jitter {healthStatus.jitter_ms}ms</span>
                     </>
                   )}
                 </div>
@@ -895,24 +1057,27 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
             </div>
           ) : (
             /* Server Selector with Search, 1-Click Ping All and Mobile QR Exporter */
-            <div className="w-full space-y-2.5 pt-2 border-t border-white/5">
+            <div className="w-full space-y-2.5 pt-2 border-t border-border">
               {/* Connection Failure Error Diagnostic Banner */}
               {isError && status.error_msg && (
-                <div className="w-full p-3 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-left rtl:text-right space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
+                <div className="w-full p-3.5 rounded-2xl error-banner-modern text-start rtl:text-end space-y-1.5 animate-in fade-in zoom-in-95 duration-200 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
-                      <AlertTriangle size={14} className="text-rose-400 shrink-0 animate-pulse" />
+                    <div className="flex items-center gap-2 text-destructive font-bold text-xs">
+                      <AlertTriangle size={15} className="text-destructive shrink-0 animate-pulse" />
                       <span>{t('connection_failed')}</span>
                     </div>
                     <button
                       onClick={() => setShowEmergencyModal(true)}
-                      className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
+                      className="text-[10px] text-primary hover:underline flex items-center gap-1 font-semibold"
                     >
                       🩺 {t('open_doctor')}
                     </button>
                   </div>
-                  <p className="text-[11px] text-rose-200/90 leading-relaxed font-sans font-medium">
-                    {status.error_msg}
+                  <p
+                    className="text-xs text-destructive leading-relaxed font-sans font-medium"
+                    title={status.error_msg}
+                  >
+                    {translateBackendError(status.error_msg)}
                   </p>
                 </div>
               )}
@@ -924,48 +1089,63 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                 onSelect={handleSelectProfile}
               />
               <div className="flex items-center gap-1.5">
-                <button
+                <Button variant="secondary" size="sm" className="px-2 text-xs font-bold text-warning border-warning/30 hover:bg-warning/10 flex items-center gap-1 whitespace-nowrap"
                   type="button"
                   onClick={handlePingAllAndPickBest}
                   disabled={isPingingAll || profiles.length === 0}
-                  className="btn btn-secondary btn-sm px-2 text-xs font-bold text-amber-400 border-amber-500/30 hover:bg-amber-500/10 flex items-center gap-1 whitespace-nowrap"
                   title={t('ping_all_btn')}
                 >
-                  <Zap size={13} className={isPingingAll ? 'animate-spin text-amber-400' : 'fill-amber-400'} />
-                  <span>{isPingingAll ? '...' : t('ping_all_btn')}</span>
-                </button>
+                  <Zap size={13} className={isPingingAll ? 'animate-spin text-warning' : 'fill-warning'} />
+                  <span>
+                    {isPingingAll
+                      ? pingProgress
+                        ? `${pingProgress.done}/${pingProgress.total}`
+                        : '...'
+                      : t('ping_all_btn')}
+                  </span>
+                </Button>
 
-                <button
+                {isPingingAll && (
+                  <Button variant="secondary" size="sm" className="p-1.5 text-muted-foreground hover:text-destructive"
+                    type="button"
+                    onClick={handleCancelPingAll}
+                    title={t('adv_ping_cancel')}
+                  >
+                    <X size={14} />
+                  </Button>
+                )}
+
+                <Button variant="secondary" size="sm" className="p-1.5 text-secondary hover:text-primary hover:border-primary/40"
                   type="button"
                   onClick={() => setShowQRModal(true)}
                   disabled={!selectedProfileId}
-                  className="btn btn-secondary btn-sm p-1.5 text-slate-300 hover:text-cyan-400 border-slate-700 hover:border-cyan-500/40"
                   title={t('qr_code_modal_title')}
                 >
                   <QrCode size={14} />
-                </button>
+                </Button>
               </div>
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Right Side: Speed Graph & Mode Switches */}
         <div className="lg:col-span-7 flex flex-col gap-4">
           {/* Proxy Mode Segmented Bar */}
-          <div className="card p-3 flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-300 px-2">
-              <Layers size={15} className="text-accent" />
+          <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
+            <div className="flex items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
+              <Layers size={15} className="text-muted-foreground" />
               <span>{t('proxy_mode_label')}</span>
             </div>
 
-            <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 gap-1">
+            <div className="segmented-pill flex gap-1">
               <button
                 type="button"
                 onClick={() => handleModeChange('tun')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                aria-pressed={proxyMode === 'tun'}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   proxyMode === 'tun'
-                    ? 'bg-accent text-white shadow-md shadow-accent/25'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {t('mode_switch_tun')}
@@ -974,100 +1154,84 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
               <button
                 type="button"
                 onClick={() => handleModeChange('system_proxy')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                aria-pressed={proxyMode === 'system_proxy'}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   proxyMode === 'system_proxy'
-                    ? 'bg-accent text-white shadow-md shadow-accent/25'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {t('mode_switch_proxy')}
               </button>
             </div>
-          </div>
+          </Card>
 
-          {/* Real-time Traffic Graph Card */}
-          <div className="card p-4 flex-1 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
-                <Activity size={15} className="text-emerald-400" />
+          {/* Interactive Globe / Network Map Card */}
+          <Card className="flex-1 min-h-[220px] relative overflow-hidden flex items-center justify-center">
+            <Suspense fallback={
+              <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground text-xs">
+                <Globe className="w-8 h-8 animate-spin text-primary/50" />
+                <span>{t('loading_map')}</span>
+              </div>
+            }>
+              <GlobeWidget 
+                connected={isConnected} 
+                serverCountry={activeProfile?.country_code || ipInfo?.country_code} 
+                serverName={activeProfile?.name || status.profile_name}
+                serverIp={activeProfile?.server || status.server || ipInfo?.ip}
+                clientCountry={ipInfo?.country_code}
+                clientIp={ipInfo?.ip}
+              />
+            </Suspense>
+          </Card>
+
+          {/* Real-time Cyber Traffic & Bandwidth Monitor */}
+          <Card className="p-4 flex flex-col gap-3 shrink-0 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                <Activity size={15} className="text-primary animate-pulse" />
                 <span>{t('real_time_traffic')}</span>
               </div>
               <div className="flex items-center gap-4 text-xs font-mono">
-                <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                  <ArrowDown size={13} /> {formatSpeed(stats.speed_download)}
-                </span>
-                <span className="flex items-center gap-1.5 text-blue-400 font-bold">
-                  <ArrowUp size={13} /> {formatSpeed(stats.speed_upload)}
-                </span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border bg-muted text-muted-foreground font-bold">
+                  <ArrowDown size={13} className="text-primary" /> 
+                  <span>{formatSpeed(stats.speed_download || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-success/10 border border-success/20 text-success font-bold">
+                  <ArrowUp size={13} className="text-success" /> 
+                  <span>{formatSpeed(stats.speed_upload || 0)}</span>
+                </div>
               </div>
             </div>
 
-            <div style={{ width: '100%', height: '140px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={speedHistory} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="downGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
-                    </linearGradient>
-                    <linearGradient id="upGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="t" hide />
-                  <YAxis hide domain={[0, 'auto']} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'rgba(10, 14, 23, 0.95)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                    formatter={(value: any) => [formatSpeed(Number(value)), '']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="down"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#downGrad)"
-                    isAnimationActive={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="up"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#upGrad)"
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            {/* Live Reactive Cyber Wave Oscilloscope */}
+            <div className="h-20 w-full rounded-xl overflow-hidden shadow-inner">
+              <CyberWaveVisualizer
+                connected={isConnected}
+                downloadSpeed={stats.speed_download || 0}
+                uploadSpeed={stats.speed_upload || 0}
+              />
             </div>
-          </div>
+          </Card>
         </div>
       </div>
 
       {/* Live Real-Time Public IP & Network Security Card */}
-      <div className="card p-4 bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-slate-950/80 border-slate-700/40 relative overflow-hidden">
+      <Card className="p-4 relative overflow-hidden shadow-sm">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="shrink-0 flex items-center justify-center">
-              <CountryFlag codeOrName={ipInfo?.country_code || (isConnected ? activeProfile?.country_code || 'US' : 'IR')} size="lg" />
+              <CountryFlag codeOrName={ipInfo?.country_code || (isConnected ? activeProfile?.country_code || 'US' : 'IR')} size="md" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-slate-400 font-semibold">
+                <span className="text-xs text-secondary font-semibold">
                   {isConnected ? t('safe_ip_label') : t('public_ip_label')}
                 </span>
-                <span className="font-mono font-extrabold text-sm text-slate-100 bg-black/40 px-2 py-0.5 rounded-md border border-white/10 flex items-center gap-1.5">
+                <span className="font-mono font-extrabold text-sm text-foreground segmented-pill px-2.5 py-0.5 rounded-md flex items-center gap-1.5">
                   {isLoadingIP ? (
-                    <span className="text-slate-400 text-xs flex items-center gap-1">
-                      <RefreshCw size={11} className="animate-spin text-cyan-400" /> {t('querying')}
+                    <span className="text-muted-foreground text-xs flex items-center gap-1">
+                      <RefreshCw size={11} className="animate-spin text-primary" /> {t('querying')}
                     </span>
                   ) : ipInfo?.ip ? (
                     <>
@@ -1077,18 +1241,18 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                         onClick={() => {
                           navigator.clipboard.writeText(ipInfo.ip)
                           setCopiedIP(true)
-                          setTimeout(() => setCopiedIP(false), 2000)
+                          safeTimeout(() => setCopiedIP(false), 2000)
                         }}
-                        className="text-slate-400 hover:text-cyan-300 ml-1 transition"
+                        className="text-muted-foreground hover:text-primary ms-1 transition"
                         title="Copy IP"
                       >
-                        {copiedIP ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        {copiedIP ? <Check size={12} className="text-success" /> : <Copy size={12} />}
                       </button>
                     </>
                   ) : isConnected ? (
-                    <span className="text-emerald-400 text-xs font-mono">{activeProfile?.server || 'Encrypted Gateway'}</span>
+                    <span className="text-success text-xs font-mono">{activeProfile?.server || 'Encrypted Gateway'}</span>
                   ) : (
-                    <span className="text-slate-500 text-xs">-</span>
+                    <span className="text-muted-foreground text-xs">-</span>
                   )}
                 </span>
 
@@ -1111,89 +1275,86 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                 </span>
               </div>
 
-              <div className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                 {ipInfo?.city && <span>📍 {ipInfo.city}, {ipInfo.country}</span>}
                 {ipInfo?.isp && <span>🏢 {ipInfo.isp}</span>}
                 {!ipInfo && !isLoadingIP && !isConnected && <span>{t('select_server_prompt')}</span>}
                 {isConnected && !ipInfo && !isLoadingIP && (
-                  <span className="text-cyan-400 text-xs font-medium">🔒 {activeProfile?.name || status.profile_name || 'Protected Node Active'}</span>
+                  <span className="text-primary text-xs font-medium">🔒 {activeProfile?.name || status.profile_name || 'Protected Node Active'}</span>
                 )}
                 {isConnected && status.server && ipInfo && (
-                  <span className="text-slate-500 text-[11px] font-mono">({status.server})</span>
+                  <span className="text-muted-foreground text-[11px] font-mono">({status.server})</span>
                 )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button variant="secondary" size="sm" className="text-xs flex items-center gap-1.5 border-border hover:border-primary/40 text-muted-foreground hover:text-primary"
               type="button"
               onClick={() => fetchLiveIP()}
               disabled={isLoadingIP}
-              className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 border-slate-700 hover:border-cyan-500/40 text-slate-300 hover:text-cyan-300"
               title="Refresh IP"
             >
-              <RefreshCw size={12} className={isLoadingIP ? 'animate-spin text-cyan-400' : ''} />
+              <RefreshCw size={12} className={isLoadingIP ? 'animate-spin text-primary' : ''} />
               <span>{t('live_ip_query')}</span>
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* 4-Metrics Stats Row + Peak Speed & Quota Progress */}
       <div className="stats-grid">
-        <div className="stat-card">
+        <Card className="flex flex-col gap-1 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <ArrowDown size={14} className="text-emerald-400" />
+            <ArrowDown size={14} className="text-success" />
             <span className="stat-label">{t('downloaded')}</span>
           </div>
           <div className="stat-value">{formatBytes(stats.bytes_received)}</div>
-        </div>
+        </Card>
 
-        <div className="stat-card">
+        <Card className="flex flex-col gap-1 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <ArrowUp size={14} className="text-blue-400" />
+            <ArrowUp size={14} className="text-primary" />
             <span className="stat-label">{t('uploaded')}</span>
           </div>
           <div className="stat-value">{formatBytes(stats.bytes_sent)}</div>
-        </div>
+        </Card>
 
-        <div className="stat-card">
+        <Card className="flex flex-col gap-1 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <TrendingUp size={14} className="text-amber-400" />
+            <TrendingUp size={14} className="text-warning" />
             <span className="stat-label">{t('peak_download_speed')}</span>
           </div>
-          <div className="stat-value text-amber-300">{formatSpeed(peakDown)}</div>
-        </div>
+          <div className="stat-value text-warning">{formatSpeed(peakDown)}</div>
+        </Card>
 
-        <div className="stat-card">
+        <Card className="flex flex-col gap-1 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <Clock size={14} className="text-accent" />
+            <Clock size={14} className="text-primary" />
             <span className="stat-label">{t('duration')}</span>
           </div>
           <div className="stat-value">{formatDuration(status.duration || 0)}</div>
-        </div>
+        </Card>
       </div>
 
       {/* Quota Progress Banner (If configured) */}
       {monthlyQuotaGB > 0 && (
-        <div className="card p-3 bg-slate-900/80 border-slate-700/50 flex flex-col gap-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+        <Card className="flex flex-col gap-2 p-3">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
             <span className="flex items-center gap-1.5">
-              <PieChart size={14} className="text-emerald-400" />
+              <PieChart size={14} className="text-muted-foreground" />
               <span>{t('month_quota_usage')} {usedGB} GB / {monthlyQuotaGB} GB</span>
             </span>
-            <span className="font-mono text-emerald-400 font-bold">{quotaPercent}%</span>
+            <span className="font-mono font-medium text-foreground">{quotaPercent}%</span>
           </div>
-          <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 rounded-full ${
-                quotaPercent > 90 ? 'bg-rose-500' : quotaPercent > 75 ? 'bg-amber-500' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${quotaPercent}%` }}
-            />
-          </div>
-        </div>
+          <Progress
+            value={quotaPercent}
+            indicatorClassName={
+              quotaPercent > 90 ? 'bg-destructive' : quotaPercent > 75 ? 'bg-warning' : 'bg-primary'
+            }
+          />
+        </Card>
       )}
 
       {/* Smart ISP & Operator AI Recommendation Card (Moved to bottom) */}
@@ -1201,20 +1362,29 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
 
       {/* Mobile QR Code Exporter Modal */}
       {showQRModal && activeProfile && (
-        <div className="modal-backdrop animate-fade-in" onClick={() => setShowQRModal(false)}>
-          <div className="modal modal-sm text-center" onClick={e => e.stopPropagation()}>
-            <div className="modal-header flex items-center justify-between pb-3 border-b border-white/5">
-              <div className="flex items-center gap-2 font-bold text-slate-100 text-sm">
-                <Smartphone size={16} className="text-cyan-400" />
+        <ModalShell
+          isOpen={showQRModal}
+          onClose={() => setShowQRModal(false)}
+          maxWidth="max-w-sm"
+          bodyClassName="p-4 text-center"
+        >
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2 font-bold text-foreground text-sm">
+                <Smartphone size={16} className="text-primary" />
                 <span>{t('qr_code_modal_title')}</span>
               </div>
-              <button onClick={() => setShowQRModal(false)} className="btn-icon">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-md text-muted-foreground"
+                onClick={() => setShowQRModal(false)}
+              >
                 <X size={15} />
-              </button>
+              </Button>
             </div>
 
             <div className="p-4 flex flex-col items-center gap-3">
-              <div className="p-3 bg-white rounded-2xl shadow-xl shadow-cyan-500/10">
+              <div className="p-3 bg-card rounded-2xl shadow-xl">
                 <img
                   src={generateQRCodeSVG(activeProfile.raw_uri || activeProfile.config_content || activeProfile.name, 190)}
                   alt="QR Code"
@@ -1222,150 +1392,190 @@ export default function Dashboard({ status, stats, onOpenDoctor, onOpenAppSelect
                 />
               </div>
 
-              <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                <span>{getCountryFlag(activeProfile.country_code)}</span>
+              <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <CountryFlag codeOrName={activeProfile.country_code || activeProfile.name} size="xs" />
                 <span>{activeProfile.name}</span>
               </div>
 
-              <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+              <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
                 {t('qr_code_modal_desc')}
               </p>
 
-              <button
+              <Button variant="secondary" size="sm" className="w-full flex items-center justify-center gap-2 text-xs text-primary border-primary/30 hover:bg-primary/10"
                 type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(activeProfile.raw_uri || activeProfile.config_content)
                   setCopiedQRLink(true)
-                  setTimeout(() => setCopiedQRLink(false), 2000)
+                  safeTimeout(() => setCopiedQRLink(false), 2000)
                 }}
-                className="btn btn-secondary btn-sm w-full flex items-center justify-center gap-2 text-xs text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/10"
               >
-                {copiedQRLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                {copiedQRLink ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                 <span>{copiedQRLink ? t('link_copied') : t('copy_config_link')}</span>
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
-      {/* Modals */}
-      <SpeedTestModal
-        isOpen={showSpeedTestModal}
-        onClose={() => setShowSpeedTestModal(false)}
-      />
+      {/* Modals - lazy-loaded once, wrapped in Suspense (duplicate renders removed) */}
+      <Suspense fallback={null}>
+        {showSpeedTestModal && (
+          <SpeedTestModal
+            isOpen={showSpeedTestModal}
+            onClose={() => setShowSpeedTestModal(false)}
+          />
+        )}
+        {showLANShareModal && (
+          <LANShareModal
+            isOpen={showLANShareModal}
+            onClose={() => setShowLANShareModal(false)}
+          />
+        )}
+        {showRadarModal && (
+          <RadarModal
+            isOpen={showRadarModal}
+            onClose={() => setShowRadarModal(false)}
+          />
+        )}
+        {showEmergencyModal && (
+          <EmergencyRepairModal
+            isOpen={showEmergencyModal}
+            onClose={() => setShowEmergencyModal(false)}
+          />
+        )}
+        {showQuotaModal && (
+          <QuotaManagerModal
+            isOpen={showQuotaModal}
+            onClose={() => setShowQuotaModal(false)}
+            stats={stats}
+          />
+        )}
+        {showCloudModal && (
+          <CloudSyncModal
+            isOpen={showCloudModal}
+            onClose={() => setShowCloudModal(false)}
+          />
+        )}
+        {showDNSLeakModal && (
+          <DNSLeakModal
+            isOpen={showDNSLeakModal}
+            onClose={() => setShowDNSLeakModal(false)}
+          />
+        )}
+        {showHistoryModal && (
+          <ConnectionHistoryModal
+            isOpen={showHistoryModal}
+            onClose={() => setShowHistoryModal(false)}
+          />
+        )}
+        {showBackupModal && (
+          <FullBackupModal
+            isOpen={showBackupModal}
+            onClose={() => setShowBackupModal(false)}
+            onSuccess={() => {
+              loadDashboardData()
+              showToast(t('backup_restored_success'))
+            }}
+          />
+        )}
+        {showOnboarding && (
+          <OnboardingWizardModal
+            isOpen={showOnboarding}
+            onClose={() => setShowOnboarding(false)}
+            onCompleted={() => {
+              loadDashboardData()
+              showToast(t('setup_completed_welcome'))
+            }}
+          />
+        )}
+        {showChainModal && (
+          <ProxyChainModal
+            isOpen={showChainModal}
+            onClose={() => setShowChainModal(false)}
+            profiles={profiles}
+            onSuccess={() => {
+              loadDashboardData()
+              showToast(t('chain_created_success'))
+            }}
+          />
+        )}
+        {showRemoteModal && (
+          <MobileRemoteModal
+            isOpen={showRemoteModal}
+            onClose={() => setShowRemoteModal(false)}
+          />
+        )}
+        {showFragmentStudio && (
+          <FragmentStudioModal
+            isOpen={showFragmentStudio}
+            onClose={() => setShowFragmentStudio(false)}
+            settings={currentSettings}
+            onSettingsUpdated={updated => {
+              setCurrentSettings(updated)
+              showToast(t('anti_dpi_saved'))
+            }}
+          />
+        )}
+        {showGamingModal && (
+          <GamingModeModal
+            isOpen={showGamingModal}
+            onClose={() => setShowGamingModal(false)}
+            settings={currentSettings}
+            onSettingsUpdated={updated => {
+              setCurrentSettings(updated)
+              setGameMode(updated.game_mode_enabled || false)
+              showToast(t('gaming_updated'))
+            }}
+          />
+        )}
+        {showScreenQRModal && (
+          <ScreenQRScannerModal
+            isOpen={showScreenQRModal}
+            onClose={() => setShowScreenQRModal(false)}
+            onProfileImported={loadDashboardData}
+          />
+        )}
+        {showConverterModal && (
+          <ConfigConverterModal
+            isOpen={showConverterModal}
+            onClose={() => setShowConverterModal(false)}
+          />
+        )}
+        {showNearbyModal && (
+          <NearbySyncModal
+            isOpen={showNearbyModal}
+            onClose={() => setShowNearbyModal(false)}
+            onProfilesImported={loadDashboardData}
+          />
+        )}
+        {showQRModal && (
+          <ProfileQRModal
+            profile={profiles.find(p => p.id === selectedProfileId) || (status.profile_id ? profiles.find(p => p.id === status.profile_id) || null : null)}
+            isOpen={showQRModal}
+            onClose={() => setShowQRModal(false)}
+          />
+        )}
+        {showServiceUnlockModal && (
+          <ServiceUnlockModal
+            isOpen={showServiceUnlockModal}
+            onClose={() => setShowServiceUnlockModal(false)}
+          />
+        )}
+      </Suspense>
 
-      <LANShareModal
-        isOpen={showLANShareModal}
-        onClose={() => setShowLANShareModal(false)}
-      />
-
-      <RadarModal
-        isOpen={showRadarModal}
-        onClose={() => setShowRadarModal(false)}
-      />
-
-      <EmergencyRepairModal
-        isOpen={showEmergencyModal}
-        onClose={() => setShowEmergencyModal(false)}
-      />
-
-      <QuotaManagerModal
-        isOpen={showQuotaModal}
-        onClose={() => setShowQuotaModal(false)}
-        stats={stats}
-      />
-
-      <CloudSyncModal
-        isOpen={showCloudModal}
-        onClose={() => setShowCloudModal(false)}
-      />
-
-      <DNSLeakModal
-        isOpen={showDNSLeakModal}
-        onClose={() => setShowDNSLeakModal(false)}
-      />
-
-      <ConnectionHistoryModal
-        isOpen={showHistoryModal}
-        onClose={() => setShowHistoryModal(false)}
-      />
-
-      <FullBackupModal
-        isOpen={showBackupModal}
-        onClose={() => setShowBackupModal(false)}
-        onSuccess={() => {
-          loadDashboardData()
-          showToast('Backup restored successfully!')
-        }}
-      />
-
-      <OnboardingWizardModal
-        isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-        onCompleted={() => {
-          loadDashboardData()
-          showToast(t('setup_completed_welcome'))
-        }}
-      />
-
-      <ProxyChainModal
-        isOpen={showChainModal}
-        onClose={() => setShowChainModal(false)}
-        profiles={profiles}
-        onSuccess={() => {
-          loadDashboardData()
-          showToast(t('chain_created_success'))
-        }}
-      />
-
-      <MobileRemoteModal
-        isOpen={showRemoteModal}
-        onClose={() => setShowRemoteModal(false)}
-      />
-
-      <FragmentStudioModal
-        isOpen={showFragmentStudio}
-        onClose={() => setShowFragmentStudio(false)}
-        settings={currentSettings}
-        onSettingsUpdated={updated => {
-          setCurrentSettings(updated)
-          showToast(t('anti_dpi_saved'))
-        }}
-      />
-
-      <GamingModeModal
-        isOpen={showGamingModal}
-        onClose={() => setShowGamingModal(false)}
-        settings={currentSettings}
-        onSettingsUpdated={updated => {
-          setCurrentSettings(updated)
-          setGameMode(updated.game_mode_enabled || false)
-          showToast(t('gaming_updated'))
-        }}
-      />
-
-      <ScreenQRScannerModal
-        isOpen={showScreenQRModal}
-        onClose={() => setShowScreenQRModal(false)}
-        onProfileImported={loadDashboardData}
-      />
-
-      <ConfigConverterModal
-        isOpen={showConverterModal}
-        onClose={() => setShowConverterModal(false)}
-      />
-
-      <NearbySyncModal
-        isOpen={showNearbyModal}
-        onClose={() => setShowNearbyModal(false)}
-        onProfilesImported={loadDashboardData}
-      />
-
-      <ProfileQRModal
-        profile={profiles.find(p => p.id === selectedProfileId) || (status.profile_id ? profiles.find(p => p.id === status.profile_id) || null : null)}
-        isOpen={showQRModal}
-        onClose={() => setShowQRModal(false)}
-      />
+      {showFloatingWidget && (
+        <FloatingMiniWidget
+          status={status}
+          stats={stats}
+          profiles={profiles}
+          onSelectProfile={handleSelectProfile}
+          onToggleConnect={handleConnectToggle}
+          onConnect={handleConnectToggle}
+          onDisconnect={handleConnectToggle}
+          onCloseWidget={() => setShowFloatingWidget(false)}
+          onHideToTray={() => api.hideWindow()}
+          onOpenMainWindow={() => api.showWindow()}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -45,12 +46,61 @@ func TestRemoteServerAuthAndHeaderOnlyAuthorization(t *testing.T) {
 func TestRemoteServerAuthAttemptLimit(t *testing.T) {
 	rs := &RemoteServer{authPin: "123456", authToken: "token", authResetAt: time.Now().Add(time.Minute)}
 	for i := 0; i < 5; i++ {
-		if !rs.allowAuthAttempt() {
+		if !rs.authAllowed() {
 			t.Fatalf("attempt %d unexpectedly rejected", i+1)
 		}
+		rs.recordAuthFailure()
 	}
-	if rs.allowAuthAttempt() {
+	if rs.authAllowed() {
 		t.Fatal("sixth authentication attempt must be rejected")
+	}
+}
+
+// A correct PIN must not consume the attempt budget.
+//
+// Attempts used to be counted before the comparison, so five successful sign-ins
+// inside the window locked the user out of their own controller and reported
+// "Invalid PIN code" for a PIN that was right.
+func TestRemoteServerSuccessfulAuthDoesNotConsumeAttempts(t *testing.T) {
+	rs := &RemoteServer{authPin: "123456", authToken: "token", authResetAt: time.Now().Add(time.Minute)}
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/api/auth", strings.NewReader(`{"pin":"123456"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		rs.handleAuth(w, req)
+		if w.Code != 200 {
+			t.Fatalf("successful sign-in %d status = %d, want 200", i+1, w.Code)
+		}
+	}
+
+	// The budget is untouched, so a wrong PIN is still answered as "invalid"
+	// rather than as "too many attempts".
+	bad := httptest.NewRequest("POST", "/api/auth", strings.NewReader(`{"pin":"000000"}`))
+	bad.Header.Set("Content-Type", "application/json")
+	badW := httptest.NewRecorder()
+	rs.handleAuth(badW, bad)
+	if badW.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong PIN after successful sign-ins status = %d, want 401", badW.Code)
+	}
+}
+
+// An exhausted window must be answered with 429, and must not keep comparing
+// PINs — otherwise the rate limit only changes the error message.
+func TestRemoteServerAuthLimitReturnsTooManyRequests(t *testing.T) {
+	rs := &RemoteServer{
+		authPin:      "123456",
+		authToken:    "token",
+		authResetAt:  time.Now().Add(time.Minute),
+		authAttempts: maxAuthAttempts,
+	}
+
+	req := httptest.NewRequest("POST", "/api/auth", strings.NewReader(`{"pin":"123456"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	rs.handleAuth(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("exhausted window status = %d, want 429", w.Code)
 	}
 }
 
@@ -60,8 +110,9 @@ func TestRemoteServerURLLifecycle(t *testing.T) {
 		t.Fatalf("stopped server URL = %q, want empty", got)
 	}
 	rs.running = true
-	if got := rs.GetURL(); got != "http://127.0.0.1:12345" {
-		t.Fatalf("running server URL = %q", got)
+	got := rs.GetURL()
+	if !strings.HasPrefix(got, "http://") || !strings.HasSuffix(got, ":12345") {
+		t.Fatalf("running server URL = %q, want http://<ip>:12345", got)
 	}
 	if strings.Contains(rs.GetURLWithToken(), "token=") {
 		t.Fatal("GetURLWithToken must not expose bearer token in URL")

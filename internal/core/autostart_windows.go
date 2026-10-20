@@ -7,8 +7,9 @@ import (
 	"os"
 	"os/exec"
 
-	"golang.org/x/sys/windows/registry"
 	"nexvpn/internal/sysproc"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 const runRegistryKey = `Software\Microsoft\Windows\CurrentVersion\Run`
@@ -24,7 +25,7 @@ func SetAutoStart(enable bool) error {
 
 	if enable {
 		// 1. Try creating an elevated Task in Task Scheduler (starts with highest privileges, no UAC on login)
-		cmdTask := exec.Command("schtasks", "/Create", "/F", "/TN", taskName, "/TR", fmt.Sprintf(`"%s" --minimized`, execPath), "/SC", "ONLOGON", "/RL", "HIGHEST")
+		cmdTask := exec.Command("schtasks", "/Create", "/F", "/TN", taskName, "/TR", fmt.Sprintf(`\"%s\" --minimized`, execPath), "/SC", "ONLOGON", "/RL", "HIGHEST")
 		cmdTask.SysProcAttr = sysproc.HideWindowAttr()
 		if err := cmdTask.Run(); err == nil {
 			cleanRegistryRun()

@@ -16,6 +16,7 @@ import (
 
 	"nexvpn/internal/config"
 	"nexvpn/internal/parser"
+	"nexvpn/internal/sysproc"
 )
 
 type AetherConfig struct {
@@ -235,6 +236,7 @@ func (a *AetherAdapter) Start(ctx context.Context, configContent string) error {
 
 		if sbCmd != nil && sbCmd.Process != nil {
 			_ = sbCmd.Process.Kill()
+			sysproc.KillProcessTree(sbCmd.Process.Pid)
 		}
 		if sbTmpFile != "" {
 			_ = os.Remove(sbTmpFile)
@@ -256,20 +258,24 @@ func (a *AetherAdapter) Stop() error {
 	a.running = false
 	if a.statsCancel != nil {
 		a.statsCancel()
+		a.statsCancel = nil
 	}
 	a.cmd = nil
 	a.sbCmd = nil
 	a.sbTmpFile = ""
+	a.onExit = nil
 	a.mu.Unlock()
 
 	if cmd != nil && cmd.Process != nil {
 		a.log("info", "Terminating Aether process...")
 		_ = cmd.Process.Kill()
+		sysproc.KillProcessTree(cmd.Process.Pid)
 	}
 
 	if sbCmd != nil && sbCmd.Process != nil {
 		a.log("info", "Terminating Sing-box TUN router helper...")
 		_ = sbCmd.Process.Kill()
+		sysproc.KillProcessTree(sbCmd.Process.Pid)
 	}
 
 	if sbTmpFile != "" {
@@ -297,16 +303,10 @@ func (a *AetherAdapter) streamLogs(r io.Reader, level string) {
 		line := scanner.Text()
 		a.log(level, line)
 
-		// Parse throughput/transfer stats from logs if Aether logs them
-		// E.g. "Sent: 12.3 KB, Received: 45.6 KB"
-		lineLower := strings.ToLower(line)
-		if strings.Contains(lineLower, "sent:") || strings.Contains(lineLower, "tx:") {
-			// Optional custom parsing logic can be added here if needed
-		}
 	}
 }
 
-func (a *AetherAdapter) monitorStats(ctx context.Context, socksPort int) {
+func (a *AetherAdapter) monitorStats(ctx context.Context, _ int) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -315,15 +315,8 @@ func (a *AetherAdapter) monitorStats(ctx context.Context, socksPort int) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Estimate simple traffic stats by checking SOCKS connection count or dummy increments
-			// Since Aether doesn't expose an API, we simulate or query TCP stats.
-			// Let's add simulated throughput increments while connected to show activity in UI.
-			a.mu.Lock()
-			if a.running {
-				a.bytesRx += 1024 * 10
-				a.bytesTx += 1024 * 2
-			}
-			a.mu.Unlock()
+			// Aether has no byte-counter API in this adapter; do not fabricate traffic.
+			continue
 		}
 	}
 }

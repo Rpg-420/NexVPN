@@ -168,6 +168,225 @@ func BuildNodeConfig(profile *config.Profile, proxyMode string, routingMode stri
 	return BuildNodeConfigWithOptions(profile, settings)
 }
 
+// dnsQueryTimeout bounds a single DNS exchange inside the core.
+//
+// sing-box waits 10s per exchange by default. When a resolver is unreachable
+// that cost is paid *per connection*, so one dead DNS server turned into ~90
+// `context deadline exceeded` lines spread over two minutes in the 2026-10-11
+// log while the UI only looked sluggish. Three seconds is longer than any
+// healthy exchange on a desktop link and short enough that a dead one fails
+// visibly instead of hanging the whole tunnel.
+//
+// It is a `dns` block option, not a per-server one: sing-box 1.14 rejects
+// `dns.servers[].timeout` with `unknown field`, and the generated config is
+// checked against the bundled core by the parser tests for exactly that reason.
+const dnsQueryTimeout = "3s"
+
+// makeSingBoxDNSServer parses a DNS address and returns a Sing-box 1.14 compliant DNS server configuration
+func makeSingBoxDNSServer(tag, rawAddr, detour string) map[string]interface{} {
+	srv := map[string]interface{}{
+		"tag": tag,
+	}
+	if detour != "" {
+		srv["detour"] = detour
+	}
+
+	if rawAddr == "local" {
+		srv["type"] = "local"
+		return srv
+	}
+
+	u, err := url.Parse(rawAddr)
+	if err != nil || u.Scheme == "" {
+		host := rawAddr
+		port := 53
+		if h, p, err := net.SplitHostPort(rawAddr); err == nil {
+			host = h
+			if pInt, err := strconv.Atoi(p); err == nil {
+				port = pInt
+			}
+		}
+		srv["type"] = "udp"
+		srv["server"] = host
+		srv["server_port"] = port
+		return srv
+	}
+
+	switch strings.ToLower(u.Scheme) {
+	case "tcp":
+		port := 53
+		host := u.Host
+		if h, p, err := net.SplitHostPort(u.Host); err == nil {
+			host = h
+			if pInt, err := strconv.Atoi(p); err == nil {
+				port = pInt
+			}
+		}
+		srv["type"] = "tcp"
+		srv["server"] = host
+		srv["server_port"] = port
+	case "tls":
+		port := 853
+		host := u.Host
+		if h, p, err := net.SplitHostPort(u.Host); err == nil {
+			host = h
+			if pInt, err := strconv.Atoi(p); err == nil {
+				port = pInt
+			}
+		}
+		srv["type"] = "tls"
+		srv["server"] = host
+		srv["server_port"] = port
+	case "https":
+		port := 443
+		host := u.Host
+		if h, p, err := net.SplitHostPort(u.Host); err == nil {
+			host = h
+			if pInt, err := strconv.Atoi(p); err == nil {
+				port = pInt
+			}
+		}
+		srv["type"] = "https"
+		srv["server"] = host
+		srv["server_port"] = port
+		path := u.Path
+		if path == "" {
+			path = "/dns-query"
+		}
+		srv["path"] = path
+	case "udp":
+		fallthrough
+	default:
+		port := 53
+		host := u.Host
+		if host == "" {
+			host = u.Opaque
+		}
+		if h, p, err := net.SplitHostPort(host); err == nil {
+			host = h
+			if pInt, err := strconv.Atoi(p); err == nil {
+				port = pInt
+			}
+		}
+		srv["type"] = "udp"
+		srv["server"] = host
+		srv["server_port"] = port
+	}
+
+	return srv
+}
+
+func toSafeStringSlice(val interface{}) []string {
+	if val == nil {
+		return nil
+	}
+	switch v := val.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		var res []string
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				res = append(res, s)
+			}
+		}
+		return res
+	case string:
+		if v != "" {
+			return []string{v}
+		}
+	}
+	return nil
+}
+
+func toSafeInt(val interface{}, defaultVal int) int {
+	if val == nil {
+		return defaultVal
+	}
+	switch v := val.(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	case int64:
+		return int(v)
+	case string:
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+	}
+	return defaultVal
+}
+
+func toSafeIntSlice(val interface{}) []int {
+	if val == nil {
+		return nil
+	}
+	switch v := val.(type) {
+	case []int:
+		return v
+	case []interface{}:
+		var res []int
+		for _, item := range v {
+			switch num := item.(type) {
+			case float64:
+				res = append(res, int(num))
+			case int:
+				res = append(res, num)
+			case int64:
+				res = append(res, int(num))
+			}
+		}
+		return res
+	}
+	return nil
+}
+
+// convertWireGuardOutboundToEndpoint converts a WireGuard outbound map to a Sing-box 1.13+ endpoint map
+func convertWireGuardOutboundToEndpoint(ob map[string]interface{}) map[string]interface{} {
+	tag := "proxy"
+	if t, ok := ob["tag"].(string); ok && t != "" {
+		tag = t
+	}
+	addrs := toSafeStringSlice(ob["address"])
+	if len(addrs) == 0 {
+		addrs = toSafeStringSlice(ob["local_address"])
+	}
+	if len(addrs) == 0 {
+		// Fallback to standard Cloudflare WARP client address if missing
+		addrs = []string{"172.16.0.2/32", "2606:4700:110:8cc2:617d:9326:86fe:3b6e/128"}
+	}
+	privKey, _ := ob["private_key"].(string)
+	peerPubKey, _ := ob["peer_public_key"].(string)
+	server, _ := ob["server"].(string)
+	serverPort := toSafeInt(ob["server_port"], 51820)
+	peer := map[string]interface{}{
+		"address":     server,
+		"port":        serverPort,
+		"public_key":  peerPubKey,
+		"allowed_ips": []string{"0.0.0.0/0", "::/0"},
+	}
+	res := toSafeIntSlice(ob["reserved"])
+	if len(res) > 0 {
+		peer["reserved"] = res
+	}
+	ep := map[string]interface{}{
+		"type":        "wireguard",
+		"tag":         tag,
+		"address":     addrs,
+		"private_key": privKey,
+		"peers":       []map[string]interface{}{peer},
+	}
+	mtu := toSafeInt(ob["mtu"], 1280)
+	if mtu > 0 {
+		ep["mtu"] = mtu
+	}
+	if detour, ok := ob["detour"].(string); ok && detour != "" {
+		ep["detour"] = detour
+	}
+	return ep
+}
+
 // BuildSingBoxConfig constructs standard Sing-box configuration
 func BuildSingBoxConfig(proxyOutbound map[string]interface{}, proxyMode string, routingMode string, serverHost string) (string, error) {
 	return BuildSingBoxConfigAdvanced(proxyOutbound, proxyMode, routingMode, serverHost, config.Settings{
@@ -177,6 +396,19 @@ func BuildSingBoxConfig(proxyOutbound map[string]interface{}, proxyMode string, 
 }
 
 // BuildSingBoxConfigAdvanced constructs a state-of-the-art Sing-box 1.9+ config with Anti-DPI, App Split Tunneling, and Multi-Hop
+// tunIfaceName returns the Wintun adapter name to write into a TUN inbound.
+//
+// It is normally the default, but the engine can override it per connection via
+// Settings.TunInterfaceName. That override exists for one situation: a *ghost*
+// adapter occupying the default name. The Wintun driver still answers to a
+// ghost's name, so the core sees the name as taken, opens a handle to nothing,
+// and exits during startup — while the OS adapter list cannot see it, which
+// means nothing can delete it either. Renaming around it is the only remedy that
+// does not require registry surgery.
+func tunIfaceName(settings config.Settings) string {
+	return settings.EffectiveTunInterfaceName()
+}
+
 func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode string, routingMode string, serverHost string, settings config.Settings) (string, error) {
 	// Deep copy outbound so mutations don't affect parent
 	outboundBytes, _ := json.Marshal(proxyOutbound)
@@ -204,19 +436,28 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 
 	// Inject TLS ClientHello fragmentation anti-censorship parameters if enabled
 	if settings.FragmentEnabled {
-		fragSize := settings.FragmentSize
-		if fragSize == "" {
-			fragSize = "100-200"
-		}
-		fragSleep := settings.FragmentSleep
-		if fragSleep == "" {
-			fragSleep = "10-20"
-		}
 		if tlsMap, ok := activeOutbound["tls"].(map[string]interface{}); ok {
-			tlsMap["fragment"] = map[string]interface{}{
-				"enabled": true,
-				"size":    fragSize,
-				"sleep":   fragSleep,
+			// Fragmentation must not be injected on Reality TLS: the Reality
+			// handshake relies on an unmodified ClientHello.
+			realityObj, hasReality := tlsMap["reality"].(map[string]interface{})
+			isReality := hasReality && realityObj != nil && realityObj["enabled"] == true
+			if !isReality {
+				// sing-box 1.12+ takes `tls.fragment` as a **bool**. The older
+				// {enabled,size,sleep} object was removed in 1.12, and feeding it
+				// to the bundled 1.14.0 core makes it exit during startup with
+				// `outbounds[N].tls.fragment: cannot unmarshal object ... of type
+				// bool` — a FATAL config-decode failure, so the connection never
+				// even reaches the TUN stage.
+				//
+				// `record_fragment` splits the handshake across several TLS
+				// records rather than several packets; the two are complementary
+				// and both are on for the same reason FragmentEnabled exists.
+				//
+				// FragmentSize / FragmentSleep cannot be expressed in the sing-box
+				// schema at all, so they only affect the Xray path (see the
+				// `dialerProxy` fragment outbound further down this file).
+				tlsMap["fragment"] = true
+				tlsMap["record_fragment"] = true
 			}
 		}
 	}
@@ -226,21 +467,21 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		listenAddr = "0.0.0.0"
 	}
 
-	// Inbounds: Mixed on 10808 (SOCKS5/HTTP) AND Dedicated HTTP on 10809 (For Windows System Proxy)
+	// Inbounds: Mixed on the SOCKS port (SOCKS5/HTTP) AND a dedicated HTTP
+	// listener, because the Windows system proxy cannot speak SOCKS. Both numbers
+	// come from config, the single owner (internal/config/network.go).
 	inbounds := []map[string]interface{}{
 		{
 			"type":        "mixed",
 			"tag":         "mixed-in",
 			"listen":      listenAddr,
-			"listen_port": 10808,
-			"sniff":       true,
+			"listen_port": config.SocksPort,
 		},
 		{
 			"type":        "http",
 			"tag":         "http-in",
 			"listen":      listenAddr,
-			"listen_port": 10809,
-			"sniff":       true,
+			"listen_port": config.HttpPort,
 		},
 	}
 
@@ -253,23 +494,59 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		}
 
 		tunInbound := map[string]interface{}{
-			"type":                       "tun",
-			"tag":                        "tun-in",
-			"interface_name":             "NexVPN-TUN",
-			"inet4_address":              []string{"172.19.0.1/30"},
-			"auto_route":                 true,
-			"strict_route":               false,
-			"stack":                      tunStack,
-			"mtu":                        tunMTU,
-			"sniff":                      true,
-			"sniff_override_destination": false,
+			"type":           "tun",
+			"tag":            "tun-in",
+			"interface_name": tunIfaceName(settings),
+			"address": []string{
+				"172.19.0.1/30",
+				"fdfe:dcba:9876::1/126",
+			},
+			"auto_route":   true,
+			"strict_route": false,
+			"stack":        tunStack,
+			"mtu":          tunMTU,
 		}
 		inbounds = append(inbounds, tunInbound)
 	}
 
 	primaryTag := "proxy"
-	outbounds := []map[string]interface{}{
-		activeOutbound,
+	var outbounds []map[string]interface{}
+	var endpoints []map[string]interface{}
+
+	// Always add direct and block outbounds first to ensure they exist for DNS detour
+	outbounds = append(outbounds,
+		map[string]interface{}{
+			"type": "direct",
+			"tag":  "direct",
+		},
+		map[string]interface{}{
+			"type": "block",
+			"tag":  "block",
+		},
+	)
+
+	if outType, ok := activeOutbound["type"].(string); ok && outType == "wireguard" {
+		// WireGuard outbound cleanup: remove fields unsupported by sing-box stable
+		// AmneziaWG fields (junk_packet_*, s1/s2, h1-4) only supported in sing-box >=1.11 / Amnezia fork
+		// To avoid FATAL on sing-box 1.10.7 (still bundled), strip them unless explicitly needed
+		if outType, ok := activeOutbound["type"].(string); ok && outType == "wireguard" {
+			delete(activeOutbound, "tls")
+			delete(activeOutbound, "tls_tricks")
+			// Strip Amnezia obfuscation for compatibility with sing-box 1.10.x stable
+			// Will be re-enabled automatically when sing-box >=1.11 is detected at runtime
+			delete(activeOutbound, "junk_packet_count")
+			delete(activeOutbound, "junk_packet_min_size")
+			delete(activeOutbound, "junk_packet_max_size")
+			delete(activeOutbound, "init_packet_junk_size")
+			delete(activeOutbound, "response_packet_junk_size")
+			delete(activeOutbound, "init_packet_magic_header")
+			delete(activeOutbound, "response_packet_magic_header")
+			delete(activeOutbound, "underload_packet_magic_header")
+			delete(activeOutbound, "transport_header_magic_header")
+		}
+		endpoints = append(endpoints, convertWireGuardOutboundToEndpoint(activeOutbound))
+	} else {
+		outbounds = append(outbounds, activeOutbound)
 	}
 
 	// Multi-Hop WARP Chain: local -> VPS proxy -> WARP -> target
@@ -311,101 +588,140 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 			warpLocalAddr = "172.16.0.2/32"
 		}
 
-		warpOutbound := map[string]interface{}{
-			"type":             "wireguard",
-			"tag":              "warp-chain",
-			"server":           warpCleanIP,
-			"server_port":      warpPort,
-			"system_interface": false,
-			"local_address":    []string{warpLocalAddr},
-			"private_key":      warpPrivKey,
-			"peer_public_key":  warpPubKey,
-			"mtu":              1280,
-			"detour":           "proxy",
+		warpPeer := map[string]interface{}{
+			"address":     warpCleanIP,
+			"port":        warpPort,
+			"public_key":  warpPubKey,
+			"allowed_ips": []string{"0.0.0.0/0", "::/0"},
 		}
 		if len(warpReserved) > 0 {
-			warpOutbound["reserved"] = warpReserved
+			warpPeer["reserved"] = warpReserved
 		}
-		outbounds = append(outbounds, warpOutbound)
+		warpEP := map[string]interface{}{
+			"type":        "wireguard",
+			"tag":         "warp-chain",
+			"address":     []string{warpLocalAddr},
+			"private_key": warpPrivKey,
+			"mtu":         1280,
+			"detour":      "proxy",
+			"peers":       []map[string]interface{}{warpPeer},
+		}
+		endpoints = append(endpoints, warpEP)
 		primaryTag = "warp-chain"
 	}
 
-	outbounds = append(outbounds,
-		map[string]interface{}{
-			"type": "direct",
-			"tag":  "direct",
-		},
-		map[string]interface{}{
-			"type": "dns",
-			"tag":  "dns-out",
-		},
-		map[string]interface{}{
-			"type": "block",
-			"tag":  "block",
-		},
-	)
+	// NOTE: the "direct" and "block" outbounds are already appended above, before
+	// the proxy outbound, so that the DNS detours can always resolve. Appending
+	// them a second time here produced two outbounds with the same tag, which
+	// sing-box rejects with "duplicate outbound/endpoint tag: direct".
 
-	// Smart Dual DNS Setup - use TCP for all (DoH causes "no raw query" for HTTPS/SVCB records on sing-box 1.10)
-	primaryDNSAddr := "tcp://1.1.1.1"
-	if settings.DNSServer != "" {
-		primaryDNSAddr = settings.DNSServer
-		if primaryDNSAddr == "1.1.1.1" {
-			primaryDNSAddr = "tcp://1.1.1.1"
-		} else if primaryDNSAddr == "8.8.8.8" {
-			primaryDNSAddr = "tcp://8.8.8.8"
-		}
+	// Both resolvers come from their single owner (internal/config/network.go).
+	// Before that existed, the store defaulted the primary to DoH while this
+	// function defaulted it to a bare `1.1.1.1` — so whether a machine used DoH
+	// or plain UDP depended on whether config.json had ever been written.
+	primaryDNSAddr := settings.PrimaryResolver()
+	fallbackDNSAddr := settings.SecondaryResolver()
+
+	// A Layer-3 primary (WireGuard) moves packets, not names: the core has to know
+	// the real address *before* anything can enter the tunnel, so DNS sits on the
+	// critical path of every single connection. Detouring that lookup through the
+	// tunnel which depends on it is a deadlock — in the 2026-10-11 log a WireGuard
+	// engine answered `dns: lookup failed … context deadline exceeded` for every
+	// domain it was asked about, because the tunnel it was querying through was
+	// the tunnel that was not carrying traffic.
+	//
+	// Resolving straight out is the trade: query names become visible to the
+	// local network, exactly as they do with a standalone WireGuard client, and it
+	// is the only variant that works whether or not the peer forwards DNS at all.
+	//
+	// The way to express that is to *omit* the detour, not to point it at
+	// `direct`. Since sing-box 1.12 a DNS server builds its own dialer, and a
+	// server with no detour "is equivalent to using an empty direct outbound by
+	// default" — it dials straight out. Naming the bare `direct` outbound
+	// explicitly instead trips a startup FATAL:
+	//   start dns/https[dns-remote]: detour to an empty direct outbound makes no sense
+	// (sing-box #2778 / #2803). That is exactly what killed every WireGuard-engine
+	// connection in the 2026-10-12 log — TUN and the System-Proxy fallback alike
+	// — before the tunnel ever came up, on a config the bundled core's `check`
+	// still accepts, because the rejection only happens when the service starts.
+	//
+	// Every other primary (VLESS / VMess / Trojan / SS / Hysteria2 / TUIC) is
+	// handed the domain and resolves it remotely, so those keep the tunnel detour
+	// and leak nothing.
+	dnsDetour := primaryTag
+	layer3Primary := outboundIsLayer3(activeOutbound)
+	if layer3Primary {
+		dnsDetour = ""
 	}
 
-	fallbackDNSAddr := "tcp://8.8.8.8"
-	if settings.DNSFallback != "" {
-		fallbackDNSAddr = settings.DNSFallback
-		if fallbackDNSAddr == "8.8.8.8" {
-			fallbackDNSAddr = "tcp://8.8.8.8"
-		} else if fallbackDNSAddr == "1.1.1.1" {
-			fallbackDNSAddr = "tcp://1.1.1.1"
-		}
+	// Which resolver answers everything fakeip does not.
+	//
+	// A proxy primary sends it through the tunnel: the domain leaves with the
+	// connection anyway, so nothing extra leaks.
+	//
+	// A Layer-3 primary gets the machine's own resolver instead, and the reason is
+	// measured. In the 2026-10-12 log every single lookup of a WireGuard session
+	// died with `read tcp 192.168.1.103:xxxxx->1.1.1.1:443: wsarecv: An existing
+	// connection was forcibly closed` — the configured DoH server being reset by
+	// the network, ~200 times, while the same machine resolves names through its
+	// router (192.168.1.1) with no tunnel up at all. sing-box 1.14 has **no
+	// fallback chain**: both `dns.final` and `dns.rules[].server` reject a list
+	// (`cannot unmarshal array into ... of type string`, verified against the
+	// bundled core), so the app has to pick the one resolver that survives this
+	// network. For a bootstrap path that is the OS one.
+	resolverForUnmatched := "dns-remote"
+	if layer3Primary {
+		resolverForUnmatched = "dns-direct"
+	}
+
+	// Which resolver finds the tunnel endpoint itself. For a Layer-3 primary that
+	// is deliberately *not* the router: a poisoned local resolver is what makes a
+	// clean-IP or CDN-fronted endpoint resolve to a blocked address, so the
+	// bootstrap uses the user's independent second resolver, straight out. It is
+	// also the only thing that gives `dns-fallback` a job — before this it was
+	// written into every generated config and referenced by nothing.
+	bootstrapResolver := "dns-direct"
+	if layer3Primary {
+		bootstrapResolver = "dns-fallback"
 	}
 
 	dnsServers := []map[string]interface{}{
+		makeSingBoxDNSServer("dns-remote", primaryDNSAddr, dnsDetour),
 		{
-			"tag":              "dns-remote",
-			"address":          primaryDNSAddr,
-			"address_resolver": "dns-direct",
-			"detour":           primaryTag,
+			"tag":    "dns-direct",
+			"type":   "local",
+			"detour": "direct",
 		},
 		{
-			"tag":     "dns-direct",
-			"address": "local",
-			"detour":  "direct",
+			"tag":         "dns-fakeip",
+			"type":        "fakeip",
+			"inet4_range": "198.18.0.0/15",
+			"inet6_range": "fc00::/18",
 		},
-		{
-			"tag":     "dns-fakeip",
-			"address": "fakeip",
-		},
-		{
-			"tag":              "dns-fallback",
-			"address":          fallbackDNSAddr,
-			"address_resolver": "dns-direct",
-			"detour":           primaryTag,
-		},
-		{
-			"tag":     "dns-block",
-			"address": "rcode://success",
-		},
+		makeSingBoxDNSServer("dns-fallback", fallbackDNSAddr, dnsDetour),
 	}
 
-	// DNS Rules — FakeIP for TUN inbound, domestic domains & server hostname to local DNS; other traffic resolves through dns-remote
+	// DNS Rules — FakeIP for the TUN inbound, the tunnel endpoint and domestic
+	// domains to a tunnel-independent resolver; everything else follows
+	// `dns.final` (resolverForUnmatched above).
 	dnsRules := []map[string]interface{}{
 		{
-			"inbound": []string{"tun-in"},
-			"server":  "dns-fakeip",
+			// fakeip answers A and AAAA only. Without the query_type filter every
+			// other record type arriving on the TUN inbound (HTTPS/SVCB, PTR,
+			// TXT, …) is routed here as well, and the core rejects each one with
+			// "only IP queries are supported by fakeip" — which floods the log
+			// and leaves those lookups unanswered. Anything that is not A/AAAA
+			// now falls through to the final resolver.
+			"inbound":    []string{"tun-in"},
+			"query_type": []string{"A", "AAAA"},
+			"server":     "dns-fakeip",
 		},
 	}
 
 	if serverHost != "" && !isIPAddress(serverHost) {
 		dnsRules = append(dnsRules, map[string]interface{}{
 			"domain": []string{serverHost},
-			"server": "dns-direct",
+			"server": bootstrapResolver,
 		})
 	}
 
@@ -425,7 +741,7 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 	if settings.BlockAds || routingMode == "direct_iran_block_ads" {
 		dnsRules = append(dnsRules, map[string]interface{}{
 			"domain_keyword": []string{"doubleclick", "adservice", "googleadservices", "adnxs", "adroll", "analytics", "applovin", "unityads", "vungle", "admob"},
-			"server":         "dns-block",
+			"action":         "reject",
 		})
 	}
 
@@ -437,12 +753,16 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 
 	routeRules := []map[string]interface{}{
 		{
-			"port":     []int{53},
-			"outbound": "dns-out",
+			"action": "sniff",
+		},
+		{
+			"network": "udp",
+			"port":    []int{53},
+			"action":  "hijack-dns",
 		},
 		{
 			"protocol": []string{"dns"},
-			"outbound": "dns-out",
+			"action":   "hijack-dns",
 		},
 		{
 			"ip_cidr":  lanCIDRs,
@@ -513,35 +833,20 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 		})
 	}
 
-	// Custom Blocked Domains
-	if len(settings.CustomBlockDomains) > 0 {
-		routeRules = append(routeRules, map[string]interface{}{
-			"domain":   settings.CustomBlockDomains,
-			"outbound": "block",
-		})
-	}
-
-	// Custom Direct Domains
-	if len(settings.CustomDirectDomains) > 0 {
-		routeRules = append(routeRules, map[string]interface{}{
-			"domain":   settings.CustomDirectDomains,
-			"outbound": "direct",
-		})
-	}
-
-	// Custom Proxied Domains
-	if len(settings.CustomProxyDomains) > 0 {
-		routeRules = append(routeRules, map[string]interface{}{
-			"domain":   settings.CustomProxyDomains,
-			"outbound": primaryTag,
-		})
-	}
+	// User-defined routing overrides.
+	//
+	// Appended after every built-in rule so that a manual entry always wins,
+	// and before the IPv6 reject below so that an explicit IPv6 rule from the
+	// user is honoured rather than dropped. First match wins in sing-box, so
+	// this ordering is the whole contract.
+	routeRules = append(routeRules, UserRoutingRulesSingBox(settings.RoutingRules, primaryTag)...)
 
 	// Block unroutable IPv6 traffic when IPv4-only to eliminate no route to host errors
 	if settings.IPStrategy != "prefer_ipv6" && settings.IPStrategy != "ipv6_only" {
 		routeRules = append(routeRules, map[string]interface{}{
-			"ip_cidr":  []string{"::/0"},
-			"outbound": "block",
+			"ip_cidr": []string{"::/0"},
+			"action":  "reject",
+			"method":  "drop",
 		})
 	}
 
@@ -560,24 +865,31 @@ func BuildSingBoxConfigAdvanced(proxyOutbound map[string]interface{}, proxyMode 
 			},
 		},
 		"dns": map[string]interface{}{
-			"servers":           dnsServers,
-			"rules":             dnsRules,
-			"final":             "dns-remote",
-			"strategy":          ipStrategy,
-			"independent_cache": true,
-			"fakeip": map[string]interface{}{
-				"enabled":     true,
-				"inet4_range": "198.18.0.0/15",
-				"inet6_range": "fc00::/18",
-			},
+			"servers":  dnsServers,
+			"rules":    dnsRules,
+			"final":    resolverForUnmatched,
+			"strategy": ipStrategy,
+			// Bound every exchange, so a resolver that is not answering costs 3s
+			// per lookup instead of sing-box's 10s default. See dnsQueryTimeout.
+			"timeout": dnsQueryTimeout,
 		},
 		"inbounds":  inbounds,
 		"outbounds": outbounds,
 		"route": map[string]interface{}{
-			"rules":                 routeRules,
-			"final":                 primaryTag,
-			"auto_detect_interface": true,
+			"rules": routeRules,
+			"final": primaryTag,
+			// The same resolver the DNS router falls through to. Naming a
+			// different one here would be the kind of split-brain the 2026-10-12
+			// log shows: `dns.final` pointed at dns-remote, so the dial-time
+			// lookups that decide whether a connection can exist at all went out
+			// over a DoH endpoint the network was resetting, even though
+			// `default_domain_resolver` said dns-direct.
+			"auto_detect_interface":   true,
+			"default_domain_resolver": resolverForUnmatched,
 		},
+	}
+	if len(endpoints) > 0 {
+		cfg["endpoints"] = endpoints
 	}
 
 	bytes, err := json.MarshalIndent(cfg, "", "  ")
@@ -636,7 +948,20 @@ func parseVlessOutbound(raw string) (map[string]interface{}, error) {
 	security := q.Get("security")
 	sni := q.Get("sni")
 	if sni == "" {
-		sni = host
+		hostHeader := q.Get("host")
+		if hostHeader != "" && !isIPAddress(hostHeader) {
+			sni = hostHeader
+		}
+		if sni == "" && !isIPAddress(host) {
+			sni = host
+		}
+		if hostHeader == "" {
+			if sni != "" && !isIPAddress(sni) {
+				hostHeader = sni
+			} else if !isIPAddress(host) {
+				hostHeader = host
+			}
+		}
 	}
 	fp := q.Get("fp")
 	if fp == "" {
@@ -720,16 +1045,15 @@ func parseVlessOutbound(raw string) (map[string]interface{}, error) {
 			"service_name": serviceName,
 		}
 	} else if netType == "httpupgrade" || netType == "xhttp" || netType == "splithttp" {
-		transportObj := map[string]interface{}{
+		// `host` already sets the Host header for the httpupgrade transport, so
+		// adding a `headers: {Host: ...}` entry on top of it duplicates the same
+		// value. The trojan branch uses `host` alone; keep the two consistent.
+		outbound["transport"] = map[string]interface{}{
 			"type": "httpupgrade",
 			"path": path,
 			"host": hostHeader,
-			"headers": map[string]string{
-				"Host": hostHeader,
-			},
 		}
-		outbound["transport"] = transportObj
-	} else if netType == "http" {
+	} else if netType == "http" || (netType == "tcp" && q.Get("headerType") == "http") {
 		outbound["transport"] = map[string]interface{}{
 			"type": "http",
 			"path": path,
@@ -788,10 +1112,10 @@ func parseVmessOutbound(raw string) (map[string]interface{}, error) {
 
 	if data.TLS == "tls" {
 		sni := data.SNI
-		if sni == "" {
+		if sni == "" && data.Host != "" && !isIPAddress(data.Host) {
 			sni = data.Host
 		}
-		if sni == "" {
+		if sni == "" && !isIPAddress(data.Add) {
 			sni = data.Add
 		}
 		outbound["tls"] = map[string]interface{}{
@@ -842,7 +1166,20 @@ func parseTrojanOutbound(raw string) (map[string]interface{}, error) {
 	q := u.Query()
 	sni := q.Get("sni")
 	if sni == "" {
-		sni = host
+		hostHeader := q.Get("host")
+		if hostHeader != "" && !isIPAddress(hostHeader) {
+			sni = hostHeader
+		}
+		if sni == "" && !isIPAddress(host) {
+			sni = host
+		}
+		if hostHeader == "" {
+			if sni != "" && !isIPAddress(sni) {
+				hostHeader = sni
+			} else if !isIPAddress(host) {
+				hostHeader = host
+			}
+		}
 	}
 
 	outbound := map[string]interface{}{
@@ -948,6 +1285,17 @@ func parseShadowsocksOutbound(raw string) (map[string]interface{}, error) {
 		port = 8388
 	}
 
+	// A Shadowsocks link whose `method:password` half did not decode used to be
+	// written into the config with both fields empty, and the failure surfaced
+	// three layers away: sing-box died with `initialize outbound[2]: unknown
+	// method:` and Xray with `Shadowsocks password is not specified` — two
+	// core-side messages that tell a user nothing about a truncated link. Refuse
+	// it here, where the reason is known, so the profile is rejected on import
+	// with something to act on.
+	if strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
+		return nil, fmt.Errorf("shadowsocks link is missing its cipher or password (expected ss://method:password@host:port, or a base64 ss://… form); the link is probably truncated")
+	}
+
 	return map[string]interface{}{
 		"type":        "shadowsocks",
 		"tag":         "proxy",
@@ -989,6 +1337,17 @@ func parseHysteria2Outbound(raw string) (map[string]interface{}, error) {
 			"server_name": sni,
 			"insecure":    insecure,
 		},
+	}
+
+	if up := q.Get("upmbps"); up != "" {
+		if v, err := strconv.Atoi(up); err == nil && v > 0 {
+			outbound["up_mbps"] = v
+		}
+	}
+	if down := q.Get("downmbps"); down != "" {
+		if v, err := strconv.Atoi(down); err == nil && v > 0 {
+			outbound["down_mbps"] = v
+		}
 	}
 
 	obfsType := q.Get("obfs")
@@ -1438,7 +1797,7 @@ func parseHysteria2(raw string) (*ParsedNode, error) {
 
 	return &ParsedNode{
 		Name:          name,
-		Protocol:      config.ProtocolSingBox,
+		Protocol:      config.ProtocolHysteria2,
 		Category:      config.CategoryV2Ray,
 		Server:        host,
 		Port:          port,
@@ -1477,7 +1836,7 @@ func parseTuic(raw string) (*ParsedNode, error) {
 
 	return &ParsedNode{
 		Name:          name,
-		Protocol:      config.ProtocolSingBox,
+		Protocol:      config.ProtocolTUIC,
 		Category:      config.CategoryV2Ray,
 		Server:        host,
 		Port:          port,
@@ -1516,7 +1875,7 @@ func parseWireguardURI(raw string) (*ParsedNode, error) {
 
 // GenerateCloudflareWarp creates a 1-click Cloudflare WARP profile with Clean IP
 func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
-	if cleanIP == "" {
+	if cleanIP == "" || cleanIP == "162.159.192.1" {
 		curatedEndpoints := []struct {
 			ip   string
 			port int
@@ -1532,6 +1891,9 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 		chosen := curatedEndpoints[randRange(0, len(curatedEndpoints)-1)]
 		cleanIP = chosen.ip
 		port = chosen.port
+		if port <= 0 || port == 2408 {
+			port = chosen.port
+		}
 	}
 	if port <= 0 {
 		port = 1180
@@ -1564,15 +1926,16 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 			MinVersion: tls.VersionTLS12,
 		},
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Connect directly to Cloudflare edge IP on port 443
-			d := &net.Dialer{Timeout: 4 * time.Second}
-			return d.DialContext(ctx, "tcp", "162.159.192.1:443")
+			// Connect directly to the Cloudflare edge IP on port 443, bypassing
+			// DNS resolution of the registration hostname.
+			d := &net.Dialer{Timeout: 3 * time.Second}
+			return d.DialContext(ctx, "tcp", net.JoinHostPort(cleanIP, "443"))
 		},
 	}
 
 	client := &http.Client{
 		Transport: tr,
-		Timeout:   6 * time.Second,
+		Timeout:   4 * time.Second,
 	}
 
 	req, err := http.NewRequest("POST", "https://api.cloudflareclient.com/v0a3250/reg", bytes.NewBuffer(reqBody))
@@ -1630,49 +1993,29 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 	// Never reuse hardcoded shared private keys - each client must have unique identity for PFS.
 	if !registeredOk {
 		// privB64 already holds a fresh ephemeral X25519 key; keep default addresses and reserved
+		if len(reserved) == 0 {
+			reserved = []int{0, 0, 0}
+		}
 	}
 
-	localAddresses := []string{v4Addr}
-	if v6Addr != "" {
-		localAddresses = append(localAddresses, v6Addr)
-	}
+	// NOTE: the sing-box JSON form of this outbound is deliberately NOT built here.
+	// The profile stores the WireGuard INI (ConfigContent) plus the wireguard:// URI
+	// (RawURI), and the engine re-derives the outbound from those at connect time
+	// (see ParseWireGuardConf / ParseOutboundFromURI). Building a full sing-box
+	// config only to discard it wasted real CPU, and this function runs once per
+	// clean-IP candidate during bulk scanning.
 
-	outbound := map[string]interface{}{
-		"type":             "wireguard",
-		"tag":              "proxy",
-		"server":           cleanIP,
-		"server_port":      port,
-		"system_interface": false,
-		"local_address":    localAddresses,
-		"private_key":      privB64,
-		"peer_public_key":  peerPubKey,
-		"mtu":              1280,
-	}
-
-	if len(reserved) > 0 {
-		outbound["reserved"] = reserved
-	}
-
-	singboxJSON, err := BuildSingBoxConfig(outbound, "tun", "bypass_iran", cleanIP)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build full AmneziaWG / WireGuard INI config
+	// Build full WireGuard INI config.
+	// NOTE: plain WireGuard only. AmneziaWG obfuscation parameters (Jc/Jmin/Jmax/
+	// S1/S2/H1-H4) must NOT be emitted here: the stock WireGuard client and the
+	// vanilla sing-box wireguard outbound both reject them, which made the
+	// generated WARP profile fail to start. Users who want obfuscation should use
+	// the dedicated AmneziaWG protocol entry instead.
 	wireguardINI := fmt.Sprintf(`[Interface]
 PrivateKey = %s
 Address = %s, %s
 DNS = 1.1.1.1
 MTU = 1280
-Jc = 5
-Jmin = 40
-Jmax = 80
-S1 = 15
-S2 = 20
-H1 = 1
-H2 = 2
-H3 = 3
-H4 = 4
 
 [Peer]
 PublicKey = %s
@@ -1693,19 +2036,125 @@ PersistentKeepalive = 25`, privB64, v4Addr, v6Addr, peerPubKey, cleanIP, port)
 		Port:          port,
 		Group:         "Cloudflare WARP",
 		ConfigContent: wireguardINI,
-		RawURI:        fmt.Sprintf("wireguard://%s@%s:%d?public_key=%s&ip=%s%s&jc=5&jmin=40&jmax=80&s1=15&s2=20&h1=1&h2=2&h3=3&h4=4#WARP-AmneziaWG", url.QueryEscape(privB64), cleanIP, port, url.QueryEscape(peerPubKey), url.QueryEscape(v4Addr), reservedParam),
-		Description:   "Optimized Cloudflare WARP with Clean IP & AmneziaWG obfuscation",
+		RawURI:        fmt.Sprintf("wireguard://%s@%s:%d?public_key=%s&ip=%s%s#WARP", url.QueryEscape(privB64), cleanIP, port, url.QueryEscape(peerPubKey), url.QueryEscape(v4Addr), reservedParam),
+		Description:   "Optimized Cloudflare WARP with Clean IP",
 		WarpCleanIP:   cleanIP,
 		CreatedAt:     time.Now(),
 	}
 
-	_ = singboxJSON // Cached internally
+	return profile, nil
+}
 
+// AmneziaParams holds AmneziaWG anti-censorship packet obfuscation parameters.
+// All fields are optional; a zero value means "leave this parameter out of the
+// generated config". They are only meaningful for WireGuard-family profiles.
+type AmneziaParams struct {
+	Jc   int `json:"jc"`   // junk_packet_count
+	Jmin int `json:"jmin"` // junk_packet_min_size
+	Jmax int `json:"jmax"` // junk_packet_max_size
+	S1   int `json:"s1"`   // init_packet_junk_size
+	S2   int `json:"s2"`   // response_packet_junk_size
+	H1   int `json:"h1"`   // init_packet_magic_header
+	H2   int `json:"h2"`   // response_packet_magic_header
+	H3   int `json:"h3"`   // underload_packet_magic_header
+	H4   int `json:"h4"`   // transport_header_magic_header
+}
+
+// IsZero reports whether every obfuscation parameter is unset.
+func (p AmneziaParams) IsZero() bool {
+	return p.Jc == 0 && p.Jmin == 0 && p.Jmax == 0 && p.S1 == 0 && p.S2 == 0 &&
+		p.H1 == 0 && p.H2 == 0 && p.H3 == 0 && p.H4 == 0
+}
+
+// amneziaINILines renders the AmneziaWG `[Interface]` keys.
+func (p AmneziaParams) amneziaINILines() string {
+	var b strings.Builder
+	if p.Jc != 0 {
+		fmt.Fprintf(&b, "\nJc = %d", p.Jc)
+	}
+	if p.Jmin != 0 {
+		fmt.Fprintf(&b, "\nJmin = %d", p.Jmin)
+	}
+	if p.Jmax != 0 {
+		fmt.Fprintf(&b, "\nJmax = %d", p.Jmax)
+	}
+	if p.S1 != 0 {
+		fmt.Fprintf(&b, "\nS1 = %d", p.S1)
+	}
+	if p.S2 != 0 {
+		fmt.Fprintf(&b, "\nS2 = %d", p.S2)
+	}
+	if p.H1 != 0 {
+		fmt.Fprintf(&b, "\nH1 = %d", p.H1)
+	}
+	if p.H2 != 0 {
+		fmt.Fprintf(&b, "\nH2 = %d", p.H2)
+	}
+	if p.H3 != 0 {
+		fmt.Fprintf(&b, "\nH3 = %d", p.H3)
+	}
+	if p.H4 != 0 {
+		fmt.Fprintf(&b, "\nH4 = %d", p.H4)
+	}
+	return b.String()
+}
+
+// amneziaURIQuery renders the URI query fragment carrying the obfuscation
+// parameters, so an exported wireguard:// link round-trips losslessly.
+func (p AmneziaParams) amneziaURIQuery() string {
+	var b strings.Builder
+	add := func(key string, v int) {
+		if v != 0 {
+			fmt.Fprintf(&b, "&%s=%d", key, v)
+		}
+	}
+	add("jc", p.Jc)
+	add("jmin", p.Jmin)
+	add("jmax", p.Jmax)
+	add("s1", p.S1)
+	add("s2", p.S2)
+	add("h1", p.H1)
+	add("h2", p.H2)
+	add("h3", p.H3)
+	add("h4", p.H4)
+	return b.String()
+}
+
+// GenerateCloudflareWarpWithAmnezia generates a WARP profile whose WireGuard INI
+// and wireguard:// URI additionally carry AmneziaWG obfuscation parameters.
+// Passing a zero-value AmneziaParams is equivalent to GenerateCloudflareWarp.
+func GenerateCloudflareWarpWithAmnezia(cleanIP string, port int, amz AmneziaParams) (*config.Profile, error) {
+	profile, err := GenerateCloudflareWarp(cleanIP, port)
+	if err != nil {
+		return nil, err
+	}
+	if amz.IsZero() {
+		return profile, nil
+	}
+
+	// Inject the obfuscation keys into the [Interface] section of the INI,
+	// i.e. immediately before the blank line that precedes [Peer].
+	ini := profile.ConfigContent
+	const peerMarker = "\n\n[Peer]"
+	if idx := strings.Index(ini, peerMarker); idx >= 0 {
+		ini = ini[:idx] + amz.amneziaINILines() + ini[idx:]
+	}
+	profile.ConfigContent = ini
+
+	if profile.RawURI != "" {
+		if hash := strings.Index(profile.RawURI, "#"); hash >= 0 {
+			profile.RawURI = profile.RawURI[:hash] + amz.amneziaURIQuery() + profile.RawURI[hash:]
+		} else {
+			profile.RawURI += amz.amneziaURIQuery()
+		}
+	}
+
+	profile.Description = "Optimized Cloudflare WARP with Clean IP (AmneziaWG obfuscated)"
 	return profile, nil
 }
 
 // GenerateWarpOnWarp creates a nested dual-hop WARP-on-WARP configuration
-func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort int) (*config.Profile, error) {
+func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort int, settings config.Settings) (*config.Profile, error) {
 	if cleanIP == "" {
 		cleanIP = "162.159.192.1"
 	}
@@ -1731,31 +2180,29 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 		return nil, fmt.Errorf("failed to generate inner WARP hop: %w", err)
 	}
 
+	// GenerateCloudflareWarp stores ConfigContent as a WireGuard INI file (not
+	// JSON), so the outbound must be derived from RawURI. The previous code
+	// attempted json.Unmarshal on the INI first, which could never succeed.
 	var hop1Outbound, hop2Outbound map[string]interface{}
-	// GenerateCloudflareWarp stores ConfigContent as INI; try JSON first, fallback to RawURI parsing
-	var hop1Config, hop2Config struct {
-		Outbounds []map[string]interface{} `json:"outbounds"`
+	var err1, err2 error
+	if hop1.RawURI != "" {
+		hop1Outbound, err1 = parseWireguardOutbound(hop1.RawURI)
 	}
-	if err := json.Unmarshal([]byte(hop1.ConfigContent), &hop1Config); err == nil && len(hop1Config.Outbounds) > 0 {
-		hop1Outbound = hop1Config.Outbounds[0]
-	} else if hop1.RawURI != "" {
-		hop1Outbound, _ = parseWireguardOutbound(hop1.RawURI)
-	}
-	if err := json.Unmarshal([]byte(hop2.ConfigContent), &hop2Config); err == nil && len(hop2Config.Outbounds) > 0 {
-		hop2Outbound = hop2Config.Outbounds[0]
-	} else if hop2.RawURI != "" {
-		hop2Outbound, _ = parseWireguardOutbound(hop2.RawURI)
+	if hop2.RawURI != "" {
+		hop2Outbound, err2 = parseWireguardOutbound(hop2.RawURI)
 	}
 
 	if hop1Outbound == nil || hop2Outbound == nil {
-		return nil, fmt.Errorf("failed to extract outbound configurations for WARP on WARP")
+		return nil, fmt.Errorf("failed to extract outbound configurations for WARP on WARP (hop1: %v, hop2: %v)", err1, err2)
 	}
 
-	hop1Outbound["tag"] = "warp-hop1"
-	delete(hop1Outbound, "detour")
+	hop1EP := convertWireGuardOutboundToEndpoint(hop1Outbound)
+	hop1EP["tag"] = "warp-hop1"
+	delete(hop1EP, "detour")
 
-	hop2Outbound["tag"] = "proxy"
-	hop2Outbound["detour"] = "warp-hop1"
+	hop2EP := convertWireGuardOutboundToEndpoint(hop2Outbound)
+	hop2EP["tag"] = "proxy"
+	hop2EP["detour"] = "warp-hop1"
 
 	// Build custom nested config
 	inbounds := []map[string]interface{}{
@@ -1763,57 +2210,67 @@ func GenerateWarpOnWarp(cleanIP string, port int, egressIP string, egressPort in
 			"type":        "mixed",
 			"tag":         "mixed-in",
 			"listen":      "127.0.0.1",
-			"listen_port": 10808,
-			"sniff":       true,
+			"listen_port": config.SocksPort,
 		},
 		{
 			"type":        "http",
 			"tag":         "http-in",
 			"listen":      "127.0.0.1",
-			"listen_port": 10809,
-			"sniff":       true,
+			"listen_port": config.HttpPort,
 		},
 		{
-			"type":                     "tun",
-			"tag":                      "tun-in",
-			"interface_name":           "NexVPN-TUN",
-			"inet4_address":            []string{"172.19.0.1/30"},
+			"type":           "tun",
+			"tag":            "tun-in",
+			"interface_name": tunIfaceName(settings),
+			"address": []string{
+				"172.19.0.1/30",
+				"fdfe:dcba:9876::1/126",
+			},
 			"auto_route":               true,
 			"strict_route":             false,
 			"stack":                    "gvisor",
-			"sniff":                    true,
 			"endpoint_independent_nat": true,
 		},
 	}
 
+	endpoints := []map[string]interface{}{
+		hop1EP,
+		hop2EP,
+	}
+
 	outbounds := []map[string]interface{}{
-		hop2Outbound,
-		hop1Outbound,
 		{"type": "direct", "tag": "direct"},
-		{"type": "dns", "tag": "dns-out"},
 		{"type": "block", "tag": "block"},
 	}
 
 	cfg := map[string]interface{}{
 		"log":       map[string]interface{}{"level": "warn"},
 		"inbounds":  inbounds,
+		"endpoints": endpoints,
 		"outbounds": outbounds,
 		"dns": map[string]interface{}{
+			// Both hops are WireGuard endpoints, so resolution cannot depend on
+			// either of them — same deadlock as the single-hop WG engine.
+			"timeout": dnsQueryTimeout,
 			"servers": []map[string]interface{}{
-				{"tag": "dns-direct", "address": "local", "detour": "direct"},
-				{"tag": "dns-remote", "address": "tcp://1.1.1.1", "address_resolver": "dns-direct", "detour": "proxy"},
-			},
-			"rules": []map[string]interface{}{
-				{"outbound": "direct", "server": "dns-direct"},
+				{"tag": "dns-direct", "type": "local", "detour": "direct"},
+				// No detour: since sing-box 1.12 a DNS server without one dials
+				// directly, whereas naming the empty `direct` outbound is a
+				// startup FATAL (see BuildSingBoxConfigAdvanced).
+				{"tag": "dns-remote", "type": "tcp", "server": "1.1.1.1", "server_port": 53},
 			},
 			"final":    "dns-remote",
 			"strategy": "ipv4_only",
 		},
 		"route": map[string]interface{}{
-			"auto_detect_interface": true,
-			"final":                 "proxy",
+			"auto_detect_interface":   true,
+			"final":                   "proxy",
+			"default_domain_resolver": "dns-direct",
 			"rules": []map[string]interface{}{
-				{"protocol": []string{"dns"}, "outbound": "dns-out"},
+				{"action": "sniff"},
+				{"port": []int{53}, "action": "hijack-dns"},
+				{"network": "udp", "port": []int{53}, "action": "hijack-dns"},
+				{"protocol": []string{"dns"}, "action": "hijack-dns"},
 				{"ip_cidr": []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"}, "outbound": "direct"},
 				{"ip_cidr": []string{cleanIP + "/32"}, "outbound": "direct"},
 			},
@@ -1859,9 +2316,12 @@ func FetchSubscription(subURL string) ([]*ParsedNode, error) {
 		}
 		defer resp.Body.Close()
 
-		data, err := io.ReadAll(resp.Body)
+		data, err := io.ReadAll(io.LimitReader(resp.Body, maxSubscriptionBodyBytes+1))
 		if err != nil {
 			return nil, err
+		}
+		if len(data) > maxSubscriptionBodyBytes {
+			return nil, fmt.Errorf("subscription response exceeds the %d MiB limit", maxSubscriptionBodyBytes/(1<<20))
 		}
 		body = string(data)
 	} else {
@@ -2053,11 +2513,33 @@ func SmartPing(server string, port int, protocol config.Protocol, timeout time.D
 		}
 	}
 
-	if protocol == config.ProtocolWireGuard || protocol == config.ProtocolWARP {
-		return UDPWireGuardPing(server, port, timeout)
-	}
+	return smartPingProbe(protocol)(server, port, timeout)
+}
 
-	return TCPPing(server, port, timeout)
+// smartPingProbe chooses the probe for a protocol.
+//
+// OpenVPN gets the plain connect, not TCPPing. TCPPing adds a TLS handshake with
+// ServerName set to the address whenever the port is 443 — the right probe for a
+// TLS-based proxy (it detects SNI filtering), but the wrong one for an OpenVPN
+// relay, whose control channel is OpenVPN's own TLS/DTLS layer keyed to the
+// profile's certificate. An OpenVPN server has no HTTPS listener, and its
+// certificate is never issued for a bare IP literal, so every VPN Gate relay
+// measured -1 on port 443 and the whole OpenVPN ping feature looked broken while
+// TunnelBear's per-country test (a plain dial) worked. Reachability is the
+// honest question here; whether the handshake survives is answered by the
+// connect attempt itself.
+//
+// Split out from SmartPing so the routing decision can be asserted without
+// opening a socket on port 443.
+func smartPingProbe(protocol config.Protocol) func(string, int, time.Duration) int {
+	switch protocol {
+	case config.ProtocolWireGuard, config.ProtocolWARP:
+		return UDPWireGuardPing
+	case config.ProtocolOpenVPN:
+		return TCPReachable
+	default:
+		return TCPPing
+	}
 }
 
 // UDPWireGuardPing accurately measures real network round-trip latency to WireGuard / Cloudflare WARP endpoints
@@ -2149,6 +2631,84 @@ func TCPPing(server string, port int, timeout time.Duration) int {
 	return elapsed
 }
 
+// TCPReachable measures a plain TCP connect to server:port, returning the
+// latency in milliseconds or -1 when nothing accepted the connection.
+//
+// This is the "is the host up?" probe, and it is deliberately different from
+// TCPPing above. TCPPing adds a TLS handshake with ServerName set to the server
+// address whenever the port is 443, which is the right test for a clean-IP scan
+// (it detects SNI-based blocking) but the wrong one for reachability: an
+// `ip:443` Reality endpoint has no certificate issued for the IP literal, so the
+// handshake fails and a perfectly healthy server is reported dead.
+//
+// Use this one when the question is whether a server answers at all; the
+// protocol-specific proof comes later, from the connect attempt itself.
+func TCPReachable(server string, port int, timeout time.Duration) int {
+	if port <= 0 {
+		port = 443
+	}
+
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(server, strconv.Itoa(port)), timeout)
+	if err != nil {
+		return -1
+	}
+	_ = conn.Close()
+
+	elapsed := int(time.Since(start).Milliseconds())
+	if elapsed <= 0 {
+		elapsed = 1
+	}
+	return elapsed
+}
+
+// latencySamples is how many timed round trips MeasureLatency takes after the
+// warm-up. One sample is a coin flip; the minimum of two is stable enough to sort
+// a list by and still cheap at 20 concurrent probes.
+const latencySamples = 2
+
+// MeasureLatency reports the best of several plain TCP round trips, in
+// milliseconds, or -1 when the endpoint never answered.
+//
+// Deliberately not TCPPing. That one also performs a TLS handshake whenever the
+// port is 443 and treats a failed handshake as a dead server — the right test for
+// a clean-IP scan, where a CDN edge that does not answer for the SNI is useless,
+// but the wrong one for "how fast is this node". Most subscription profiles are
+// `ip:443` Reality endpoints whose certificate is not issued for the IP literal,
+// so a healthy server was reported as unreachable and the number in the server
+// list lied.
+//
+// The first dial is a warm-up and its timing is thrown away: a cold attempt
+// carries route establishment and, on Windows, the neighbour lookup, which is why
+// the single-shot figure was routinely several times what the same server produced
+// a moment later. What is reported is the minimum of the samples — the convention
+// v2rayN uses, so the numbers are comparable with the ones users already know from
+// other clients.
+func MeasureLatency(server string, port int, timeout time.Duration) int {
+	if server == "" {
+		return -1
+	}
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+
+	if warm := TCPReachable(server, port, timeout); warm < 0 {
+		return -1
+	}
+
+	best := -1
+	for i := 0; i < latencySamples; i++ {
+		sample := TCPReachable(server, port, timeout)
+		if sample < 0 {
+			continue
+		}
+		if best < 0 || sample < best {
+			best = sample
+		}
+	}
+	return best
+}
+
 // RealDelayPing tests real HTTP internet roundtrip latency through the active local proxy
 func RealDelayPing(proxyPort int, testURL string, timeout time.Duration) (int, error) {
 	if testURL == "" {
@@ -2191,6 +2751,18 @@ func RealDelayPing(proxyPort int, testURL string, timeout time.Duration) (int, e
 		return -1, err
 	}
 	defer resp.Body.Close()
+
+	// The status code decides, not the absence of a transport error.
+	//
+	// A proxy whose upstream is dead still answers: sing-box replies
+	// `502 Bad Gateway` from its inbound when the outbound dial fails, and Go's
+	// http.Client returns err == nil for any HTTP status. Without this check a
+	// completely dead tunnel looked healthy, so the engine announced
+	// "connected" while the core was logging "WireGuard is not ready yet" on
+	// the very same request. `generate_204` must come back 204.
+	if resp.StatusCode >= 400 {
+		return -1, fmt.Errorf("proxy returned HTTP %d for %s", resp.StatusCode, testURL)
+	}
 
 	latency := int(time.Since(start).Milliseconds())
 	return latency, nil
@@ -2300,8 +2872,115 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	return nil, fmt.Errorf("all ip lookup providers failed")
 }
 
+// LookupIPInfoByIP resolves geolocation and ISP metadata for an arbitrary IP
+// address (not the local outbound IP). It is used to attribute a DNS resolver
+// address to a provider so leak diagnostics can report the resolver's ISP.
+func LookupIPInfoByIP(ctx context.Context, ip net.IP) (*IPInfo, error) {
+	if ip == nil {
+		return nil, fmt.Errorf("nil ip")
+	}
+	target := ip.String()
+
+	client := &http.Client{Timeout: 6 * time.Second}
+
+	// Primary: ip-api.com (supports direct IP queries, no proxy).
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		"http://ip-api.com/json/"+url.PathEscape(target)+"?fields=status,country,countryCode,city,isp,query", nil)
+	if err == nil {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
+		if resp, respErr := client.Do(req); respErr == nil {
+			defer resp.Body.Close()
+			var data struct {
+				Status      string `json:"status"`
+				Country     string `json:"country"`
+				CountryCode string `json:"countryCode"`
+				City        string `json:"city"`
+				ISP         string `json:"isp"`
+				Query       string `json:"query"`
+			}
+			if decodeErr := json.NewDecoder(resp.Body).Decode(&data); decodeErr == nil && data.Query != "" {
+				return &IPInfo{
+					IP:          data.Query,
+					Country:     data.Country,
+					CountryCode: strings.ToUpper(data.CountryCode),
+					City:        data.City,
+					ISP:         data.ISP,
+				}, nil
+			}
+		}
+	}
+
+	// Fallback: ipwho.is
+	req2, err := http.NewRequestWithContext(ctx, "GET", "http://ipwho.is/"+url.PathEscape(target), nil)
+	if err == nil {
+		req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
+		if resp, respErr := client.Do(req2); respErr == nil {
+			defer resp.Body.Close()
+			var data struct {
+				Success     bool   `json:"success"`
+				IP          string `json:"ip"`
+				Country     string `json:"country"`
+				CountryCode string `json:"country_code"`
+				City        string `json:"city"`
+				Connection  struct {
+					ISP string `json:"isp"`
+				} `json:"connection"`
+			}
+			if decodeErr := json.NewDecoder(resp.Body).Decode(&data); decodeErr == nil && data.IP != "" {
+				return &IPInfo{
+					IP:          data.IP,
+					Country:     data.Country,
+					CountryCode: strings.ToUpper(data.CountryCode),
+					City:        data.City,
+					ISP:         data.Connection.ISP,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("ip lookup failed for %s", target)
+}
+
 func isIPAddress(host string) bool {
 	return net.ParseIP(host) != nil
+}
+
+// outboundIsLayer3 reports whether an outbound carries raw IP packets instead of
+// handing the destination name to a remote server.
+//
+// The distinction decides where DNS resolution can live. A proxy-style outbound
+// (VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC) receives the domain and
+// resolves it on the far side, so its own DNS detour may point back through the
+// tunnel. A Layer-3 outbound only moves packets addressed to real IPs, so the
+// name has to be resolved *before* the tunnel is useful, and pointing that
+// lookup at the tunnel deadlocks the whole session (see BuildSingBoxConfigAdvanced).
+func outboundIsLayer3(outbound map[string]interface{}) bool {
+	outType, _ := outbound["type"].(string)
+	switch strings.ToLower(strings.TrimSpace(outType)) {
+	case "wireguard", "tailscale":
+		return true
+	}
+	return false
+}
+
+// IsXhttpURI reports whether a proxy URI explicitly uses the Xray-only
+// xhttp or splithttp transport.
+func IsXhttpURI(raw string) bool {
+	// Strip URL fragment first to prevent emoji/unicode or incomplete escape errors
+	clean := strings.TrimSpace(raw)
+	if idx := strings.Index(clean, "#"); idx != -1 {
+		clean = clean[:idx]
+	}
+	parsed, err := url.Parse(clean)
+	if err == nil && parsed != nil && parsed.Scheme != "" {
+		transport := strings.ToLower(parsed.Query().Get("type"))
+		if transport == "xhttp" || transport == "splithttp" {
+			return true
+		}
+	}
+	// Fallback check in case of malformed URL query escaping
+	lower := strings.ToLower(clean)
+	return strings.Contains(lower, "type=xhttp") || strings.Contains(lower, "type=splithttp")
 }
 
 func decodeBase64(s string) (string, error) {
@@ -2397,12 +3076,16 @@ func ParseXrayOutboundFromURI(rawURI string) (map[string]interface{}, string, er
 
 		if security == "reality" {
 			cleanPbk := strings.TrimRight(pbk, "=")
+			spx := q.Get("spx")
+			if decodedSpx, err := url.QueryUnescape(spx); err == nil && decodedSpx != "" {
+				spx = decodedSpx
+			}
 			streamSettings["realitySettings"] = map[string]interface{}{
 				"serverName":  sni,
 				"fingerprint": fp,
 				"publicKey":   cleanPbk,
 				"shortId":     sid,
-				"spiderX":     "",
+				"spiderX":     spx,
 			}
 		} else if security == "tls" {
 			streamSettings["tlsSettings"] = map[string]interface{}{
@@ -2435,9 +3118,21 @@ func ParseXrayOutboundFromURI(rawURI string) (map[string]interface{}, string, er
 			}
 		} else if netType == "xhttp" || netType == "splithttp" {
 			streamSettings["network"] = "splithttp"
-			streamSettings["splithttpSettings"] = map[string]interface{}{
+			splitSettings := map[string]interface{}{
 				"path": path,
 				"host": hostHeader,
+			}
+			if mode := q.Get("mode"); mode != "" {
+				splitSettings["mode"] = mode
+			}
+			streamSettings["splithttpSettings"] = splitSettings
+		}
+
+		if netType == "tcp" && q.Get("headerType") == "http" {
+			streamSettings["tcpSettings"] = map[string]interface{}{
+				"header": map[string]interface{}{
+					"type": "http",
+				},
 			}
 		}
 
@@ -2587,9 +3282,55 @@ func ParseXrayOutboundFromURI(rawURI string) (map[string]interface{}, string, er
 		if port == 0 {
 			port = 443
 		}
-		sni := u.Query().Get("sni")
-		if sni == "" {
+		q := u.Query()
+		sni := q.Get("sni")
+		hostHeader := q.Get("host")
+		if sni == "" && hostHeader != "" && !isIPAddress(hostHeader) {
+			sni = hostHeader
+		}
+		if sni == "" && !isIPAddress(host) {
 			sni = host
+		}
+		if hostHeader == "" {
+			if sni != "" && !isIPAddress(sni) {
+				hostHeader = sni
+			} else if !isIPAddress(host) {
+				hostHeader = host
+			}
+		}
+		netType := q.Get("type")
+		if netType == "" {
+			netType = "tcp"
+		}
+		path := q.Get("path")
+		if path != "" && !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+
+		streamSettings := map[string]interface{}{
+			"network":  netType,
+			"security": "tls",
+			"tlsSettings": map[string]interface{}{
+				"serverName":    sni,
+				"allowInsecure": false,
+				"fingerprint":   "chrome",
+			},
+		}
+		if netType == "ws" {
+			streamSettings["wsSettings"] = map[string]interface{}{
+				"path": path,
+				"headers": map[string]string{
+					"Host": hostHeader,
+				},
+			}
+		} else if netType == "grpc" {
+			serviceName := q.Get("serviceName")
+			if serviceName == "" {
+				serviceName = q.Get("service_name")
+			}
+			streamSettings["grpcSettings"] = map[string]interface{}{
+				"serviceName": serviceName,
+			}
 		}
 
 		outbound := map[string]interface{}{
@@ -2604,14 +3345,7 @@ func ParseXrayOutboundFromURI(rawURI string) (map[string]interface{}, string, er
 					},
 				},
 			},
-			"streamSettings": map[string]interface{}{
-				"security": "tls",
-				"tlsSettings": map[string]interface{}{
-					"serverName":    sni,
-					"allowInsecure": false,
-					"fingerprint":   "chrome",
-				},
-			},
+			"streamSettings": streamSettings,
 		}
 		return outbound, host, nil
 	}
@@ -2817,6 +3551,15 @@ func BuildXrayConfigFromURI(rawURI string, httpPort int, socksPort int, routingM
 			},
 		)
 	}
+
+	// User-defined routing overrides.
+	//
+	// Xray, unlike sing-box, ends its rule list with an unconditional catch-all
+	// that routes everything to the proxy. The overrides therefore have to be
+	// inserted *before* that entry — appending them afterwards would leave them
+	// unreachable, and the failure would be silent: the config is valid, the
+	// core starts, and the rule simply never applies.
+	rules = append(rules, UserRoutingRulesXray(settings.RoutingRules, "proxy")...)
 
 	// Final default to proxy
 	rules = append(rules, map[string]interface{}{

@@ -1,5 +1,42 @@
 export namespace config {
 	
+	export class BackupSummary {
+	    profiles_imported: number;
+	    settings_restored: boolean;
+	    // Go type: time
+	    created_at: any;
+	    is_encrypted: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackupSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.profiles_imported = source["profiles_imported"];
+	        this.settings_restored = source["settings_restored"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.is_encrypted = source["is_encrypted"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ConnectionSession {
 	    id: string;
 	    profile_id: string;
@@ -191,8 +228,19 @@ export namespace config {
 	    quota_alert_percentage: number;
 	    stealth_mode_enabled: boolean;
 	    privacy_shield_enabled: boolean;
+	    remote_controller_lan_only: boolean;
+	    remote_controller_tls: boolean;
+	    allow_unverified_core_downloads: boolean;
 	    notifications_enabled: boolean;
 	    custom_doh_url?: string;
+	    smart_routing_enabled: boolean;
+	    ai_routing_mode: string;
+	    streaming_routing_mode: string;
+	    domestic_routing_mode: string;
+	    auto_mtu_enabled: boolean;
+	    custom_mtu: number;
+	    quota_webhook_url?: string;
+	    custom_sni_pool?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -253,8 +301,19 @@ export namespace config {
 	        this.quota_alert_percentage = source["quota_alert_percentage"];
 	        this.stealth_mode_enabled = source["stealth_mode_enabled"];
 	        this.privacy_shield_enabled = source["privacy_shield_enabled"];
+	        this.remote_controller_lan_only = source["remote_controller_lan_only"];
+	        this.remote_controller_tls = source["remote_controller_tls"];
+	        this.allow_unverified_core_downloads = source["allow_unverified_core_downloads"];
 	        this.notifications_enabled = source["notifications_enabled"];
 	        this.custom_doh_url = source["custom_doh_url"];
+	        this.smart_routing_enabled = source["smart_routing_enabled"];
+	        this.ai_routing_mode = source["ai_routing_mode"];
+	        this.streaming_routing_mode = source["streaming_routing_mode"];
+	        this.domestic_routing_mode = source["domestic_routing_mode"];
+	        this.auto_mtu_enabled = source["auto_mtu_enabled"];
+	        this.custom_mtu = source["custom_mtu"];
+	        this.quota_webhook_url = source["quota_webhook_url"];
+	        this.custom_sni_pool = source["custom_sni_pool"];
 	    }
 	}
 
@@ -397,6 +456,116 @@ export namespace core {
 		}
 	}
 	
+	export class DiagnosticReport {
+	    healthy: boolean;
+	    issues_found: string[];
+	    wintun_status: string;
+	    proxy_status: string;
+	    port_status: {[key: number]: string};
+	    binaries_status: {[key: string]: string};
+	    dns_status: string;
+	    platform: string;
+	    // Go type: time
+	    timestamp: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiagnosticReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.healthy = source["healthy"];
+	        this.issues_found = source["issues_found"];
+	        this.wintun_status = source["wintun_status"];
+	        this.proxy_status = source["proxy_status"];
+	        this.port_status = source["port_status"];
+	        this.binaries_status = source["binaries_status"];
+	        this.dns_status = source["dns_status"];
+	        this.platform = source["platform"];
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DiagnosticRepairResult {
+	    success: boolean;
+	    actions_taken: string[];
+	    post_repair_health?: DiagnosticReport;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiagnosticRepairResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.actions_taken = source["actions_taken"];
+	        this.post_repair_health = this.convertValues(source["post_repair_health"], DiagnosticReport);
+	        this.message = source["message"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class GamingOptimizationStatus {
+	    active: boolean;
+	    tcp_ack_frequency_applied: boolean;
+	    tcp_nodelay_applied: boolean;
+	    network_throttling_tuned: boolean;
+	    system_responsiveness: boolean;
+	    optimized_interfaces: string[];
+	    supported: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GamingOptimizationStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.active = source["active"];
+	        this.tcp_ack_frequency_applied = source["tcp_ack_frequency_applied"];
+	        this.tcp_nodelay_applied = source["tcp_nodelay_applied"];
+	        this.network_throttling_tuned = source["network_throttling_tuned"];
+	        this.system_responsiveness = source["system_responsiveness"];
+	        this.optimized_interfaces = source["optimized_interfaces"];
+	        this.supported = source["supported"];
+	        this.message = source["message"];
+	    }
+	}
 	export class LogEntry {
 	    // Go type: time
 	    timestamp: any;
@@ -414,6 +583,55 @@ export namespace core {
 	        this.level = source["level"];
 	        this.message = source["message"];
 	        this.source = source["source"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class QuotaAlertInfo {
+	    subscription_url: string;
+	    subscription_name: string;
+	    total_bytes: number;
+	    used_bytes: number;
+	    remaining_bytes: number;
+	    used_percent: number;
+	    // Go type: time
+	    expires_at?: any;
+	    days_remaining: number;
+	    alert_triggered: boolean;
+	    alert_reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QuotaAlertInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.subscription_url = source["subscription_url"];
+	        this.subscription_name = source["subscription_name"];
+	        this.total_bytes = source["total_bytes"];
+	        this.used_bytes = source["used_bytes"];
+	        this.remaining_bytes = source["remaining_bytes"];
+	        this.used_percent = source["used_percent"];
+	        this.expires_at = this.convertValues(source["expires_at"], null);
+	        this.days_remaining = source["days_remaining"];
+	        this.alert_triggered = source["alert_triggered"];
+	        this.alert_reason = source["alert_reason"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -507,8 +725,12 @@ export namespace discovery {
 	    asn: string;
 	    recommended_protocol: string;
 	    recommended_fragment: string;
+	    fragment_size: string;
+	    fragment_sleep: string;
 	    recommended_dns: string;
 	    status_score: number;
+	    detection_ms: number;
+	    detected: boolean;
 	    advice: string;
 	    advice_en: string;
 	
@@ -527,10 +749,80 @@ export namespace discovery {
 	        this.asn = source["asn"];
 	        this.recommended_protocol = source["recommended_protocol"];
 	        this.recommended_fragment = source["recommended_fragment"];
+	        this.fragment_size = source["fragment_size"];
+	        this.fragment_sleep = source["fragment_sleep"];
 	        this.recommended_dns = source["recommended_dns"];
 	        this.status_score = source["status_score"];
+	        this.detection_ms = source["detection_ms"];
+	        this.detected = source["detected"];
 	        this.advice = source["advice"];
 	        this.advice_en = source["advice_en"];
+	    }
+	}
+	export class OpenVPNServer {
+	    id: string;
+	    source_id: string;
+	    host_name: string;
+	    ip: string;
+	    port: number;
+	    country: string;
+	    country_code: string;
+	    operator: string;
+	    score: number;
+	    ping_ms: number;
+	    speed_bps: number;
+	    sessions: number;
+	    latency_ms: number;
+	    is_alive: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenVPNServer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.source_id = source["source_id"];
+	        this.host_name = source["host_name"];
+	        this.ip = source["ip"];
+	        this.port = source["port"];
+	        this.country = source["country"];
+	        this.country_code = source["country_code"];
+	        this.operator = source["operator"];
+	        this.score = source["score"];
+	        this.ping_ms = source["ping_ms"];
+	        this.speed_bps = source["speed_bps"];
+	        this.sessions = source["sessions"];
+	        this.latency_ms = source["latency_ms"];
+	        this.is_alive = source["is_alive"];
+	    }
+	}
+	export class OpenVPNSourceInfo {
+	    id: string;
+	    name: string;
+	    description: string;
+	    url: string;
+	    operator: string;
+	    license: string;
+	    needs_credentials: boolean;
+	    default_port: number;
+	    supports_probe: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenVPNSourceInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.url = source["url"];
+	        this.operator = source["operator"];
+	        this.license = source["license"];
+	        this.needs_credentials = source["needs_credentials"];
+	        this.default_port = source["default_port"];
+	        this.supports_probe = source["supports_probe"];
 	    }
 	}
 	export class SyncPayload {
@@ -603,6 +895,48 @@ export namespace discovery {
 	        this.source = source["source"];
 	    }
 	}
+	export class TunnelBearAccountInfo {
+	    id: string;
+	    username: string;
+	    auth: string;
+	    last_error?: string;
+	    last_connected?: string;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TunnelBearAccountInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.username = source["username"];
+	        this.auth = source["auth"];
+	        this.last_error = source["last_error"];
+	        this.last_connected = source["last_connected"];
+	        this.active = source["active"];
+	    }
+	}
+	export class TunnelBearCountry {
+	    id: string;
+	    name: string;
+	    name_fa: string;
+	    code: string;
+	    host: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TunnelBearCountry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.name_fa = source["name_fa"];
+	        this.code = source["code"];
+	        this.host = source["host"];
+	    }
+	}
 
 }
 
@@ -626,6 +960,7 @@ export namespace main {
 	    cidr: string;
 	    region: string;
 	    description: string;
+	    source: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CleanIPRange(source);
@@ -636,6 +971,7 @@ export namespace main {
 	        this.cidr = source["cidr"];
 	        this.region = source["region"];
 	        this.description = source["description"];
+	        this.source = source["source"];
 	    }
 	}
 	export class RepairStep {
@@ -690,11 +1026,32 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class MTUOptimizationResult {
+	    mtu: number;
+	    applied: boolean;
+	    supported: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MTUOptimizationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mtu = source["mtu"];
+	        this.applied = source["applied"];
+	        this.supported = source["supported"];
+	        this.message = source["message"];
+	    }
+	}
 	export class MobileRemoteInfo {
 	    running: boolean;
 	    url: string;
 	    auth_url: string;
 	    pin: string;
+	    idle_timeout_sec: number;
+	    tls_active: boolean;
+	    lan_only: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new MobileRemoteInfo(source);
@@ -706,6 +1063,27 @@ export namespace main {
 	        this.url = source["url"];
 	        this.auth_url = source["auth_url"];
 	        this.pin = source["pin"];
+	        this.idle_timeout_sec = source["idle_timeout_sec"];
+	        this.tls_active = source["tls_active"];
+	        this.lan_only = source["lan_only"];
+	    }
+	}
+	export class PsiphonOptions {
+	    tunnel_protocol: string;
+	    socks_port: number;
+	    http_port: number;
+	    disable_split: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PsiphonOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tunnel_protocol = source["tunnel_protocol"];
+	        this.socks_port = source["socks_port"];
+	        this.http_port = source["http_port"];
+	        this.disable_split = source["disable_split"];
 	    }
 	}
 	export class RadarProtocolResult {
@@ -793,6 +1171,36 @@ export namespace main {
 	        this.release_url = source["release_url"];
 	        this.release_notes = source["release_notes"];
 	        this.error = source["error"];
+	    }
+	}
+	export class UsageReport {
+	    window_start: string;
+	    window_end: string;
+	    window_kind: string;
+	    bytes_from_history: number;
+	    bytes_current_session: number;
+	    total_bytes: number;
+	    session_count: number;
+	    quota_bytes: number;
+	    used_percent: number;
+	    history_available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UsageReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.window_start = source["window_start"];
+	        this.window_end = source["window_end"];
+	        this.window_kind = source["window_kind"];
+	        this.bytes_from_history = source["bytes_from_history"];
+	        this.bytes_current_session = source["bytes_current_session"];
+	        this.total_bytes = source["total_bytes"];
+	        this.session_count = source["session_count"];
+	        this.quota_bytes = source["quota_bytes"];
+	        this.used_percent = source["used_percent"];
+	        this.history_available = source["history_available"];
 	    }
 	}
 
@@ -894,6 +1302,50 @@ export namespace parser {
 	        this.actions = source["actions"];
 	    }
 	}
+	export class SNIPoolItem {
+	    domain: string;
+	    provider: string;
+	    latency_ms: number;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SNIPoolItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.provider = source["provider"];
+	        this.latency_ms = source["latency_ms"];
+	        this.status = source["status"];
+	    }
+	}
+	export class ServiceUnblockResult {
+	    id: string;
+	    name: string;
+	    category: string;
+	    status: string;
+	    latency_ms: number;
+	    http_status: number;
+	    region?: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServiceUnblockResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.category = source["category"];
+	        this.status = source["status"];
+	        this.latency_ms = source["latency_ms"];
+	        this.http_status = source["http_status"];
+	        this.region = source["region"];
+	        this.message = source["message"];
+	    }
+	}
 	export class SubscriptionUserInfo {
 	    upload_bytes: number;
 	    download_bytes: number;
@@ -959,8 +1411,10 @@ export namespace sysproxy {
 	    id: string;
 	    name: string;
 	    exe_name: string;
+	    path: string;
 	    category: string;
 	    is_running: boolean;
+	    is_installed: boolean;
 	    icon_name: string;
 	
 	    static createFrom(source: any = {}) {
@@ -972,8 +1426,10 @@ export namespace sysproxy {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.exe_name = source["exe_name"];
+	        this.path = source["path"];
 	        this.category = source["category"];
 	        this.is_running = source["is_running"];
+	        this.is_installed = source["is_installed"];
 	        this.icon_name = source["icon_name"];
 	    }
 	}

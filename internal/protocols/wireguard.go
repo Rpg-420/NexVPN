@@ -59,7 +59,7 @@ func (a *WireGuardAdapter) Start(ctx context.Context, configContent string) erro
 		if err != nil {
 			return fmt.Errorf("failed to parse wireguard .conf: %w", err)
 		}
-		sbJSON, err := parser.BuildSingBoxConfig(outbound, "tun", "bypass_iran", host)
+		sbJSON, err := parser.BuildSingBoxConfigAdvanced(outbound, "tun", "bypass_iran", host, config.Settings{})
 		if err != nil {
 			return fmt.Errorf("failed to build wireguard singbox config: %w", err)
 		}

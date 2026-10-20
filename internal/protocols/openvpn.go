@@ -3,12 +3,14 @@ package protocols
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -31,6 +33,17 @@ type OpenVPNAdapter struct {
 	logger    LoggerFunc
 	onExit    OnExitFunc
 	lockFile  string
+	lastError string
+	exitCh    chan struct{}
+	exitOnce  sync.Once
+	// activeDriver is the OpenVPN driver that actually carried the tunnel:
+	// "wintun" or "tap-windows6". Start() prefers Wintun but silently retries
+	// with tap-windows6 when Wintun is unusable — for instance when every Wintun
+	// adapter on the machine is already locked, which OpenVPN reports as
+	// WINTUN_IN_USE. Without recording which one won, the engine announced
+	// "Full-System Routing with Wintun" over a TAP tunnel, so the log and the
+	// adapter actually in use (Ethernet 2) contradicted each other.
+	activeDriver string
 }
 
 func NewOpenVPNAdapter() *OpenVPNAdapter {
@@ -61,12 +74,42 @@ func (a *OpenVPNAdapter) SetCredentials(username, password string) {
 	a.mu.Unlock()
 }
 
+// ActiveDriver reports the driver the running tunnel is actually using, or ""
+// when no driver was passed (non-Windows, or the OS default). Callers must treat
+// an empty value as "unknown" rather than assuming Wintun.
+func (a *OpenVPNAdapter) ActiveDriver() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.activeDriver
+}
+
 func (a *OpenVPNAdapter) log(level, msg string) {
 	a.mu.RLock()
 	logger := a.logger
 	a.mu.RUnlock()
 	if logger != nil {
 		logger(level, msg, "openvpn")
+	}
+}
+
+// fail records a terminal protocol error in exactly one canonical place:
+// it stores the message for LastError(), logs it once, and pushes it onto
+// errCh (non-blocking so a stalled consumer can never wedge the log reader).
+//
+// Error messages MUST be English, machine-readable, and prefixed with a stable
+// code ("AUTH_FAILED: ...", "TLS_FAILED: ...", "DNS_FAILED: ...",
+// "WINTUN_IN_USE: ..."). The UI maps the prefix to a localized string, so
+// hardcoding a translated sentence here both breaks that mapping and produces
+// contradictory output. This helper exists to make the "one event, one message"
+// rule the path of least resistance.
+func (a *OpenVPNAdapter) fail(errCh chan<- error, msg string) {
+	a.mu.Lock()
+	a.lastError = msg
+	a.mu.Unlock()
+	a.log("error", msg)
+	select {
+	case errCh <- errors.New(msg):
+	default:
 	}
 }
 
@@ -93,6 +136,12 @@ func sanitizeOpenVPNConfig(content string) string {
 		if isTCP && strings.HasPrefix(lowerLine, "explicit-exit-notify") {
 			continue
 		}
+		// NexVPN owns the OpenVPN Wintun adapter selection. A stale profile-level
+		// device name can point at another VPN application's adapter and produce
+		// WINTUN_IN_USE before OpenVPN can initialize its tunnel.
+		if strings.HasPrefix(lowerLine, "dev-node") || strings.HasPrefix(lowerLine, "windows-driver") {
+			continue
+		}
 
 		// Fix unclosed quotes on individual lines
 		quoteCount := strings.Count(trimmed, "\"")
@@ -106,6 +155,82 @@ func sanitizeOpenVPNConfig(content string) string {
 		cleaned = append(cleaned, trimmed)
 	}
 	return strings.Join(cleaned, "\n")
+}
+
+type WindowsAdapterInfo struct {
+	Name   string
+	GUID   string
+	Driver string
+}
+
+func queryOpenVPNAdapters(ovpnBin string) []WindowsAdapterInfo {
+	cmd := exec.Command(ovpnBin, "--show-adapters")
+	cmd.SysProcAttr = sysproc.HideWindowAttr()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var result []WindowsAdapterInfo
+	re := regexp.MustCompile(`'([^']+)'\s+\{([^}]+)\}\s+([a-zA-Z0-9\-_]+)`)
+	for _, line := range strings.Split(string(out), "\n") {
+		matches := re.FindStringSubmatch(line)
+		if len(matches) == 4 {
+			result = append(result, WindowsAdapterInfo{
+				Name:   matches[1],
+				GUID:   matches[2],
+				Driver: strings.ToLower(matches[3]),
+			})
+		}
+	}
+	return result
+}
+
+// How long the Wintun adapter pool is given to drain before OpenVPN is started
+// on Wintun.
+//
+// Windows releases a Wintun binding asynchronously: the previous core process can
+// be gone for several seconds while the adapter is still reported as bound, and
+// that is precisely the state in which OpenVPN prints "All Wintun network
+// adapters are currently locked or disabled" and dies — after a full TLS
+// handshake, because the adapter is only opened once the tunnel is negotiated.
+// A fixed sleep could only guess at the delay; a poll knows when it is done, and
+// costs nothing at all when there was nothing to wait for.
+const (
+	wintunPoolPollInterval = 500 * time.Millisecond
+	wintunPoolWaitBudget   = 6 * time.Second
+)
+
+// waitForNexVPNWintunAdaptersGone removes leftover NexVPN Wintun adapters and
+// waits, within a bound, for the pool to be free again. It reports whether the
+// pool looks usable for a Wintun-backed OpenVPN connection.
+//
+// Only NexVPN's own adapters are touched; a third-party Wintun adapter belongs
+// to another product and is never removed here. Off Windows the scan always
+// reports "nothing of ours", so this returns immediately.
+//
+// The wait is for a *live* adapter, not for any trace of one. A ghost — a
+// registry binding with no device behind it — is what a killed TUN core leaves
+// on most machines, and it holds no handle: waiting for it can never succeed,
+// and the 2026-10-12 log shows exactly that, 8.5 s burned per OpenVPN connect
+// followed by the same tap-windows6 fallback. Ghosts are still cleared (they do
+// block a core that asks for that exact name), they just no longer decide the
+// driver.
+func waitForNexVPNWintunAdaptersGone(log func(level, msg string)) bool {
+	if NexVPNWintunAdapterPresent(ScanWintunGhosts()) {
+		log("info", "Leftover NexVPN Wintun adapter detected; clearing it before the Wintun attempt")
+		ClearStaleNexVPNWintunAdapters()
+	}
+
+	deadline := time.Now().Add(wintunPoolWaitBudget)
+	for {
+		if !NexVPNWintunAdapterLive(ScanWintunGhosts()) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(wintunPoolPollInterval)
+	}
 }
 
 func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error {
@@ -123,7 +248,6 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 
 	var credsPath string
 	if username != "" && password != "" {
-		// Fix #15: Use dedicated secure temp dir for credentials
 		credsFile, err := os.CreateTemp(ensureNexVPNTempDir(), "openvpn-creds-*.txt")
 		if err == nil {
 			credsPath = credsFile.Name()
@@ -132,7 +256,6 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		}
 	}
 
-	// Fix #15: Use dedicated secure temp dir
 	tmpDir := ensureNexVPNTempDir()
 	tmpFile, err := os.CreateTemp(tmpDir, "openvpn-*.ovpn")
 	if err != nil {
@@ -155,16 +278,125 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 
 	binDir := filepath.Dir(ovpnBin)
 
-	// Ensure wintun.dll is available in binDir
+	// Ensure 64-bit wintun.dll is available in binDir
 	wintunPath := filepath.Join(binDir, "wintun.dll")
-	if _, statErr := os.Stat(wintunPath); os.IsNotExist(statErr) {
+	if fi, statErr := os.Stat(wintunPath); os.IsNotExist(statErr) || (fi != nil && fi.Size() > 500000) {
 		if srcWintun, findErr := findBinary("wintun.dll"); findErr == nil {
-			if data, readErr := os.ReadFile(srcWintun); readErr == nil {
-				_ = os.WriteFile(wintunPath, data, 0755)
+			if data, readErr := os.ReadFile(srcWintun); readErr == nil && len(data) < 500000 {
+				_ = os.WriteFile(wintunPath, data, 0644)
 			}
 		}
 	}
 
+	if runtime.GOOS == "windows" {
+		if !sysproc.IsAdmin() {
+			a.log("error", "OpenVPN Layer-3 tunnel requires Administrator privileges on Windows to create or open network adapters.")
+			return fmt.Errorf("ADMIN_REQUIRED: OpenVPN requires administrator privileges to create network adapters. Please run NexVPN as Administrator (Run as administrator)")
+		}
+
+		adapters := queryOpenVPNAdapters(ovpnBin)
+		var tapAdapterName string
+		for _, ad := range adapters {
+			if ad.Driver == "tap-windows6" && tapAdapterName == "" {
+				// Check if the TAP adapter is enabled in Windows
+				checkCmd := exec.Command("netsh", "interface", "show", "interface", ad.Name)
+				checkCmd.SysProcAttr = sysproc.HideWindowAttr()
+				out, err := checkCmd.Output()
+				if err == nil && !strings.Contains(strings.ToLower(string(out)), "disabled") {
+					tapAdapterName = ad.Name
+				}
+			}
+		}
+
+		// When running with Administrator privileges on Windows, OpenVPN 2.5 with Wintun
+		// dynamically manages its own adapter. Do not pass an explicit non-existent devNode name.
+		//
+		// Before that attempt, clear any leftover NexVPN Wintun adapter. OpenVPN
+		// does not create a named adapter of ours, but Wintun adapters are a
+		// shared, machine-wide pool: one of ours still bound from a core that has
+		// not fully exited is enough to make OpenVPN print "All Wintun network
+		// adapters on this system are currently in use or disabled" and quietly
+		// drop to tap-windows6. The engine's TUN prep runs earlier in the
+		// pipeline, but a core killed in between can re-create the binding, so the
+		// check is repeated here, immediately before the Wintun attempt. Scoped to
+		// our own names only — a third-party Wintun adapter is never touched.
+		wintunUsable := waitForNexVPNWintunAdaptersGone(a.log)
+
+		primaryDriver := "wintun"
+		primaryDevNode := ""
+		fallbackDriver := ""
+		fallbackDevNode := ""
+
+		if tapAdapterName != "" {
+			fallbackDriver = "tap-windows6"
+			fallbackDevNode = tapAdapterName
+		}
+
+		if !wintunUsable && fallbackDriver != "" {
+			// A leftover of ours is still holding the pool, and it will not let go
+			// in the next few seconds: Windows releases a Wintun binding only after
+			// the previous owner's handle is gone. Starting on Wintun anyway costs a
+			// complete TLS handshake first — the adapter is opened after the server
+			// is authenticated — and then the same connection is negotiated again on
+			// TAP. Choosing the driver that will actually work up front saves the
+			// round trip and says why in the log.
+			a.log("warning", fmt.Sprintf(
+				"A NexVPN Wintun adapter is still holding the adapter pool after cleanup; starting directly on %s (%s) instead of repeating a handshake that cannot finish",
+				fallbackDriver, fallbackDevNode))
+			primaryDriver = fallbackDriver
+			primaryDevNode = fallbackDevNode
+			fallbackDriver = ""
+			fallbackDevNode = ""
+		}
+
+		a.log("info", fmt.Sprintf("OpenVPN driver selection: %s", primaryDriver))
+		// `keepTempFiles` is true whenever a fallback might reuse this attempt's
+		// temp files. It must be: `launchDriverInstance` tears the process down on
+		// failure, and a plain `Stop()` also deletes tmpConfig/tmpCreds. Deleting
+		// them before the TAP retry made every fallback die instantly with
+		// `Options error: Error opening configuration file: ...\openvpn-NNNN.ovpn`,
+		// which looks like a profile problem but is really us removing the file
+		// out from under OpenVPN.
+		runErr := a.launchDriverInstance(ctx, ovpnBin, tmpPath, credsPath, binDir, primaryDriver, primaryDevNode, fallbackDriver != "")
+		if runErr != nil && fallbackDriver != "" {
+			errStr := strings.ToLower(runErr.Error())
+			if strings.Contains(errStr, "wintun") || strings.Contains(errStr, "adapter") || strings.Contains(errStr, "createfile") || strings.Contains(errStr, "ring buffer") {
+				a.log("warning", fmt.Sprintf("OpenVPN %s driver failed (%v). Auto-switching to fallback %s driver (%s)...", primaryDriver, runErr, fallbackDriver, fallbackDevNode))
+				time.Sleep(400 * time.Millisecond)
+				fbErr := a.launchDriverInstance(ctx, ovpnBin, tmpPath, credsPath, binDir, fallbackDriver, fallbackDevNode, false)
+				if fbErr != nil {
+					// The fallback was the last attempt, so nothing will reuse these
+					// files. Remove them explicitly: the inner teardown already
+					// cleared a.tmpConfig/a.tmpCreds (that is what preserved them for
+					// the retry), so a later Stop() would no longer know they exist.
+					_ = os.Remove(tmpPath)
+					if credsPath != "" {
+						_ = os.Remove(credsPath)
+					}
+				}
+				return fbErr
+			}
+			// Not a driver fault, so the TAP retry cannot help. Clean up here
+			// instead of leaving the pair behind in the temp directory.
+			_ = os.Remove(tmpPath)
+			if credsPath != "" {
+				_ = os.Remove(credsPath)
+			}
+		}
+		return runErr
+	}
+
+	return a.launchDriverInstance(ctx, ovpnBin, tmpPath, credsPath, binDir, "", "", false)
+}
+
+// launchDriverInstance runs one OpenVPN process for the given driver and blocks
+// until it is connected, failed, or timed out.
+//
+// keepTempFiles controls what happens to tmpPath/credsPath on every failure path
+// inside: when false they are deleted (the usual case), when true they are left
+// on disk so a caller can immediately retry with the same files. `a.Stop()` is
+// never used here for that reason — it always deletes them.
+func (a *OpenVPNAdapter) launchDriverInstance(ctx context.Context, ovpnBin, tmpPath, credsPath, binDir, driver, devNode string, keepTempFiles bool) error {
 	args := []string{
 		"--config", tmpPath,
 		"--verb", "3",
@@ -176,6 +408,21 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		"--mssfix", "1360",
 		"--auth-nocache",
 		"--route-delay", "2",
+	}
+
+	if runtime.GOOS == "windows" {
+		if driver != "" {
+			args = append(args, "--windows-driver", driver)
+		}
+		if devNode != "" {
+			args = append(args, "--dev-node", devNode)
+		}
+		args = append(args,
+			"--pull-filter", "ignore", "route-ipv6",
+			"--pull-filter", "ignore", "ifconfig-ipv6",
+			"--pull-filter", "ignore", "tun-ipv6",
+			"--block-ipv6",
+		)
 	}
 
 	statusFile, err := os.CreateTemp(ensureNexVPNTempDir(), "openvpn-status-*.log")
@@ -218,13 +465,15 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 			}
 		}
 	}
-	
+
 	if cmd == nil {
 		cmd = exec.CommandContext(ctx, ovpnBin, args...)
 	}
 
 	cmd.Dir = binDir
 	PrepareHiddenCmd(cmd)
+
+	exitCh := make(chan struct{})
 
 	a.mu.Lock()
 	a.cmd = cmd
@@ -234,9 +483,17 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 	a.bytesRx = 0
 	a.bytesTx = 0
 	a.lockFile = lockFilePath
+	a.lastError = ""
+	a.exitCh = exitCh
+	a.exitOnce = sync.Once{}
+	if driver != "" {
+		// Recorded before the wait so a failed Wintun attempt followed by a
+		// successful TAP retry ends up reporting tap-windows6, which is the
+		// driver the tunnel is really on.
+		a.activeDriver = driver
+	}
 	a.mu.Unlock()
 
-	// Launch status reader goroutine to periodically update traffic statistics
 	if statusFilePath != "" {
 		go a.pollStatusFile(ctx, statusFilePath)
 	}
@@ -254,18 +511,19 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 	}
 
 	if err := cmd.Start(); err != nil {
-		_ = os.Remove(tmpPath)
-		if credsPath != "" {
-			_ = os.Remove(credsPath)
+		if !keepTempFiles {
+			_ = os.Remove(tmpPath)
+			if credsPath != "" {
+				_ = os.Remove(credsPath)
+			}
 		}
 		return fmt.Errorf("failed to start openvpn process: %w", err)
 	}
 
 	sysproc.AssignCmdToJobObject(cmd)
 
-	a.log("info", fmt.Sprintf("OpenVPN process started (PID: %d)", cmd.Process.Pid))
+	a.log("info", fmt.Sprintf("OpenVPN process started (PID: %d, Driver: %s)", cmd.Process.Pid, driver))
 
-	// Fix #2: Monitor process exit — fire onExit callback on unexpected crash
 	go func() {
 		waitErr := cmd.Wait()
 		a.mu.Lock()
@@ -273,6 +531,8 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		a.running = false
 		onExit := a.onExit
 		a.mu.Unlock()
+
+		a.exitOnce.Do(func() { close(exitCh) })
 
 		a.log("info", "OpenVPN process exited")
 
@@ -285,19 +545,27 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		}
 	}()
 
-	// Wait for OpenVPN handshake completion, explicit error, timeout, or cancellation
 	select {
 	case <-connectedCh:
 		a.log("info", "OpenVPN tunnel established successfully!")
 		return nil
 	case opErr := <-errCh:
-		_ = a.Stop()
+		_ = a.stopInternal(!keepTempFiles)
 		return opErr
+	case <-exitCh:
+		a.mu.RLock()
+		lastErr := a.lastError
+		a.mu.RUnlock()
+		_ = a.stopInternal(!keepTempFiles)
+		if lastErr == "" {
+			lastErr = "OpenVPN process terminated during startup"
+		}
+		return fmt.Errorf("%s", lastErr)
 	case <-time.After(25 * time.Second):
-		_ = a.Stop()
-		return fmt.Errorf("CONNECTION_TIMEOUT: اتصال به سرور پس از ۲۵ ثانیه برقرار نشد (پورت مسدود یا سرور خاموش است)")
+		_ = a.stopInternal(!keepTempFiles)
+		return fmt.Errorf("CONNECTION_TIMEOUT: OpenVPN connection timed out after 25s (server offline or port blocked)")
 	case <-ctx.Done():
-		_ = a.Stop()
+		_ = a.stopInternal(!keepTempFiles)
 		return ctx.Err()
 	}
 }
@@ -318,21 +586,36 @@ func (a *OpenVPNAdapter) streamLogs(r io.Reader, defaultLevel string, connectedC
 			case connectedCh <- struct{}{}:
 			default:
 			}
+		} else if strings.Contains(lower, "all wintun adapters on this system are currently in use or disabled") {
+			level = "error"
+			a.fail(errCh, "WINTUN_IN_USE: All Wintun network adapters are currently locked or disabled")
 		} else if strings.Contains(lower, "auth_failed") || strings.Contains(lower, "password verification failed") {
 			level = "error"
-			a.log("error", "AUTHENTICATION_FAILED: نام کاربری یا رمز عبور اشتباه است یا اشتراک منقضی شده است (AUTH_FAILED)")
-			select {
-			case errCh <- fmt.Errorf("AUTH_FAILED: نام کاربری یا رمز عبور اشتباه است (AUTH_FAILED)"):
-			default:
-			}
+			a.fail(errCh, "AUTH_FAILED: Authentication failed (invalid credentials or expired subscription)")
 		} else if strings.Contains(lower, "tls key negotiation failed") || strings.Contains(lower, "tls handshake failed") {
 			level = "error"
-			a.log("error", "ISP Filtering Detected: پورت یا سرور OpenVPN مسدود است یا پاسخی دریافت نشد.")
+			a.fail(errCh, "TLS_FAILED: TLS key negotiation failed (server unreachable or port throttled)")
 		} else if strings.Contains(lower, "cannot resolve host") {
 			level = "error"
-			a.log("error", "DNS Resolution Error: آدرس سرور OpenVPN ترجمه نشد.")
+			a.fail(errCh, "DNS_FAILED: Cannot resolve OpenVPN server hostname")
+		} else if strings.Contains(lower, "options error") {
+			level = "error"
+			a.mu.Lock()
+			a.lastError = text
+			a.mu.Unlock()
 			select {
-			case errCh <- fmt.Errorf("DNS_FAILED: دامنه سرور قابل دسترسی نیست"):
+			case errCh <- fmt.Errorf("OPENVPN_CONFIG_ERROR: %s", text):
+			default:
+			}
+		} else if strings.Contains(lower, "exiting due to fatal error") {
+			level = "error"
+			a.mu.Lock()
+			if a.lastError == "" {
+				a.lastError = text
+			}
+			a.mu.Unlock()
+			select {
+			case errCh <- fmt.Errorf("FATAL_ERROR: %s", text):
 			default:
 			}
 		} else if strings.Contains(lower, "error") || strings.Contains(lower, "fatal") {
@@ -347,7 +630,20 @@ func (a *OpenVPNAdapter) streamLogs(r io.Reader, defaultLevel string, connectedC
 	}
 }
 
+// Stop tears the adapter down and removes its temporary files.
 func (a *OpenVPNAdapter) Stop() error {
+	return a.stopInternal(true)
+}
+
+// stopInternal is Stop with the temp-file removal made optional.
+//
+// removeTempFiles=false exists for exactly one caller: the Wintun→TAP driver
+// fallback in Start(), which must kill the failed process but hand the *same*
+// tmpConfig/credsPath to the retry. Clearing a.tmpConfig/a.tmpCreds is correct
+// either way — it stops a later Stop() from double-removing a path that a retry
+// has since overwritten — which is why the fallback removes the files itself
+// once the retry has also failed.
+func (a *OpenVPNAdapter) stopInternal(removeTempFiles bool) error {
 	a.mu.Lock()
 	cmd := a.cmd
 	tmpConfig := a.tmpConfig
@@ -371,11 +667,13 @@ func (a *OpenVPNAdapter) Stop() error {
 		}
 		KillProcessTree(pid)
 	}
-	if tmpConfig != "" {
-		_ = os.Remove(tmpConfig)
-	}
-	if tmpCreds != "" {
-		_ = os.Remove(tmpCreds)
+	if removeTempFiles {
+		if tmpConfig != "" {
+			_ = os.Remove(tmpConfig)
+		}
+		if tmpCreds != "" {
+			_ = os.Remove(tmpCreds)
+		}
 	}
 
 	a.log("info", "OpenVPN stopped")

@@ -13,6 +13,7 @@ import {
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import type { DoctorReport, RepairResult, DiagnosticItem } from '../types'
+import { ModalShell } from '../components/ui/modal-shell'
 
 interface NetworkDoctorModalProps {
   isOpen: boolean
@@ -64,13 +65,13 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'ok':
-        return <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        return <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
       case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+        return <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
       case 'error':
-        return <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
+        return <XCircle className="w-5 h-5 text-destructive shrink-0" />
       default:
-        return <Activity className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
+        return <Activity className="w-5 h-5 text-primary animate-spin shrink-0" />
     }
   }
 
@@ -118,34 +119,33 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div
-        className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-all"
-        style={{
-          background: 'linear-gradient(145deg, rgba(20, 24, 39, 0.95), rgba(13, 16, 28, 0.98))',
-        }}
-      >
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      className="border-border"
+    >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 text-cyan-400">
+            <div className="bg-info/20 flex items-center justify-center w-10 h-10 rounded-xl border border-border text-primary">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 {t('doctor_modal_title')}
-                <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-medium">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 font-medium">
                   Smart Doctor
                 </span>
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {t('doctor_modal_subtitle')}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+            className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
           >
             <X className="w-5 h-5" />
           </button>
@@ -158,17 +158,17 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
             <div
               className={`p-4 rounded-xl border flex items-center justify-between gap-4 transition-all ${
                 report.overall_status === 'healthy'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  ? 'bg-success/10 border-success/30 text-success'
                   : report.overall_status === 'degraded'
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  ? 'bg-warning/10 border-warning/30 text-warning'
+                  : 'bg-destructive/10 border-destructive/30 text-destructive'
               }`}
             >
               <div className="flex items-center gap-3">
                 {report.overall_status === 'healthy' ? (
-                  <CheckCircle2 className="w-7 h-7 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-7 h-7 text-success shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-7 h-7 text-amber-400 shrink-0" />
+                  <AlertTriangle className="w-7 h-7 text-warning shrink-0" />
                 )}
                 <div>
                   <div className="text-sm font-bold">
@@ -183,7 +183,7 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
               <button
                 onClick={runDiagnostics}
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-semibold text-white border border-white/10 transition-all shrink-0"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/90 text-xs font-semibold text-foreground border border-border transition-all shrink-0"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 {t('doctor_rescan_btn')}
@@ -196,21 +196,21 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
             {report?.items.map(item => (
               <div
                 key={item.id}
-                className="p-4 rounded-xl bg-slate-900/50 border border-white/5 hover:border-white/10 transition-all flex items-start justify-between gap-4"
+                className="p-4 rounded-xl bg-card border border-border hover:border-border transition-all flex items-start justify-between gap-4"
               >
                 <div className="flex items-start gap-3.5">
                   <div className="mt-0.5">{getStatusIcon(item.status)}</div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                    <div className="text-sm font-semibold text-foreground flex items-center gap-2">
                       {getItemTitle(item)}
                       {item.latency_ms && item.latency_ms > 0 ? (
-                        <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono">
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-success/20 text-success font-mono">
                           {item.latency_ms} ms
                         </span>
                       ) : null}
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">{getItemDesc(item)}</div>
-                    <div className="text-xs text-slate-300/80 font-mono mt-1.5 bg-black/30 px-2.5 py-1 rounded-md inline-block">
+                    <div className="text-xs text-muted-foreground mt-1">{getItemDesc(item)}</div>
+                    <div className="text-xs text-muted-foreground/80 font-mono mt-1.5 bg-black/30 px-2.5 py-1 rounded-md inline-block">
                       {getItemDetail(item)}
                     </div>
                   </div>
@@ -221,12 +221,12 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
 
           {/* Repair Result Banner */}
           {repairResult && (
-            <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 animate-in fade-in">
-              <div className="flex items-center gap-2 font-bold text-sm text-cyan-300">
-                <Zap className="w-4 h-4 text-cyan-400" />
+            <div className="p-4 rounded-xl border border-border bg-muted text-muted-foreground animate-in fade-in">
+              <div className="flex items-center gap-2 font-bold text-sm text-primary">
+                <Zap className="w-4 h-4 text-primary" />
                 {repairResult.message}
               </div>
-              <ul className="mt-2 space-y-1 text-xs text-cyan-100/90 list-disc list-inside">
+              <ul className="mt-2 space-y-1 text-xs text-primary/90 list-disc list-inside">
                 {repairResult.actions.map((act, idx) => (
                   <li key={idx}>{act}</li>
                 ))}
@@ -236,22 +236,21 @@ export const NetworkDoctorModal: React.FC<NetworkDoctorModalProps> = ({ isOpen, 
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-950/40 border-t border-white/10">
-          <div className="text-xs text-slate-400">
+        <div className="flex items-center justify-between px-6 py-4 bg-background border-t border-border">
+          <div className="text-xs text-muted-foreground">
             {t('doctor_footer_note')}
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={handleRepair}
               disabled={repairing}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 transition-all active:scale-95 disabled:opacity-50"
+              className="bg-primary flex items-center gap-2 px-5 py-2.5 rounded-xl text-primary-foreground text-xs font-bold shadow-sm transition-all active:scale-95 disabled:opacity-50"
             >
               <Wrench className={`w-4 h-4 ${repairing ? 'animate-spin' : ''}`} />
               {repairing ? t('doctor_repairing_label') : t('doctor_repair_all_btn')}
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </ModalShell>
   )
 }

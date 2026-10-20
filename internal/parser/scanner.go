@@ -160,19 +160,19 @@ func fetchRemoteCleanCandidates(ctx context.Context) []struct {
 // detectLocation returns human friendly datacenter/region estimate based on IP prefix
 func detectLocation(ip string) string {
 	if strings.HasPrefix(ip, "188.114.96.") || strings.HasPrefix(ip, "188.114.97.") {
-		return "🇩🇪 Frankfurt / Europe"
+		return "ðŸ‡©ðŸ‡ª Frankfurt / Europe"
 	} else if strings.HasPrefix(ip, "188.114.98.") || strings.HasPrefix(ip, "188.114.99.") {
-		return "🇳🇱 Amsterdam / Europe"
+		return "ðŸ‡³ðŸ‡± Amsterdam / Europe"
 	} else if strings.HasPrefix(ip, "162.159.192.") || strings.HasPrefix(ip, "162.159.193.") {
-		return "🇦🇹 Vienna / Europe"
+		return "ðŸ‡¦ðŸ‡¹ Vienna / Europe"
 	} else if strings.HasPrefix(ip, "162.159.204.") || strings.HasPrefix(ip, "162.159.205.") {
-		return "🇹🇷 Istanbul / Anycast"
+		return "ðŸ‡¹ðŸ‡· Istanbul / Anycast"
 	} else if strings.HasPrefix(ip, "172.64.") {
-		return "🇦🇪 Dubai / Middle East"
+		return "ðŸ‡¦ðŸ‡ª Dubai / Middle East"
 	} else if strings.HasPrefix(ip, "104.16.") || strings.HasPrefix(ip, "104.17.") {
-		return "🇬🇧 London / Anycast"
+		return "ðŸ‡¬ðŸ‡§ London / Anycast"
 	}
-	return "🌐 Cloudflare Global Edge"
+	return "ðŸŒ Cloudflare Global Edge"
 }
 
 // ScanCleanIPs scans Cloudflare IP ranges with dual TCP/UDP probing and returns responsive clean IPs

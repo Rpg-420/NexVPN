@@ -15,7 +15,13 @@ func ClearSystemProxy() error {
 	return clearSystemProxyPlatform()
 }
 
-// CheckAndClearStaleProxy resets system proxy if it was left pointing to local NexVPN ports
+// CheckAndClearStaleProxy resets system proxy if it was left pointing to local NexVPN ports.
+// It intentionally does NOT clear the system proxy unconditionally: a user (or their
+// employer's network policy) may have configured a legitimate proxy independent of
+// NexVPN, and wiping it out on every app launch would silently break their network.
 func CheckAndClearStaleProxy() {
+	if !isStaleNexVPNProxy() {
+		return
+	}
 	_ = ClearSystemProxy()
 }

@@ -34,8 +34,26 @@ jobs:
           npm ci
           npm run build
 
+      - name: Frontend Typecheck (strict)
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Go Vet
+        run: go vet ./...
+
+      # gofmt is not enforced by vet, and the repo has no formatter hook, so an
+      # unformatted file used to reach main unnoticed. .gitattributes pins Go
+      # sources to LF so this check cannot be defeated by a CRLF working tree.
+      - name: Go Format Check
+        run: |
+          $files = gofmt -l .
+          if ($files) {
+            Write-Error "These files are not gofmt-clean:`n$files"
+            exit 1
+          }
+
       - name: Test Go Packages
-        run: go test ./...
+        run: go test -race ./...
 
       - name: Build Windows Binary
         run: wails build -skipbindings -platform windows/amd64
@@ -78,6 +96,23 @@ jobs:
           npm ci
           npm run build
 
+      - name: Go Vet
+        run: go vet ./...
+
+      # Same guard as the Windows job: .gitattributes keeps this deterministic
+      # across platforms, so a formatting regression fails here too.
+      - name: Go Format Check
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Test Go Packages
+        run: go test -race ./...
+
       - name: Build Linux Binary
         run: wails build -skipbindings -platform linux/amd64 -tags webkit2_41
 
@@ -86,3 +121,24 @@ jobs:
         with:
           name: NexVPN-linux-amd64
           path: build/bin/NexVPN
+
+  lint:
+    name: Lint (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          # Report issues without failing the pipeline until the existing
+          # backlog is cleared; flip to false to make lint blocking.
+          only-new-issues: true

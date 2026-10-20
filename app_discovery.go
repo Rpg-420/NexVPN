@@ -46,28 +46,86 @@ func (a *App) TestTelegramProxies(proxies []discovery.TelegramProxy) []discovery
 	tgTestMu.Unlock()
 
 	results := discovery.TestTelegramProxiesConcurrently(ctx, proxies, 30, 2500*time.Millisecond, func(p discovery.TelegramTestProgress) {
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "telegram:test_progress", p)
+		if a.appCtx() != nil {
+			runtime.EventsEmit(a.appCtx(), "telegram:test_progress", p)
 		}
 	})
 
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "telegram:test_complete", results)
+	if a.appCtx() != nil {
+		runtime.EventsEmit(a.appCtx(), "telegram:test_complete", results)
 	}
 
 	return results
 }
 
+// allowedLinkSchemes is the closed allowlist of URL schemes that may ever be
+// handed to the operating system's shell handler.
+//
+// SECURITY: previously any caller-supplied string was forwarded verbatim to
+// ShellExecute / rundll32, which meant a malicious profile or an injected
+// subscription payload could launch `file://`, `\\\\attacker\\share` (UNC),
+// `javascript:`, or an arbitrary registered protocol handler. Restricting the
+// scheme set to the handful we actually use closes that hole.
+var allowedLinkSchemes = map[string]bool{
+	"http":   true,
+	"https":  true,
+	"tg":     true, // tg://proxy?server=...&port=...
+	"socks":  true, // some clients emit socks:// links
+	"ss":     true, // shadowsocks:// share links
+	"vless":  true,
+	"vmess":  true,
+	"trojan": true,
+}
+
+// ValidateExternalLink reports whether link is safe to hand to the OS shell.
+// It is exported so the frontend and tests can pre-validate the same value.
+func (a *App) ValidateExternalLink(link string) error {
+	return validateExternalLink(link)
+}
+
+func validateExternalLink(link string) error {
+	trimmed := strings.TrimSpace(link)
+	if trimmed == "" {
+		return fmt.Errorf("empty link")
+	}
+	// Reject control characters outright — they can be used to smuggle
+	// arguments past naive parsers.
+	for _, r := range trimmed {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("link contains control characters")
+		}
+	}
+	// A UNC path such as \\host\share has no scheme at all; url.Parse would
+	// treat it as an opaque path. Require an explicit scheme.
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Errorf("invalid link: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "" {
+		return fmt.Errorf("link has no scheme; refusing to open")
+	}
+	if !allowedLinkSchemes[scheme] {
+		return fmt.Errorf("scheme %q is not allowed", scheme)
+	}
+	// For network schemes a host is mandatory; this rejects `http:`-only and
+	// `file:`-style degenerate forms.
+	if scheme != "tg" && (u.Host == "" && u.Opaque == "") {
+		return fmt.Errorf("link %q has no host", trimmed)
+	}
+	return nil
+}
+
 // LaunchTelegramProxyLink opens the proxy link directly in Telegram Desktop
 func (a *App) LaunchTelegramProxyLink(link string) error {
 	link = strings.TrimSpace(link)
-	if link == "" {
-		return fmt.Errorf("empty link")
+	if err := validateExternalLink(link); err != nil {
+		return err
 	}
 
 	// Use Wails runtime BrowserOpenURL which executes OS ShellExecute safely without cmd.exe parameter splitting
-	if a.ctx != nil {
-		runtime.BrowserOpenURL(a.ctx, link)
+	if a.appCtx() != nil {
+		runtime.BrowserOpenURL(a.appCtx(), link)
 		return nil
 	}
 
@@ -75,6 +133,21 @@ func (a *App) LaunchTelegramProxyLink(link string) error {
 	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", link)
 	cmd.SysProcAttr = sysproc.HideWindowAttr()
 	return cmd.Start()
+}
+
+// OpenExternalLink opens a validated external URL in the default handler.
+// Any Go method that shells out a user-controlled URL must route through here.
+func (a *App) OpenExternalLink(link string) error {
+	link = strings.TrimSpace(link)
+	if err := validateExternalLink(link); err != nil {
+		return err
+	}
+	ctx := a.appCtx()
+	if ctx == nil {
+		return fmt.Errorf("application context is not ready")
+	}
+	runtime.BrowserOpenURL(ctx, link)
+	return nil
 }
 
 // FetchFreeConfigs downloads and parses configs from aggregator sources
@@ -95,13 +168,13 @@ func (a *App) TestFreeConfigs(configs []discovery.FreeConfigItem) []discovery.Fr
 	freeCfgMu.Unlock()
 
 	results := discovery.TestFreeConfigsConcurrently(ctx, configs, 35, 2500*time.Millisecond, func(p discovery.FreeConfigTestProgress) {
-		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "free_configs:test_progress", p)
+		if a.appCtx() != nil {
+			runtime.EventsEmit(a.appCtx(), "free_configs:test_progress", p)
 		}
 	})
 
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "free_configs:test_complete", results)
+	if a.appCtx() != nil {
+		runtime.EventsEmit(a.appCtx(), "free_configs:test_complete", results)
 	}
 
 	return results
@@ -142,6 +215,7 @@ func (a *App) StartCloudflareDiscoveryScan(mode string, isp string, customSubnet
 	cfScanMu.Unlock()
 
 	go func() {
+		defer cancel()
 		defer func() {
 			if r := recover(); r != nil {
 				debug.PrintStack()
@@ -149,13 +223,20 @@ func (a *App) StartCloudflareDiscoveryScan(mode string, isp string, customSubnet
 		}()
 
 		results, err := discovery.ScanCloudflareTargets(ctx, mode, isp, customSubnets, customPorts, 35, func(p discovery.CloudflareScanProgress) {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "cf_scanner:progress", p)
+			if a.appCtx() != nil {
+				runtime.EventsEmit(a.appCtx(), "cf_scanner:progress", p)
 			}
 		})
 
-		if err == nil && a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "cf_scanner:complete", results)
+		// Terminal event is emitted even when the scan was cancelled, so the UI
+		// can leave its "scanning" state after the user presses Stop.
+		if a.appCtx() == nil {
+			return
+		}
+		if err == nil {
+			runtime.EventsEmit(a.appCtx(), "cf_scanner:complete", results)
+		} else {
+			runtime.EventsEmit(a.appCtx(), "cf_scanner:error", err.Error())
 		}
 	}()
 }
@@ -310,6 +391,7 @@ func (a *App) StartFragmentDiscoveryScan() {
 	fragScanMu.Unlock()
 
 	go func() {
+		defer cancel()
 		defer func() {
 			if r := recover(); r != nil {
 				debug.PrintStack()
@@ -317,16 +399,21 @@ func (a *App) StartFragmentDiscoveryScan() {
 		}()
 
 		results, best, err := discovery.ScanFragmentSettings(ctx, nil, func(p discovery.FragmentScanProgress) {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "frag_scanner:progress", p)
+			if a.appCtx() != nil {
+				runtime.EventsEmit(a.appCtx(), "frag_scanner:progress", p)
 			}
 		})
 
-		if err == nil && a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "frag_scanner:complete", map[string]interface{}{
+		if a.appCtx() == nil {
+			return
+		}
+		if err == nil {
+			runtime.EventsEmit(a.appCtx(), "frag_scanner:complete", map[string]interface{}{
 				"results": results,
 				"best":    best,
 			})
+		} else {
+			runtime.EventsEmit(a.appCtx(), "frag_scanner:error", err.Error())
 		}
 	}()
 }
@@ -362,8 +449,15 @@ func (a *App) DetectCurrentISP() (*discovery.ISPRecommendation, error) {
 	return discovery.DetectCurrentISP(ctx)
 }
 
-// BroadcastProfilesToLAN broadcasts profiles over local Wi-Fi network
-func (a *App) BroadcastProfilesToLAN(category string, deviceName string) (int, error) {
+// GenerateSyncPIN returns a random 6-digit pairing PIN for nearby LAN profile
+// sharing. A PIN is mandatory: without one the payload would have to be encrypted
+// with a publicly known key, exposing proxy credentials to the whole LAN.
+func (a *App) GenerateSyncPIN() string {
+	return discovery.GenerateSyncPIN()
+}
+
+// BroadcastProfilesToLAN broadcasts profiles over local Wi-Fi network with optional pairing PIN
+func (a *App) BroadcastProfilesToLAN(category string, deviceName string, pin string) (int, error) {
 	if a.store == nil {
 		return 0, fmt.Errorf("store not initialized")
 	}
@@ -373,17 +467,17 @@ func (a *App) BroadcastProfilesToLAN(category string, deviceName string) (int, e
 	} else {
 		profiles = a.store.GetProfilesByCategory(config.ProfileCategory(category))
 	}
-	return discovery.BroadcastProfilesToLAN(profiles, deviceName)
+	return discovery.BroadcastProfilesToLAN(profiles, deviceName, pin)
 }
 
-// ListenForNearbyProfiles listens for incoming P2P Wi-Fi profile shares
-func (a *App) ListenForNearbyProfiles(timeoutSeconds int) (*discovery.SyncPayload, error) {
+// ListenForNearbyProfiles listens for incoming P2P Wi-Fi profile shares with optional pairing PIN
+func (a *App) ListenForNearbyProfiles(timeoutSeconds int, pin string) (*discovery.SyncPayload, error) {
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 8
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
-	return discovery.ListenForNearbyProfiles(ctx, time.Duration(timeoutSeconds)*time.Second)
+	return discovery.ListenForNearbyProfiles(ctx, time.Duration(timeoutSeconds)*time.Second, pin)
 }
 
 // ImportNearbyProfiles saves received P2P profiles into local store
@@ -404,4 +498,3 @@ func (a *App) ImportNearbyProfiles(profiles []config.Profile, groupName string) 
 	}
 	return count, nil
 }
-

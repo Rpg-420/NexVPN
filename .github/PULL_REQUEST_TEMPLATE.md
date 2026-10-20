@@ -27,6 +27,19 @@ Fixes #(issue)
 
 ---
 
+## 📊 Evidence
+
+House rule 2 is *measure, do not assume* — a plausible theory is not evidence.
+Tick exactly one:
+
+- [ ] **Bug fix** — I have included before/after evidence: a failing test, a log
+      excerpt, or the command output that demonstrated the problem.
+- [ ] **Performance / reliability claim** — I have included the numbers and how
+      they were measured.
+- [ ] **Neither** — this is a documentation, refactor, or UI-only change.
+
+---
+
 ## 📸 Screenshots / Demos (If Applicable)
 *Please attach screenshots or screen recordings showing UI changes or new feature flows.*
 

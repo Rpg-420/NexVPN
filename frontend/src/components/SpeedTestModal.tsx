@@ -1,6 +1,7 @@
 import { X, Play, Square, Gauge, ArrowDown, ArrowUp, Activity, Zap, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react'
 import { t } from '../lib/i18n'
 import { useSpeedTest } from '../hooks/useSpeedTest'
+import { ModalShell } from '../components/ui/modal-shell'
 
 interface Props {
   isOpen: boolean
@@ -9,6 +10,7 @@ interface Props {
 
 export default function SpeedTestModal({ isOpen, onClose }: Props) {
   const { metrics, isRunning, startTest, stopTest, reset } = useSpeedTest(isOpen)
+
 
   if (!isOpen) return null
 
@@ -22,25 +24,29 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
   const strokeDashoffset = circumference - (metrics.progress / 100) * circumference
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-slate-900/95 border border-slate-700/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl shadow-cyan-950/40 flex flex-col transition-all">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-lg"
+      className=""
+    >
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/90 bg-slate-900/80">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
+            <div className="w-10 h-10 rounded-xl border border-border bg-muted flex items-center justify-center text-muted-foreground shadow-inner">
               <Gauge className={`w-5 h-5 ${isRunning ? 'animate-pulse' : ''}`} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                 {t('speedtest_title')}
               </h3>
-              <p className="text-xs text-slate-400">{t('speedtest_subtitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('speedtest_subtitle')}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition"
+            className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -59,9 +65,9 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
               <defs>
                 {/* Neon Cyan to Indigo Gradient for Progress */}
                 <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#06b6d4" />
-                  <stop offset="50%" stopColor="#3b82f6" />
-                  <stop offset="100%" stopColor="#8b5cf6" />
+                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.55" />
+                  <stop offset="50%" stopColor="hsl(var(--primary))" />
+                  <stop offset="100%" stopColor="hsl(var(--primary))" />
                 </linearGradient>
 
                 {/* Glow Filter */}
@@ -75,7 +81,7 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
               <path
                 d="M 16 100 A 84 84 0 0 1 184 100"
                 fill="none"
-                className="stroke-slate-800"
+                className="stroke-card"
                 strokeWidth="12"
                 strokeLinecap="round"
               />
@@ -96,12 +102,12 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
 
             {/* Gauge Internal Value Display */}
             <div className="absolute inset-0 flex flex-col items-center justify-center top-6">
-              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1.5">
                 {metrics.state === 'completed' && (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-success" />
                 )}
                 {metrics.state === 'error' && (
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <AlertCircle className="w-3.5 h-3.5 text-destructive" />
                 )}
                 {metrics.phase === 'download'
                   ? t('speedtest_download')
@@ -114,22 +120,22 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
                   : t('speedtest_testing')}
               </div>
 
-              <div className="text-5xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400 tracking-tight">
+              <div className="bg-info text-5xl font-black font-mono text-transparent bg-clip-text tracking-tight">
                 {currentSpeed.toFixed(1)}
               </div>
 
-              <div className="text-xs text-slate-400 font-mono font-bold mt-0.5">Mbps</div>
+              <div className="text-xs text-muted-foreground font-mono font-bold mt-0.5">Mbps</div>
             </div>
 
             {/* Overall percentage indicator badge */}
-            <div className="absolute bottom-0 text-[10px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700/50">
+            <div className="absolute bottom-0 text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
               {metrics.progress}%
             </div>
           </div>
 
           {/* Error Message Box */}
           {metrics.state === 'error' && (
-            <div className="w-full bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-rose-400 text-xs flex items-center gap-2 animate-shake">
+            <div className="w-full bg-destructive/10 border border-destructive/30 rounded-xl p-3 text-destructive text-xs flex items-center gap-2 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{metrics.error_msg || t('error')}</span>
             </div>
@@ -141,16 +147,16 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
             <div
               className={`border rounded-xl p-2.5 text-center transition-all ${
                 metrics.phase === 'download'
-                  ? 'bg-emerald-500/15 border-emerald-500/50 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-500/10 scale-[1.02]'
-                  : 'bg-slate-800/40 border-slate-700/50'
+                  ? 'bg-success/15 border-success/50 ring-1 ring-success/30 shadow-sm scale-[1.02]'
+                  : 'bg-muted border-border'
               }`}
             >
-              <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                <ArrowDown className="w-3 h-3 text-emerald-400" />
+              <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                <ArrowDown className="w-3 h-3 text-success" />
                 {t('speedtest_download')}
               </div>
-              <div className="text-sm font-bold font-mono text-emerald-400 mt-1">
-                {metrics.download_mbps} <span className="text-[9px] text-slate-500">Mbps</span>
+              <div className="text-sm font-bold font-mono text-success mt-1">
+                {metrics.download_mbps} <span className="text-[9px] text-muted-foreground">Mbps</span>
               </div>
             </div>
 
@@ -158,16 +164,16 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
             <div
               className={`border rounded-xl p-2.5 text-center transition-all ${
                 metrics.phase === 'upload'
-                  ? 'bg-blue-500/15 border-blue-500/50 ring-1 ring-blue-500/30 shadow-lg shadow-blue-500/10 scale-[1.02]'
-                  : 'bg-slate-800/40 border-slate-700/50'
+                  ? 'bg-info/15 border-primary/50 ring-1 ring-primary/30 shadow-sm scale-[1.02]'
+                  : 'bg-muted border-border'
               }`}
             >
-              <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                <ArrowUp className="w-3 h-3 text-blue-400" />
+              <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                <ArrowUp className="w-3 h-3 text-primary" />
                 {t('speedtest_upload')}
               </div>
-              <div className="text-sm font-bold font-mono text-blue-400 mt-1">
-                {metrics.upload_mbps} <span className="text-[9px] text-slate-500">Mbps</span>
+              <div className="text-sm font-bold font-mono text-primary mt-1">
+                {metrics.upload_mbps} <span className="text-[9px] text-muted-foreground">Mbps</span>
               </div>
             </div>
 
@@ -175,27 +181,27 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
             <div
               className={`border rounded-xl p-2.5 text-center transition-all ${
                 metrics.phase === 'ping'
-                  ? 'bg-amber-500/15 border-amber-500/50 ring-1 ring-amber-500/30 shadow-lg shadow-amber-500/10 scale-[1.02]'
-                  : 'bg-slate-800/40 border-slate-700/50'
+                  ? 'bg-warning/15 border-warning/50 ring-1 ring-warning/30 shadow-sm scale-[1.02]'
+                  : 'bg-muted border-border'
               }`}
             >
-              <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                <Activity className="w-3 h-3 text-amber-400" />
+              <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                <Activity className="w-3 h-3 text-warning" />
                 {t('speedtest_ping')}
               </div>
-              <div className="text-sm font-bold font-mono text-amber-400 mt-1">
-                {metrics.ping_ms} <span className="text-[9px] text-slate-500">ms</span>
+              <div className="text-sm font-bold font-mono text-warning mt-1">
+                {metrics.ping_ms} <span className="text-[9px] text-muted-foreground">ms</span>
               </div>
             </div>
 
             {/* Jitter Card */}
-            <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-2.5 text-center">
-              <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                <Zap className="w-3 h-3 text-purple-400" />
+            <div className="bg-muted border border-border rounded-xl p-2.5 text-center">
+              <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                <Zap className="w-3 h-3 text-primary" />
                 {t('speedtest_jitter')}
               </div>
-              <div className="text-sm font-bold font-mono text-purple-400 mt-1">
-                {metrics.jitter_ms} <span className="text-[9px] text-slate-500">ms</span>
+              <div className="text-sm font-bold font-mono text-primary mt-1">
+                {metrics.jitter_ms} <span className="text-[9px] text-muted-foreground">ms</span>
               </div>
             </div>
           </div>
@@ -205,7 +211,7 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
             {isRunning ? (
               <button
                 onClick={stopTest}
-                className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-rose-600/25 text-xs active:scale-[0.99]"
+                className="flex-1 flex items-center justify-center gap-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-3 rounded-xl transition shadow-sm text-xs active:scale-[0.99]"
               >
                 <Square className="w-4 h-4 fill-current" />
                 {t('speedtest_stop')}
@@ -214,14 +220,14 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
               <div className="flex-1 flex items-center gap-2">
                 <button
                   onClick={reset}
-                  className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-300 transition"
+                  className="p-3 bg-muted hover:bg-muted/90 border border-border rounded-xl text-muted-foreground transition"
                   title="Reset"
                 >
                   <RotateCcw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={startTest}
-                  className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-cyan-500/25 text-xs active:scale-[0.99]"
+                  className="bg-primary flex-1 flex items-center justify-center gap-2 text-primary-foreground font-bold py-3 rounded-xl transition shadow-sm text-xs active:scale-[0.99]"
                 >
                   <Play className="w-4 h-4 fill-current" />
                   {t('speedtest_start')}
@@ -230,7 +236,7 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
             ) : (
               <button
                 onClick={startTest}
-                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 hover:from-cyan-400 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-cyan-500/25 text-xs active:scale-[0.99]"
+                className="bg-primary w-full flex items-center justify-center gap-2 text-primary-foreground font-bold py-3 rounded-xl transition shadow-sm text-xs active:scale-[0.99]"
               >
                 <Play className="w-4 h-4 fill-current" />
                 {t('speedtest_start')}
@@ -238,7 +244,6 @@ export default function SpeedTestModal({ isOpen, onClose }: Props) {
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </ModalShell>
   )
 }

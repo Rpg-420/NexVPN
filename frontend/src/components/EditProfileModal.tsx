@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { X, Save, Edit3, Trash2, Server, Shield, Globe, Key, Tag, FileText, Check } from 'lucide-react'
+import { X, Save, Edit3, Trash2, Server, Shield, Globe, Key, Tag, FileText, Check, Eye, EyeOff, Gauge } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import type { Profile, Protocol, ProfileCategory } from '../types'
+import { ModalShell } from '../components/ui/modal-shell'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   isOpen: boolean
@@ -24,23 +26,50 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [warpCleanIP, setWarpCleanIP] = useState('')
+  // Kept as a string so the field can be empty; 0/blank means "no alert".
+  const [dataCap, setDataCap] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
+  // The password field used to be type="text", so a saved credential was shown
+  // in the clear on screen — in screenshots, screen shares and over the
+  // shoulder. Masked by default, with an explicit reveal for the case where the
+  // user needs to check what was typed.
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
-    if (profile) {
-      setName(profile.name || '')
-      setServer(profile.server || '')
-      setPort(profile.port || 443)
-      setProtocol(profile.protocol || 'singbox')
-      setCategory(profile.category || 'v2ray')
-      setGroup(profile.group || '')
-      setRawURI(profile.raw_uri || '')
-      setConfigContent(profile.config_content || '')
-      setUsername(profile.username || '')
-      setPassword(profile.password || '')
-      setWarpCleanIP(profile.warp_clean_ip || '')
+    if (!profile) return
+    let cancelled = false
+
+    const applyProfile = (p: Profile) => {
+      setName(p.name || '')
+      setServer(p.server || '')
+      setPort(p.port || 443)
+      setProtocol(p.protocol || 'singbox')
+      setCategory(p.category || 'v2ray')
+      setGroup(p.group || '')
+      setRawURI(p.raw_uri || '')
+      setConfigContent(p.config_content || '')
+      setUsername(p.username || '')
+      setPassword(p.password || '')
+      setWarpCleanIP(p.warp_clean_ip || '')
+      setDataCap(p.session_data_cap_mb ? String(p.session_data_cap_mb) : '')
       setSavedSuccess(false)
+    }
+
+    // Render immediately from the row the user clicked, then re-read the
+    // authoritative copy so an edit can never act on a stale list snapshot.
+    applyProfile(profile)
+    if (profile.id) {
+      api
+        .getProfileById(profile.id)
+        .then(fresh => {
+          if (!cancelled && fresh && fresh.id) applyProfile(fresh)
+        })
+        .catch(err => console.error('Failed to refresh profile:', err))
+    }
+
+    return () => {
+      cancelled = true
     }
   }, [profile])
 
@@ -65,10 +94,13 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
         username: username.trim(),
         password: password.trim(),
         warp_clean_ip: warpCleanIP.trim(),
+        // Blank clears the alert; a non-numeric entry is treated as "no alert"
+        // rather than rejected, because the field is advisory.
+        session_data_cap_mb: Math.max(0, Math.floor(Number(dataCap) || 0)),
         updated_at: new Date().toISOString(),
       }
 
-      await (api as any).updateProfile(updated)
+      await api.updateProfile(updated)
       setSavedSuccess(true)
       setTimeout(() => {
         onSaved()
@@ -95,27 +127,31 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      className="max-h-[90vh]"
+    >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+            <div className="w-10 h-10 rounded-xl border border-border bg-muted flex items-center justify-center text-muted-foreground">
               <Edit3 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                 {t('edit_modal_title')}
-                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full font-mono">
+                <span className="text-xs bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full font-mono">
                   {profile.protocol.toUpperCase()}
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">{t('edit_modal_subtitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('edit_modal_subtitle')}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition"
+            className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -126,8 +162,8 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Name */}
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-cyan-400" />
+              <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-primary" />
                 <span>{t('profile_name_label')}</span>
               </label>
               <input
@@ -142,8 +178,8 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
 
             {/* Group */}
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-orange-400" />
+              <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-warning" />
                 <span>{t('group_category_label')}</span>
               </label>
               <input
@@ -159,8 +195,8 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Server IP/Host */}
             <div className="md:col-span-2">
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                <Server className="w-3.5 h-3.5 text-emerald-400" />
+              <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5 text-success" />
                 <span>{t('server_host_label')}</span>
               </label>
               <input
@@ -174,8 +210,8 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
 
             {/* Port */}
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-purple-400" />
+              <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-primary" />
                 <span>{t('port_label_edit')}</span>
               </label>
               <input
@@ -190,10 +226,10 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
 
           {/* OpenVPN Credentials if applicable */}
           {(profile.protocol === 'openvpn' || profile.category === 'openvpn') && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-800/40 border border-slate-700/50 p-3.5 rounded-xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted border border-border p-3.5 rounded-xl">
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-warning" />
                   <span>{t('username_label')}</span>
                 </label>
                 <input
@@ -206,17 +242,29 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-warning" />
                   <span>{t('password_label')}</span>
                 </label>
-                <input
-                  type="text"
-                  className="form-control w-full text-xs font-mono"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="vpn_pass"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="off"
+                    className="form-control w-full text-xs font-mono pr-9"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="vpn_pass"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? t('hide_password') : t('show_password')}
+                    title={showPassword ? t('hide_password') : t('show_password')}
+                    className="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground hover:text-foreground transition"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -224,8 +272,8 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
           {/* WARP Clean IP if applicable */}
           {(profile.protocol === 'warp' || profile.protocol === 'wireguard') && (
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-orange-400" />
+              <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-warning" />
                 <span>{t('warp_clean_ip_modal_label')}</span>
               </label>
               <input
@@ -238,11 +286,31 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
             </div>
           )}
 
+          {/* Session data alert */}
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+              <Gauge className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>{t('adv_data_cap')}</span>
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={100}
+              className="form-control w-full text-xs font-mono"
+              value={dataCap}
+              onChange={e => setDataCap(e.target.value)}
+              placeholder={t('adv_data_cap_placeholder')}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+              {t('adv_data_cap_hint')}
+            </p>
+          </div>
+
           {/* Raw URI */}
           {rawURI && (
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-cyan-400" />
+              <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-primary" />
                 <span>{t('raw_uri_label')}</span>
               </label>
               <textarea
@@ -257,8 +325,8 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
 
           {/* Config Content */}
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-muted-foreground" />
               <span>{t('config_content_label')}</span>
             </label>
             <textarea
@@ -271,32 +339,30 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+          <div className="flex items-center justify-between pt-4 border-t border-border">
             <button
               type="button"
               onClick={handleDelete}
-              className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-3.5 py-2 rounded-xl text-xs font-semibold transition"
+              className="flex items-center gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 px-3.5 py-2 rounded-xl text-xs font-semibold transition"
             >
               <Trash2 className="w-4 h-4" />
               <span>{t('delete_profile_btn')}</span>
             </button>
 
             <div className="flex items-center gap-2">
-              <button
+              <Button variant="secondary" size="sm"
                 type="button"
-                className="btn btn-secondary btn-sm"
                 onClick={onClose}
               >
                 {t('cancel')}
-              </button>
-              <button
+              </Button>
+              <Button size="sm" className="flex items-center gap-1.5"
                 type="submit"
                 disabled={isSaving}
-                className="btn btn-primary btn-sm flex items-center gap-1.5"
               >
                 {savedSuccess ? (
                   <>
-                    <Check className="w-4 h-4 text-emerald-400" />
+                    <Check className="w-4 h-4 text-success" />
                     <span>{t('saved')}</span>
                   </>
                 ) : (
@@ -305,11 +371,10 @@ export default function EditProfileModal({ isOpen, profile, onClose, onSaved, on
                     <span>{isSaving ? t('saving') : t('save_changes_btn')}</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   )
 }

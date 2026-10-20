@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Zap,
-  Plus,
-  Trash2,
-  Play,
-  Square,
   Copy,
   Check,
   Shield,
@@ -12,14 +8,11 @@ import {
   Globe,
   Radio,
   X,
-  CheckCircle2,
   Search,
   QrCode,
   Key,
   Layers,
   Activity,
-  Edit3,
-  RefreshCw,
   Scan,
   ArrowRightLeft,
 } from 'lucide-react'
@@ -31,6 +24,14 @@ import CleanIPScannerModal from '../components/CleanIPScannerModal'
 import EditProfileModal from '../components/EditProfileModal'
 import ScreenQRScannerModal from '../components/ScreenQRScannerModal'
 import ConfigConverterModal from '../components/ConfigConverterModal'
+import { ModalShell } from '../components/ui/modal-shell'
+import { ProfileCard } from '../components/ui/profile-card'
+import { PingProgressBar } from '../components/PingProgressBar'
+import { usePingProgress } from '../hooks/usePingProgress'
+import { pinnedFirst, toggleProfilePin } from '../lib/profilePin'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 interface Props {
   status: ConnectionStatus
@@ -62,9 +63,12 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
   const [licenseKeyInput, setLicenseKeyInput] = useState('')
   const [isApplyingLicense, setIsApplyingLicense] = useState(false)
+  const [warpLicenseKey, setWarpLicenseKey] = useState('')
+  const [warpAccountType, setWarpAccountType] = useState<'free' | 'plus' | string>('free')
   const [sharingProfile, setSharingProfile] = useState<Profile | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isPinging, setIsPinging] = useState(false)
+  const pingProgress = usePingProgress(isPinging)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const showToast = (msg: string) => {
@@ -78,6 +82,28 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
       if (list && Array.isArray(list)) setProfiles(list)
     } catch (err) {
       console.error('Failed to load WireGuard/WARP profiles:', err)
+    }
+  }, [])
+
+  // Seed the Clean IP / port inputs from the persisted settings so a value
+  // discovered by an optimal-IP scan is actually reused instead of silently
+  // falling back to the hardcoded default on every page visit.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const s = await api.getSettings()
+        if (cancelled || !s) return
+        if (s.warp_clean_ip) setSelectedCleanIP(s.warp_clean_ip)
+        if (s.warp_port && s.warp_port > 0) setCustomPort(s.warp_port)
+        setWarpLicenseKey(s.warp_license_key || '')
+        setWarpAccountType(s.warp_account_type || 'free')
+      } catch (err) {
+        console.error('Failed to load WARP settings:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -151,11 +177,15 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
 
   const handleApplyLicense = async () => {
     if (!licenseKeyInput.trim()) return
+    const key = licenseKeyInput.trim()
     setIsApplyingLicense(true)
     try {
-      await api.applyWarpLicenseKey(licenseKeyInput.trim())
+      await api.applyWarpLicenseKey(key)
       setShowLicenseModal(false)
       setLicenseKeyInput('')
+      // Reflect the newly persisted state instead of assuming it.
+      setWarpLicenseKey(key)
+      setWarpAccountType('plus')
       await loadProfiles()
       alert(t('saved_successfully'))
     } catch (err) {
@@ -167,6 +197,7 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
   }
 
   const handlePingAll = async () => {
+    if (isPinging) return
     setIsPinging(true)
     try {
       const updated = await api.pingAllProfiles('wireguard_warp')
@@ -176,6 +207,10 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
     } finally {
       setIsPinging(false)
     }
+  }
+
+  const handleCancelPingAll = () => {
+    api.cancelPingAll().catch(() => {})
   }
 
   const handlePingSingle = async (id: string, e: React.MouseEvent) => {
@@ -258,111 +293,119 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
     filtered.sort((a, b) => a.name.localeCompare(b.name))
   }
 
+  // Pinned profiles lead, whichever sort is active — see lib/profilePin.ts.
+  filtered.sort(pinnedFirst)
+
   const qrImageUrl = sharingProfile
     ? generateQRCodeSVG(sharingProfile.raw_uri || sharingProfile.config_content || sharingProfile.name)
     : ''
 
   return (
     <div className="page space-y-5">
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-xl bg-card border border-primary/40 text-primary text-xs font-semibold shadow-2xl animate-fade-in"
+        >
+          {toastMessage}
+        </div>
+      )}
       {/* Header */}
-      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 bg-slate-900/90 backdrop-blur-xl py-3 -mx-2 px-4 rounded-2xl border border-white/5 shadow-lg shadow-black/20">
+      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 bg-card/85 dark:bg-card backdrop-blur-xl py-3 -mx-2 px-4 rounded-2xl border border-border/80 dark:border-white/5 shadow-sm dark:shadow-lg dark:shadow-black/20">
         <div>
           <h1 className="page-title">{t('warp_title')}</h1>
           <p className="page-subtitle">{t('warp_subtitle')}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+          <Button variant="secondary" size="sm" className="flex items-center gap-1.5"
             onClick={() => setShowScreenQRModal(true)}
             title="Scan QR Code from Screen or Image"
           >
-            <Scan size={14} className="text-cyan-400" />
+            <Scan size={14} className="text-primary" />
             <span>{t('screen_qr_title') || 'Scan QR'}</span>
-          </button>
+          </Button>
 
-          <button
-            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+          <Button variant="secondary" size="sm" className="flex items-center gap-1.5"
             onClick={() => setShowConverterModal(true)}
             title="Universal Config Converter"
           >
-            <ArrowRightLeft size={14} className="text-amber-400" />
+            <ArrowRightLeft size={14} className="text-warning" />
             <span>{t('config_converter_title') || 'Converter'}</span>
-          </button>
+          </Button>
 
-          <button
-            className="btn btn-secondary btn-sm"
+          <Button variant="secondary" size="sm"
             onClick={() => (onNavigateTab ? onNavigateTab('discovery') : setShowScannerModal(true))}
             title="Discovery Hub Cloudflare Scanner"
           >
-            <Zap size={14} className="text-amber-400" />
+            <Zap size={14} className="text-warning" />
             {t('scanner_btn')}
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
+          </Button>
+          <Button variant="secondary" size="sm"
             onClick={() => setShowLicenseModal(true)}
           >
-            <Key size={14} className="text-cyan-400" />
+            <Key size={14} className="text-primary" />
             {t('warp_license_btn')}
-          </button>
-          <button
+          </Button>
+          <Button variant="secondary" size="sm"
             id="import-wg-btn"
-            className="btn btn-secondary btn-sm"
             onClick={() => setShowImportModal(true)}
           >
             <Upload size={14} />
             {t('add_wireguard_conf')}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Cloudflare WARP 1-Click Generator Hero Card */}
-      <div className="card p-5 bg-gradient-to-br from-amber-950/20 via-slate-900/80 to-slate-900 border-amber-500/30 shadow-xl">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="badge badge-warning text-[10px]">Cloudflare Official</span>
-              <span className="badge badge-primary text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">🛡️ AmneziaWG Anti-DPI</span>
-              <span className="badge badge-success text-[10px]">Unlimited Bandwidth</span>
-              <span className="badge badge-info text-[10px]">WireGuard Protocol</span>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">Cloudflare Official</Badge>
+              <Badge variant="secondary">AmneziaWG Anti-DPI</Badge>
+              <Badge variant="secondary">Unlimited Bandwidth</Badge>
+              <Badge variant="secondary">WireGuard Protocol</Badge>
             </div>
-            <h2 className="text-base font-bold text-slate-100">
+            <h2 className="text-base font-semibold text-foreground">
               {t('warp_generator_title')}
             </h2>
-            <p className="text-xs text-slate-400 max-w-xl mt-1">
+            <p className="mt-1 max-w-xl text-xs text-muted-foreground">
               {t('warp_generator_desc')}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button
               id="generate-warp-btn"
-              className="btn btn-primary bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-amber-500/25 text-xs active:scale-[0.99]"
+              size="sm"
               onClick={handleGenerateWarp}
               disabled={isGeneratingWarp}
             >
-              <Zap size={14} className="fill-current" />
+              <Zap className="h-3.5 w-3.5 fill-current" />
               {isGeneratingWarp ? t('generating_warp') : t('generate_warp_btn')}
-            </button>
+            </Button>
 
-            <button
+            <Button
               id="generate-wow-btn"
-              className="btn btn-secondary text-xs font-bold py-2.5 px-4 rounded-xl border border-purple-500/40 text-purple-300 hover:bg-purple-500/10 shadow-lg shadow-purple-500/10 active:scale-[0.99]"
+              variant="outline"
+              size="sm"
               onClick={handleGenerateWarpOnWarp}
               disabled={isGeneratingWoW}
               title="WARP-on-WARP"
             >
-              <Shield size={14} className="text-purple-400" />
+              <Shield className="h-3.5 w-3.5" />
               {isGeneratingWoW ? t('generating_wow') : t('generate_wow_btn')}
-            </button>
+            </Button>
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-slate-800/80 flex-wrap">
+        <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 font-semibold">{t('clean_ip_label')}:</label>
+              <label className="text-xs text-muted-foreground font-semibold">{t('clean_ip_label')}:</label>
               <select
-                className="form-control text-xs font-mono w-52"
+                className="form-control text-xs font-mono w-52 bg-card text-foreground border-border"
                 value={selectedCleanIP}
                 onChange={e => {
                   setSelectedCleanIP(e.target.value)
@@ -373,39 +416,38 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
                   else if (e.target.value === '162.159.193.10') setCustomPort(854)
                 }}
               >
-                <option value="8.6.112.31">8.6.112.31:1180 (⚡ Anycast Ultra Fast)</option>
-                <option value="8.6.112.135">8.6.112.135:864 (⚡ Anycast Clean)</option>
-                <option value="188.114.96.22">188.114.96.22:878 (EU Clean)</option>
-                <option value="188.114.97.105">188.114.97.105:1070 (EU Fast)</option>
-                <option value="162.159.193.10">162.159.193.10:854 (IR Clean)</option>
-                <option value="162.159.192.1">162.159.192.1:2408 (Standard)</option>
+                <option value="8.6.112.31" className="bg-card text-foreground">8.6.112.31:1180 (⚡ Anycast Ultra Fast)</option>
+                <option value="8.6.112.135" className="bg-card text-foreground">8.6.112.135:864 (⚡ Anycast Clean)</option>
+                <option value="188.114.96.22" className="bg-card text-foreground">188.114.96.22:878 (EU Clean)</option>
+                <option value="188.114.97.105" className="bg-card text-foreground">188.114.97.105:1070 (EU Fast)</option>
+                <option value="162.159.193.10" className="bg-card text-foreground">162.159.193.10:854 (IR Clean)</option>
+                <option value="162.159.192.1" className="bg-card text-foreground">162.159.192.1:2408 (Standard)</option>
               </select>
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 font-semibold">{t('port_label')}:</label>
+              <label className="text-xs text-muted-foreground font-semibold">{t('port_label')}:</label>
               <input
                 type="number"
-                className="form-control text-xs font-mono w-20"
+                className="form-control text-xs font-mono w-20 bg-card text-foreground border-border"
                 value={customPort}
                 onChange={e => setCustomPort(parseInt(e.target.value) || 1180)}
               />
             </div>
           </div>
 
-          <button
+          <Button variant="secondary" size="sm" className="text-xs text-primary border-primary/30 hover:bg-primary/10 flex items-center gap-1.5"
             onClick={() => (onNavigateTab ? onNavigateTab('discovery') : setShowScannerModal(true))}
-            className="btn btn-secondary btn-sm text-xs text-amber-400 border-amber-500/30 hover:bg-amber-500/10 flex items-center gap-1.5"
             title="Discovery Hub Cloudflare Scanner"
           >
             <Search size={13} />
             <span>🚀 {t('tab_cloudflare_ips')}</span>
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Profile List Controls & Automation Toolbar */}
-      <div className="card p-3 flex items-center justify-between flex-wrap gap-2">
+      <Card className="p-3 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-1" style={{ maxWidth: '420px' }}>
           <div className="search-bar flex-1">
             <Search size={14} />
@@ -419,72 +461,70 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
           </div>
 
           <select
-            className="form-control text-xs font-semibold bg-slate-900 border-slate-700/60 hover:border-cyan-500/50 transition cursor-pointer shrink-0"
+            className="form-control text-xs font-semibold bg-card text-foreground border-border hover:border-primary/50 transition cursor-pointer shrink-0"
             style={{ width: '130px' }}
             value={sortMode}
             onChange={e => setSortMode(e.target.value as SortMode)}
           >
-            <option value="default">{t('sort_default')}</option>
-            <option value="ping_asc">⚡ {t('sort_ping_asc')}</option>
-            <option value="ping_desc">{t('sort_ping_desc')}</option>
-            <option value="name">🔤 {t('sort_name')}</option>
+            <option value="default" className="bg-card text-foreground">{t('sort_default')}</option>
+            <option value="ping_asc" className="bg-card text-foreground">⚡ {t('sort_ping_asc')}</option>
+            <option value="ping_desc" className="bg-card text-foreground">{t('sort_ping_desc')}</option>
+            <option value="name" className="bg-card text-foreground">🔤 {t('sort_name')}</option>
           </select>
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            className="btn btn-secondary btn-sm text-xs"
+          <Button variant="secondary" size="sm" className="text-xs"
             onClick={handlePingAll}
             disabled={isPinging}
           >
-            <Radio size={13} className="text-emerald-400" />
+            <Radio size={13} className="text-success" />
             <span>{isPinging ? t('pinging_all') : t('ping_all')}</span>
-          </button>
+          </Button>
 
-          <button
-            className="btn btn-secondary btn-sm text-xs"
+          <Button variant="secondary" size="sm" className="text-xs"
             onClick={handleRemoveDead}
             title={t('remove_dead')}
           >
-            <Zap size={13} className="text-amber-400" />
+            <Zap size={13} className="text-warning" />
             <span>{t('remove_dead')}</span>
-          </button>
+          </Button>
 
-          <button
-            className="btn btn-secondary btn-sm text-xs"
+          <Button variant="secondary" size="sm" className="text-xs"
             onClick={handleDeduplicate}
             title={t('remove_duplicates')}
           >
-            <Layers size={13} className="text-purple-400" />
+            <Layers size={13} className="text-primary" />
             <span>{t('remove_duplicates')}</span>
-          </button>
+          </Button>
 
-          <button
-            className="btn btn-secondary btn-sm text-xs"
+          <Button variant="secondary" size="sm" className="text-xs"
             onClick={handleExportAll}
             title={t('copy_all')}
           >
-            <Copy size={13} className="text-blue-400" />
+            <Copy size={13} className="text-primary" />
             <span>{t('copy_all')}</span>
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
+
+      <PingProgressBar progress={pingProgress} onCancel={handleCancelPingAll} />
 
       {/* Profiles Grid */}
       {filtered.length === 0 ? (
-        <div className="card text-center p-12 space-y-3">
-          <Globe size={48} className="mx-auto text-slate-600 mb-2 opacity-40" />
-          <h3 className="font-bold text-sm text-slate-200">
+        <Card className="text-center p-12 space-y-3">
+          <Globe size={48} className="mx-auto text-muted-foreground mb-2 opacity-40" />
+          <h3 className="font-bold text-sm text-foreground">
             {t('no_profiles_found')}
           </h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
             {t('warp_empty_hint')}
           </p>
-          <button className="btn btn-primary btn-sm mx-auto" onClick={handleGenerateWarp}>
+          <Button size="sm" className="mx-auto" onClick={handleGenerateWarp}>
             <Zap size={14} />
             {t('generate_warp_btn')}
-          </button>
-        </div>
+          </Button>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3.5">
           {filtered.map(p => {
@@ -492,63 +532,46 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
             const isConnecting = status.state === 'connecting' && status.profile_id === p.id
 
             return (
-              <div
+              <ProfileCard
                 key={p.id}
-                className={`card p-3.5 sm:p-4 transition-all rounded-2xl flex flex-col justify-between overflow-hidden ${
-                  isConnected
-                    ? 'border-amber-500/80 shadow-lg shadow-amber-500/20 bg-amber-950/20 ring-1 ring-amber-500/40'
-                    : 'hover:border-slate-700 bg-slate-900/60 border-white/5'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-lg shrink-0 leading-none">⚡</span>
-                      <h4 className="font-bold text-xs truncate min-w-0 text-slate-100" title={p.name}>
-                        {p.name}
-                      </h4>
-                    </div>
-
-                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 shrink-0 font-bold">
-                      WARP
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono mb-2.5 gap-2">
-                    <span className="truncate flex-1 text-slate-400">{p.server}:{p.port}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 truncate shrink-0">
+                name={p.name}
+                icon="⚡"
+                protocolLabel="WARP"
+                metaSlot={
+                  <>
+                    <span className="truncate flex-1">{p.server}:{p.port}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground truncate shrink-0">
                       WireGuard
                     </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2.5 border-t border-white/5 gap-1">
-                  <button
-                    type="button"
-                    className="px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-[11px] text-slate-300 transition flex items-center gap-1 font-mono border border-slate-700/50 shrink-0"
-                    onClick={e => handlePingSingle(p.id, e)}
-                    title={t('ping_test')}
-                  >
-                    <Activity size={11} className={p.latency_ms && p.latency_ms > 0 ? 'text-emerald-400' : 'text-slate-500'} />
-                    <span
-                      className={
-                        p.latency_ms && p.latency_ms > 0
-                          ? p.latency_ms < 150
-                            ? 'text-emerald-400 font-bold'
-                            : p.latency_ms < 300
-                            ? 'text-amber-400 font-bold'
-                            : 'text-rose-400 font-bold'
-                          : 'text-slate-400'
-                      }
-                    >
-                      {p.latency_ms && p.latency_ms > 0 ? `${p.latency_ms}ms` : 'Ping'}
-                    </span>
-                  </button>
-
-                  <div className="flex items-center gap-0.5 shrink-0">
+                  </>
+                }
+                actionsSlot={
+                  <>
                     <button
                       type="button"
-                      className="p-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                      className="px-2 py-1 rounded-lg bg-muted hover:bg-muted/90 text-[11px] text-muted-foreground transition flex items-center gap-1 font-mono shrink-0"
+                      onClick={e => handlePingSingle(p.id, e)}
+                      title={t('ping_test')}
+                    >
+                      <Activity size={11} className={p.latency_ms && p.latency_ms > 0 ? 'text-success' : 'text-muted-foreground'} />
+                      <span
+                        className={
+                          p.latency_ms && p.latency_ms > 0
+                            ? p.latency_ms < 150
+                              ? 'text-success font-bold'
+                              : p.latency_ms < 300
+                              ? 'text-warning font-bold'
+                              : 'text-destructive font-bold'
+                            : 'text-muted-foreground'
+                        }
+                      >
+                        {p.latency_ms && p.latency_ms > 0 ? `${p.latency_ms}ms` : 'Ping'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition"
                       title={t('qr_code_modal_title')}
                       onClick={e => {
                         e.stopPropagation()
@@ -560,71 +583,25 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
 
                     <button
                       type="button"
-                      className="p-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition"
                       title={t('copy_config_link')}
                       onClick={e => handleCopyURI(p, e)}
                     >
-                      {copiedId === p.id ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                      {copiedId === p.id ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                     </button>
-
-                    <button
-                      type="button"
-                      className="p-1.5 rounded-md text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition"
-                      title={t('edit')}
-                      onClick={e => {
-                        e.stopPropagation()
-                        setEditingProfile(p)
-                      }}
-                    >
-                      <Edit3 size={13} />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="p-1.5 rounded-md text-rose-400 hover:bg-rose-500/20 transition"
-                      title={t('delete')}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleDelete(p.id)
-                      }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition shrink-0 min-w-[65px] justify-center ${
-                      isConnected
-                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-sm shadow-rose-500/20'
-                        : isConnecting
-                        ? 'bg-amber-500 text-slate-950 animate-pulse'
-                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm shadow-amber-500/20'
-                    }`}
-                    onClick={e => {
-                      e.stopPropagation()
-                      isConnected ? handleDisconnect() : handleConnect(p.id)
-                    }}
-                  >
-                    {isConnecting ? (
-                      <>
-                        <RefreshCw size={10} className="animate-spin" />
-                        <span>...</span>
-                      </>
-                    ) : isConnected ? (
-                      <>
-                        <Square size={10} className="fill-current" />
-                        <span>{t('disconnect')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play size={10} className="fill-current" />
-                        <span>{t('connect')}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+                  </>
+                }
+                state={isConnected ? 'connected' : isConnecting ? 'connecting' : 'idle'}
+                connectClassName="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                onConnect={() => handleConnect(p.id)}
+                onDisconnect={handleDisconnect}
+                onEdit={() => setEditingProfile(p)}
+                onDelete={() => handleDelete(p.id)}
+                pinned={!!p.favorite}
+                onTogglePin={() => toggleProfilePin(p, setProfiles)}
+                pinLabels={{ pin: t('adv_pin'), unpin: t('adv_unpin') }}
+                labels={{ connect: t('connect'), disconnect: t('disconnect'), edit: t('edit'), delete: t('delete') }}
+              />
             )
           })}
         </div>
@@ -653,21 +630,45 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
 
       {/* WARP+ License Modal */}
       {showLicenseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+        <ModalShell
+          isOpen={showLicenseModal}
+          onClose={() => setShowLicenseModal(false)}
+          maxWidth="max-w-md"
+          bodyClassName="p-6 space-y-4"
+        >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2 text-primary font-bold text-sm">
                 <Key className="w-5 h-5" />
                 {t('warp_license_title')}
               </div>
-              <button onClick={() => setShowLicenseModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowLicenseModal(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted-foreground">
               {t('warp_license_desc')}
             </p>
+
+            {/* Live account status read back from settings */}
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+              <span className="text-[11px] text-muted-foreground">{t('warp_account_status')}</span>
+              <span
+                className={`text-[11px] font-bold ${
+                  warpAccountType === 'plus' ? 'text-success' : 'text-muted-foreground'
+                }`}
+              >
+                {warpAccountType === 'plus' ? t('warp_account_plus') : t('warp_account_free')}
+              </span>
+            </div>
+            {warpLicenseKey && (
+              <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                <span className="text-[11px] text-muted-foreground">{t('warp_license_current')}</span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {warpLicenseKey.slice(0, 8)}…{warpLicenseKey.slice(-4)}
+                </span>
+              </div>
+            )}
 
             <input
               type="text"
@@ -677,20 +678,18 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
               onChange={e => setLicenseKeyInput(e.target.value)}
             />
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowLicenseModal(false)}>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="secondary" size="sm" onClick={() => setShowLicenseModal(false)}>
                 {t('warp_license_cancel')}
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
+              </Button>
+              <Button size="sm"
                 onClick={handleApplyLicense}
                 disabled={isApplyingLicense || !licenseKeyInput.trim()}
               >
                 {isApplyingLicense ? '...' : t('warp_license_apply')}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* WireGuard Import Modal */}
@@ -707,21 +706,24 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
 
       {/* QR Code Sharing Modal */}
       {sharingProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center space-y-4">
-            <h3 className="font-bold text-slate-200 text-sm truncate">{sharingProfile.name}</h3>
+        <ModalShell
+          isOpen={true}
+          onClose={() => setSharingProfile(null)}
+          maxWidth="max-w-sm"
+          bodyClassName="p-6 text-center space-y-4"
+        >
+            <h3 className="font-bold text-foreground text-sm truncate">{sharingProfile.name}</h3>
             {qrImageUrl && (
               <img
                 src={qrImageUrl}
                 alt="QR Code"
-                className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg w-[220px] h-[220px]"
+                className="bg-card p-3 rounded-xl mx-auto inline-block shadow-lg w-[220px] h-[220px]"
               />
             )}
-            <button className="btn btn-secondary w-full text-xs" onClick={() => setSharingProfile(null)}>
+            <Button variant="secondary" className="w-full text-xs" onClick={() => setSharingProfile(null)}>
               {t('close')}
-            </button>
-          </div>
-        </div>
+            </Button>
+        </ModalShell>
       )}
 
       {/* Screen QR Code Scanner Modal */}
@@ -790,21 +792,25 @@ function ImportWireGuardModal({
       onImported()
     } catch (err) {
       console.error('Import WG error:', err)
-      alert('Failed to import WireGuard config')
+      alert(t('alert_import_wg_failed'))
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-lg"
+      bodyClassName="p-6 space-y-4"
+    >
+        <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
-            <Upload className="w-4 h-4 text-cyan-400" />
-            <h3 className="font-bold text-slate-200 text-sm">{t('add_wg_modal_title')}</h3>
+            <Upload className="w-4 h-4 text-primary" />
+            <h3 className="font-bold text-foreground text-sm">{t('add_wg_modal_title')}</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -812,13 +818,13 @@ function ImportWireGuardModal({
         {/* File Upload Trigger */}
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-slate-700 hover:border-cyan-500/70 bg-slate-800/40 hover:bg-slate-800/80 rounded-xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5"
+          className="border-2 border-dashed border-border hover:border-primary/70 bg-muted hover:bg-muted/90 rounded-xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5"
         >
-          <Upload className="w-6 h-6 text-slate-400" />
-          <div className="text-xs font-semibold text-slate-200">
+          <Upload className="w-6 h-6 text-muted-foreground" />
+          <div className="text-xs font-semibold text-foreground">
             {t('add_wg_drag_drop')}
           </div>
-          <div className="text-[11px] text-slate-400">
+          <div className="text-[11px] text-muted-foreground">
             {t('add_wg_browse_hint')}
           </div>
           <input
@@ -832,7 +838,7 @@ function ImportWireGuardModal({
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="text-xs text-slate-400 font-medium block mb-1">{t('add_wg_profile_name')}</label>
+            <label className="text-xs text-muted-foreground font-medium block mb-1">{t('add_wg_profile_name')}</label>
             <input
               type="text"
               placeholder={t('add_wg_name_placeholder')}
@@ -844,11 +850,11 @@ function ImportWireGuardModal({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-slate-400 font-medium">{t('add_wg_conf_content')}</label>
+              <label className="text-xs text-muted-foreground font-medium">{t('add_wg_conf_content')}</label>
               <button
                 type="button"
                 onClick={handleApplyAmneziaHeaders}
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold hover:underline"
+                className="text-[11px] text-primary hover:text-primary font-semibold hover:underline"
               >
                 {t('add_wg_add_amnezia_headers')}
               </button>
@@ -863,16 +869,15 @@ function ImportWireGuardModal({
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="secondary" size="sm" type="button" onClick={onClose}>
               {t('cancel')}
-            </button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={isSubmitting || !conf.trim()}>
+            </Button>
+            <Button size="sm" type="submit" disabled={isSubmitting || !conf.trim()}>
               {isSubmitting ? t('submitting') : t('add_wg_submit')}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   )
 }

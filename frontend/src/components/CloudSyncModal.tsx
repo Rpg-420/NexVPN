@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Cloud, Download, Upload, Copy, Check, Sparkles, RefreshCw, Key } from 'lucide-react'
 import { api } from '../lib/api'
 import { sound } from '../lib/sound'
 import { t } from '../lib/i18n'
+import { ModalShell } from '../components/ui/modal-shell'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   isOpen: boolean
@@ -85,30 +87,34 @@ export default function CloudSyncModal({ isOpen, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col space-y-4 p-6">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-xl"
+      bodyClassName="space-y-4 p-6"
+    >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-inner">
+            <div className="w-9 h-9 rounded-xl border border-border bg-muted flex items-center justify-center text-muted-foreground shadow-inner">
               <Cloud size={18} />
             </div>
             <div>
-              <h3 className="font-bold text-slate-100 text-sm">{t('cloud_sync_title')}</h3>
-              <p className="text-xs text-slate-400">{t('cloud_sync_subtitle')}</p>
+              <h3 className="font-bold text-foreground text-sm">{t('cloud_sync_title')}</h3>
+              <p className="text-xs text-muted-foreground">{t('cloud_sync_subtitle')}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Selector */}
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs">
+        <div className="flex items-center gap-2 border-b border-border pb-2 text-xs">
           <button
             onClick={() => setActiveTab('feed')}
             className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition ${
-              activeTab === 'feed' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'text-slate-400 hover:text-white'
+              activeTab === 'feed' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-muted-foreground hover:text-primary'
             }`}
           >
             <Sparkles size={13} />
@@ -118,7 +124,7 @@ export default function CloudSyncModal({ isOpen, onClose }: Props) {
           <button
             onClick={() => setActiveTab('backup')}
             className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition ${
-              activeTab === 'backup' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'text-slate-400 hover:text-white'
+              activeTab === 'backup' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-muted-foreground hover:text-primary'
             }`}
           >
             <Key size={13} />
@@ -129,11 +135,11 @@ export default function CloudSyncModal({ isOpen, onClose }: Props) {
         {/* TAB 1: Clean IP Feed */}
         {activeTab === 'feed' && (
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between text-xs text-slate-400">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{t('cloud_feed_header')}</span>
               <button
                 onClick={loadFeed}
-                className="text-sky-400 hover:text-sky-300 flex items-center gap-1 text-[11px]"
+                className="text-primary hover:text-primary flex items-center gap-1 text-[11px]"
                 disabled={isLoadingFeed}
               >
                 <RefreshCw size={11} className={isLoadingFeed ? 'animate-spin' : ''} />
@@ -141,17 +147,17 @@ export default function CloudSyncModal({ isOpen, onClose }: Props) {
               </button>
             </div>
 
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pe-1">
               {feedRanges.map(r => (
                 <div
                   key={r.cidr}
-                  className="bg-slate-950/70 p-2.5 rounded-xl border border-white/5 flex items-center justify-between text-xs"
+                  className="bg-background p-2.5 rounded-xl border border-border flex items-center justify-between text-xs"
                 >
                   <div>
-                    <div className="font-mono font-bold text-sky-300">{r.cidr}</div>
-                    <div className="text-[11px] text-slate-400">{getFeedDescription(r.cidr, r.description)}</div>
+                    <div className="font-mono font-bold text-primary">{r.cidr}</div>
+                    <div className="text-[11px] text-muted-foreground">{getFeedDescription(r.cidr, r.description)}</div>
                   </div>
-                  <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
+                  <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded font-mono">
                     {r.region}
                   </span>
                 </div>
@@ -163,63 +169,71 @@ export default function CloudSyncModal({ isOpen, onClose }: Props) {
         {/* TAB 2: Backup & Restore */}
         {activeTab === 'backup' && (
           <div className="space-y-3 text-xs">
+            {/* Encryption password (shared by export & import) */}
+            <div className="bg-background p-3 rounded-xl border border-border space-y-2">
+              <label className="font-bold text-foreground block">{t('settings_backup_password_label')}</label>
+              <input
+                type="password"
+                className="form-control text-xs w-full"
+                placeholder={t('settings_backup_password_placeholder')}
+                value={backupPassword}
+                onChange={e => setBackupPassword(e.target.value)}
+              />
+            </div>
+
             {/* Export Section */}
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-2">
-              <span className="font-bold text-slate-200 block">{t('cloud_backup_title')}</span>
+            <div className="bg-background p-3 rounded-xl border border-border space-y-2">
+              <span className="font-bold text-foreground block">{t('cloud_backup_title')}</span>
               <div className="flex items-center gap-2">
-                <button
+                <Button variant="secondary" size="sm" className="text-xs flex items-center gap-1"
                   onClick={handleGenerateBackup}
-                  className="btn btn-secondary btn-sm text-xs flex items-center gap-1"
                 >
                   <Download size={13} />
                   <span>{t('cloud_generate_backup')}</span>
-                </button>
+                </Button>
                 {backupPayload && (
-                  <button
+                  <Button size="sm" className="text-xs flex items-center gap-1"
                     onClick={handleCopyBackup}
-                    className="btn btn-primary btn-sm text-xs flex items-center gap-1"
                   >
-                    {isCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                    {isCopied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                     <span>{isCopied ? t('cloud_copied') : t('cloud_copy_backup')}</span>
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
 
             {/* Import Section */}
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-2">
-              <span className="font-bold text-slate-200 block">{t('cloud_restore_title')}</span>
+            <div className="bg-background p-3 rounded-xl border border-border space-y-2">
+              <span className="font-bold text-foreground block">{t('cloud_restore_title')}</span>
               <textarea
                 placeholder={t('cloud_restore_placeholder')}
                 className="form-control font-mono text-[11px] w-full h-16 resize-none"
                 value={importPayload}
                 onChange={e => setImportPayload(e.target.value)}
               />
-              <button
+              <Button variant="secondary" size="sm" className="text-xs flex items-center gap-1"
                 onClick={handleRestoreBackup}
                 disabled={!importPayload.trim()}
-                className="btn btn-secondary btn-sm text-xs flex items-center gap-1"
               >
                 <Upload size={13} />
                 <span>{t('cloud_restore_btn')}</span>
-              </button>
+              </Button>
               {importStatus === 'success' && (
-                <span className="text-emerald-400 text-xs block">{t('cloud_restore_success')}</span>
+                <span className="text-success text-xs block">{t('cloud_restore_success')}</span>
               )}
               {importStatus === 'error' && (
-                <span className="text-rose-400 text-xs block">{t('cloud_restore_error')}</span>
+                <span className="text-destructive text-xs block">{t('cloud_restore_error')}</span>
               )}
             </div>
           </div>
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-end pt-2 border-t border-slate-800">
-          <button className="btn btn-secondary btn-sm text-xs" onClick={onClose}>
+        <div className="flex items-center justify-end pt-2 border-t border-border">
+          <Button variant="secondary" size="sm" className="text-xs" onClick={onClose}>
             {t('close')}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </ModalShell>
   )
 }

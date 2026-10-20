@@ -1,26 +1,34 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Plus,
-  Trash2,
-  Play,
-  Square,
   Upload,
-  CheckCircle2,
   Search,
   Lock,
   X,
-  FileText,
-  User,
-  Key,
   Shield,
-  Edit3,
   RefreshCw,
   AlertTriangle,
+  AlertCircle,
+  Activity,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import { translateBackendError } from '../lib/backendErrors'
 import type { Profile, ConnectionStatus } from '../types'
 import EditProfileModal from '../components/EditProfileModal'
+import OpenVPNCatalogModal from '../components/OpenVPNCatalogModal'
+import TunnelBearModal from '../components/TunnelBearModal'
+import CountryFlag from '../components/CountryFlag'
+import { PingProgressBar } from '../components/PingProgressBar'
+import { usePingProgress } from '../hooks/usePingProgress'
+import { pinnedFirst, toggleProfilePin } from '../lib/profilePin'
+import { ModalShell } from '../components/ui/modal-shell'
+import { ProfileCard } from '../components/ui/profile-card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 interface Props {
   status: ConnectionStatus
@@ -40,7 +48,14 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
     localStorage.setItem('nexvpn_openvpn_sort', mode)
   }
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showCatalogModal, setShowCatalogModal] = useState(false)
+  const [showTunnelBearModal, setShowTunnelBearModal] = useState(false)
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
+  const [isPingingAll, setIsPingingAll] = useState(false)
+  // Sweeping a whole OpenVPN list takes tens of seconds at 3 s per probe, and
+  // the promise only settles at the end. Without a visible counter the button
+  // looked broken rather than busy.
+  const pingProgress = usePingProgress(isPingingAll)
 
   const loadProfiles = useCallback(async () => {
     try {
@@ -54,6 +69,36 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
   useEffect(() => {
     loadProfiles()
   }, [loadProfiles])
+
+  // The sweep is streamed from Go so the progress bar advances while it runs.
+  const handlePingAll = async () => {
+    if (isPingingAll) return
+    setIsPingingAll(true)
+    try {
+      const updated = await api.pingAllProfiles('openvpn')
+      if (updated) setProfiles(updated)
+    } catch (err) {
+      console.error('Ping all OpenVPN profiles error:', err)
+    } finally {
+      setIsPingingAll(false)
+    }
+  }
+
+  const handleCancelPingAll = () => {
+    api.cancelPingAll().catch(() => {})
+  }
+
+  // Per-row probe. OpenVPN relays are measured with a plain TCP connect, so a
+  // reachable relay answers in milliseconds and a dead one reports -1.
+  const handlePingSingle = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const ms = await api.pingProfile(id)
+      setProfiles(prev => prev.map(p => (p.id === id ? { ...p, latency_ms: ms } : p)))
+    } catch (err) {
+      console.error('Ping single OpenVPN profile error:', err)
+    }
+  }
 
   const handleConnect = async (profileId: string) => {
     try {
@@ -104,6 +149,15 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.group?.includes(search)
   )
 
+  /**
+   * Pin or unpin a profile.
+   *
+   * The list is updated optimistically and then reconciled with what the
+   * backend reports: pinning writes the config file, and waiting for that round
+   * trip before the star changes makes the control feel broken on a slow disk.
+   */
+  const handleTogglePin = (profile: Profile) => toggleProfilePin(profile, setProfiles)
+
   if (sortMode === 'ping_asc') {
     filtered.sort((a, b) => {
       const latA = a.latency_ms && a.latency_ms > 0 ? a.latency_ms : 99999
@@ -116,80 +170,101 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
     filtered.sort((a, b) => a.name.localeCompare(b.name))
   }
 
+  // Pinned profiles lead, whichever sort is active. Applied last on purpose:
+  // Array.prototype.sort is stable, so sorting only by the pin preserves the
+  // order the chosen sort mode just established *within* each group.
+  filtered.sort(pinnedFirst)
+
   return (
     <div className="page space-y-5">
       {/* Header */}
-      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 bg-slate-900/90 backdrop-blur-xl py-3 -mx-2 px-4 rounded-2xl border border-white/5 shadow-lg shadow-black/20">
+      <div className="page-header sticky top-0 z-30 flex items-center justify-between flex-wrap gap-3 surface-toolbar py-3 -mx-2 px-4 rounded-2xl shadow-md">
         <div>
           <h1 className="page-title">{t('openvpn_title')}</h1>
           <p className="page-subtitle">{t('openvpn_subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={async () => {
-              const updated = await api.pingAllProfiles('openvpn')
-              if (updated) setProfiles(updated)
-            }}
-            title="Ping All OpenVPN Profiles"
+          <Button variant="secondary" size="sm"
+            onClick={handlePingAll}
+            disabled={isPingingAll || profiles.length === 0}
+            title={t('ping_all_hint')}
           >
-            <RefreshCw size={14} />
-            <span>{t('ping_all')}</span>
-          </button>
-          <button
+            <RefreshCw size={14} className={isPingingAll ? 'animate-spin' : ''} />
+            <span>{isPingingAll ? t('pinging_all') : t('ping_all')}</span>
+          </Button>
+          <Button variant="secondary" size="sm"
+            id="browse-ovpn-catalog-btn"
+            onClick={() => setShowCatalogModal(true)}
+            title={t('ovpn_catalog_title')}
+          >
+            <Globe size={14} />
+            <span>{t('ovpn_catalog_btn')}</span>
+          </Button>
+          <Button variant="secondary" size="sm"
+            id="tunnelbear-btn"
+            onClick={() => setShowTunnelBearModal(true)}
+            title={t('tb_title')}
+          >
+            <ShieldCheck size={14} />
+            <span>{t('tb_btn')}</span>
+          </Button>
+          <Button size="sm"
             id="add-ovpn-btn"
-            className="btn btn-primary btn-sm"
             onClick={() => setShowAddModal(true)}
           >
             <Plus size={14} />
             {t('add_openvpn_btn')}
-          </button>
+          </Button>
         </div>
       </div>
 
+      {/* Reachability sweep progress */}
+      <PingProgressBar progress={pingProgress} onCancel={handleCancelPingAll} />
+
       {/* Connection Failure Error Diagnostic Banner */}
       {status.state === 'error' && status.error_msg && (
-        <div className="p-3.5 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-left rtl:text-right space-y-1.5 animate-in fade-in duration-200">
-          <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
-            <AlertTriangle size={15} className="text-rose-400 shrink-0 animate-pulse" />
+        <div className="p-3.5 rounded-2xl error-banner-modern text-start rtl:text-end space-y-1.5 animate-in fade-in duration-200 shadow-sm">
+          <div className="flex items-center gap-2 text-destructive font-bold text-xs">
+            <AlertTriangle size={15} className="text-destructive shrink-0 animate-pulse" />
             <span>{t('connection_failed')}</span>
           </div>
-          <p className="text-xs text-rose-200/90 leading-relaxed font-sans font-medium">
-            {status.error_msg}
+          <p
+            className="text-xs text-destructive leading-relaxed font-sans font-medium"
+            title={status.error_msg}
+          >
+            {translateBackendError(status.error_msg)}
           </p>
-          <div className="text-[11px] text-rose-300/70 pt-0.5">
+          <div className="text-[11px] text-destructive/80 dark:text-destructive/70 pt-0.5 font-medium">
             💡 {t('openvpn_error_hint')}
           </div>
         </div>
       )}
 
       {/* Pro Engine Optimization Banner */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-slate-900 border border-indigo-500/20 flex items-center justify-between flex-wrap gap-3 text-xs">
+      <Card className="p-4 rounded-2xl border border-primary/25 flex items-center justify-between flex-wrap gap-3 text-xs shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary shrink-0">
             <Shield size={20} />
           </div>
           <div>
-            <div className="font-bold text-slate-100 flex items-center gap-2">
+            <div className="font-medium text-foreground flex items-center gap-2">
               <span>OpenVPN Turbo Engine (Wintun Active)</span>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                100% App Compatible
-              </span>
+              <Badge variant="success">100% App Compatible</Badge>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-muted-foreground mt-0.5">
               MSS Clamping (1360), Wintun Low-Latency Driver, Anti-DNS Leak & Auto Iran Route Bypass Active
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-indigo-300">
-          <span className="px-2.5 py-1 rounded-xl bg-slate-900/80 border border-slate-800">MTU: 1400</span>
-          <span className="px-2.5 py-1 rounded-xl bg-slate-900/80 border border-slate-800">Driver: Wintun</span>
-          <span className="px-2.5 py-1 rounded-xl bg-slate-900/80 border border-slate-800">Block-DNS: ON</span>
+        <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-primary">
+          <span className="px-2.5 py-1 rounded-xl segmented-pill">MTU: 1400</span>
+          <span className="px-2.5 py-1 rounded-xl segmented-pill">Driver: Wintun</span>
+          <span className="px-2.5 py-1 rounded-xl segmented-pill">Block-DNS: ON</span>
         </div>
-      </div>
+      </Card>
 
       {/* Search & Sort Bar */}
-      <div className="card p-3 flex items-center justify-between flex-wrap gap-3">
+      <Card className="p-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2 flex-1" style={{ maxWidth: '460px' }}>
           <div className="search-bar flex-1">
             <Search size={15} />
@@ -202,7 +277,7 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
           </div>
 
           <select
-            className="form-control text-xs font-semibold bg-slate-900 border-slate-700/60 hover:border-cyan-500/50 transition cursor-pointer shrink-0"
+            className="form-control text-xs font-semibold bg-surface border-border hover:border-primary transition cursor-pointer shrink-0"
             style={{ width: '130px' }}
             value={sortMode}
             onChange={e => setSortMode(e.target.value as SortMode)}
@@ -213,20 +288,30 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
             <option value="name">🔤 {t('sort_name')}</option>
           </select>
         </div>
-      </div>
+      </Card>
 
       {/* Profiles Grid */}
       {filtered.length === 0 ? (
-        <div className="card text-center p-12 space-y-3">
-          <Lock size={48} className="mx-auto text-slate-600 mb-2 opacity-40" />
-          <h3 className="font-bold text-sm text-slate-200">
+        <Card className="text-center p-12 space-y-3">
+          <Lock size={48} className="mx-auto text-muted-foreground mb-2 opacity-40" />
+          <h3 className="font-bold text-sm text-primary">
             {t('no_openvpn_nodes')}
           </h3>
-          <button className="btn btn-primary btn-sm mx-auto" onClick={() => setShowAddModal(true)}>
-            <Plus size={14} />
-            {t('add_openvpn_btn')}
-          </button>
-        </div>
+          <div className="flex items-center justify-center gap-2">
+            <Button size="sm" onClick={() => setShowAddModal(true)}>
+              <Plus size={14} />
+              {t('add_openvpn_btn')}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowCatalogModal(true)}>
+              <Globe size={14} />
+              {t('ovpn_catalog_btn')}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowTunnelBearModal(true)}>
+              <ShieldCheck size={14} />
+              {t('tb_btn')}
+            </Button>
+          </div>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3.5">
           {filtered.map(p => {
@@ -234,100 +319,86 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
             const isConnecting = status.state === 'connecting' && status.profile_id === p.id
 
             return (
-              <div
+              <ProfileCard
                 key={p.id}
-                className={`card p-3.5 sm:p-4 transition-all rounded-2xl flex flex-col justify-between overflow-hidden ${
-                  isConnected
-                    ? 'border-indigo-500/80 shadow-lg shadow-indigo-500/20 bg-indigo-950/20 ring-1 ring-indigo-500/40'
-                    : 'hover:border-slate-700 bg-slate-900/60 border-white/5'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-lg shrink-0 leading-none">🔒</span>
-                      <h4 className="font-bold text-xs truncate min-w-0 text-slate-100" title={p.name}>
-                        {p.name}
-                      </h4>
-                    </div>
-
-                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shrink-0 font-bold">
-                      OpenVPN
+                name={p.name}
+                icon={
+                  <CountryFlag
+                    codeOrName={p.country_code || p.country || p.group || p.name}
+                    size="md"
+                  />
+                }
+                protocolLabel="OpenVPN"
+                metaSlot={
+                  <>
+                    <span className="truncate flex-1">
+                      {p.server ? `${p.server}:${p.port || 1194}` : 'OpenVPN TAP'}
                     </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono mb-2.5 gap-2">
-                    <span className="truncate flex-1 text-slate-400">{p.server ? `${p.server}:${p.port || 1194}` : 'OpenVPN TAP'}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-300 truncate shrink-0">
+                    {p.username && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded segmented-pill truncate shrink-0 max-w-[110px]">
+                        {p.username}
+                      </span>
+                    )}
+                    <span className="text-[10px] px-1.5 py-0.5 rounded segmented-pill truncate shrink-0">
                       TAP
                     </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2.5 border-t border-white/5 gap-1 mt-1">
-                  <div className="text-[11px] text-slate-400 font-mono truncate max-w-[130px]">
-                    {p.username ? `User: ${p.username}` : 'Direct TAP'}
-                  </div>
-
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <button
-                      type="button"
-                      className="p-1.5 rounded-md text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition"
-                      title={t('edit')}
-                      onClick={e => {
-                        e.stopPropagation()
-                        setEditingProfile(p)
-                      }}
-                    >
-                      <Edit3 size={13} />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="p-1.5 rounded-md text-rose-400 hover:bg-rose-500/20 transition"
-                      title={t('delete')}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleDelete(p.id)
-                      }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
+                  </>
+                }
+                footnoteSlot={
+                  // The sweep and the single-row probe both write latency_ms back
+                  // to the profile, but the card never showed it — the value was
+                  // measured and then thrown away. This is the readout.
                   <button
                     type="button"
-                    className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition shrink-0 min-w-[65px] justify-center ${
-                      isConnected
-                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-sm shadow-rose-500/20'
-                        : isConnecting
-                        ? 'bg-amber-500 text-slate-950 animate-pulse'
-                        : 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-sm shadow-indigo-500/20'
-                    }`}
-                    onClick={e => {
-                      e.stopPropagation()
-                      isConnected ? handleDisconnect() : handleConnect(p.id)
-                    }}
+                    className="px-2 py-1 rounded-lg bg-muted hover:bg-muted/90 text-[11px] text-foreground transition flex items-center gap-1 font-mono border border-border"
+                    onClick={e => handlePingSingle(p.id, e)}
+                    title={t('ping_test')}
                   >
-                    {isConnecting ? (
-                      <>
-                        <RefreshCw size={10} className="animate-spin" />
-                        <span>...</span>
-                      </>
-                    ) : isConnected ? (
-                      <>
-                        <Square size={10} className="fill-current" />
-                        <span>{t('disconnect')}</span>
-                      </>
+                    <Activity
+                      size={11}
+                      className={
+                        p.latency_ms && p.latency_ms > 0
+                          ? 'text-success'
+                          : p.latency_ms && p.latency_ms < 0
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
+                      }
+                    />
+                    {p.latency_ms && p.latency_ms > 0 ? (
+                      <span
+                        className={
+                          p.latency_ms < 150
+                            ? 'text-success font-bold'
+                            : p.latency_ms < 300
+                            ? 'text-warning font-bold'
+                            : 'text-destructive font-bold'
+                        }
+                      >
+                        {p.latency_ms}ms
+                      </span>
+                    ) : p.latency_ms && p.latency_ms < 0 ? (
+                      <span className="text-destructive font-bold flex items-center gap-0.5">
+                        <AlertCircle size={10} />
+                        <span>-1 ms</span>
+                      </span>
                     ) : (
-                      <>
-                        <Play size={10} className="fill-current" />
-                        <span>{t('connect')}</span>
-                      </>
+                      <span className="text-muted-foreground font-mono">
+                        {t('ping_test')}
+                      </span>
                     )}
                   </button>
-                </div>
-              </div>
+                }
+                state={isConnected ? 'connected' : isConnecting ? 'connecting' : 'idle'}
+                connectClassName="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                onConnect={() => handleConnect(p.id)}
+                onDisconnect={handleDisconnect}
+                onEdit={() => setEditingProfile(p)}
+                onDelete={() => handleDelete(p.id)}
+                pinned={!!p.favorite}
+                onTogglePin={() => handleTogglePin(p)}
+                pinLabels={{ pin: t('adv_pin'), unpin: t('adv_unpin') }}
+                labels={{ connect: t('connect'), disconnect: t('disconnect'), edit: t('edit'), delete: t('delete') }}
+              />
             )
           })}
         </div>
@@ -353,6 +424,20 @@ export default function OpenVPNPage({ status, onStatusChange }: Props) {
           }}
         />
       )}
+
+      {/* Public OpenVPN Server Catalogue Modal */}
+      <OpenVPNCatalogModal
+        isOpen={showCatalogModal}
+        onClose={() => setShowCatalogModal(false)}
+        onImported={() => loadProfiles()}
+      />
+
+      {/* TunnelBear: the operator's countries, signed in with the user's own account */}
+      <TunnelBearModal
+        isOpen={showTunnelBearModal}
+        onClose={() => setShowTunnelBearModal(false)}
+        onImported={() => loadProfiles()}
+      />
     </div>
   )
 }
@@ -403,25 +488,30 @@ function AddOpenVPNModal({
       onAdded()
     } catch (err) {
       console.error('Import OpenVPN error:', err)
-      alert('Failed to import OpenVPN configuration')
+      alert(t('alert_import_ovpn_failed'))
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="font-bold text-slate-200 text-sm">{t('add_openvpn_btn')}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-lg"
+      className="max-h-[90vh] overflow-y-auto"
+      bodyClassName="p-6 space-y-4"
+    >
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h3 className="font-bold text-foreground text-sm">{t('add_openvpn_btn')}</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs text-slate-300 font-semibold block mb-1.5">Profile Name:</label>
+            <label className="text-xs text-muted-foreground font-semibold block mb-1.5">Profile Name:</label>
             <input
               type="text"
               placeholder="e.g. My OpenVPN Server"
@@ -431,11 +521,11 @@ function AddOpenVPNModal({
             />
           </div>
 
-          <div className="border border-dashed border-slate-700 hover:border-cyan-500/50 p-4 rounded-xl text-center bg-slate-800/40 transition cursor-pointer">
+          <div className="border border-dashed border-border hover:border-primary/50 p-4 rounded-xl text-center bg-muted transition cursor-pointer">
             <label className="cursor-pointer flex flex-col items-center gap-1.5">
-              <Upload size={20} className="text-cyan-400" />
-              <span className="text-xs text-slate-300 font-medium">Click to upload .ovpn file</span>
-              <span className="text-[10px] text-slate-500">Supports OpenVPN client configuration files</span>
+              <Upload size={20} className="text-primary" />
+              <span className="text-xs text-muted-foreground font-medium">Click to upload .ovpn file</span>
+              <span className="text-[10px] text-muted-foreground">Supports OpenVPN client configuration files</span>
               <input
                 type="file"
                 accept=".ovpn,.conf,.txt"
@@ -446,7 +536,7 @@ function AddOpenVPNModal({
           </div>
 
           <div>
-            <label className="text-xs text-slate-300 font-semibold block mb-1.5">{t('ovpn_content_label')}:</label>
+            <label className="text-xs text-muted-foreground font-semibold block mb-1.5">{t('ovpn_content_label')}:</label>
             <textarea
               rows={5}
               placeholder={t('ovpn_placeholder')}
@@ -459,7 +549,7 @@ function AddOpenVPNModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-300 font-semibold block mb-1.5">{t('ovpn_username')}:</label>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1.5">{t('ovpn_username')}:</label>
               <input
                 type="text"
                 placeholder="Username (optional)"
@@ -469,7 +559,7 @@ function AddOpenVPNModal({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-300 font-semibold block mb-1.5">{t('ovpn_password')}:</label>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1.5">{t('ovpn_password')}:</label>
               <input
                 type="password"
                 placeholder="Password (optional)"
@@ -480,16 +570,15 @@ function AddOpenVPNModal({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="secondary" size="sm" type="button" onClick={onClose}>
               {t('cancel') || 'Cancel'}
-            </button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={isSubmitting || !ovpnContent.trim()}>
+            </Button>
+            <Button size="sm" type="submit" disabled={isSubmitting || !ovpnContent.trim()}>
               {isSubmitting ? '...' : t('add_openvpn_btn')}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </ModalShell>
   )
 }

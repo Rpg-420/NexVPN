@@ -6,18 +6,24 @@ import type {
   LogEntry,
   BinaryInfo,
   IPInfo,
-  CleanIPResult,
-  ScanProgress,
-  SpeedTestProgress,
   DoctorReport,
   RepairResult,
   InstalledApp,
-  SubscriptionFetchResult,
   RadarReport,
   EmergencyRepairReport,
   ConnectionSession,
   DNSLeakReport,
-  BatchTestResult,
+  ServiceUnblockResult,
+  GamingOptimizationStatus,
+  BackupSummary,
+  DiagnosticReport,
+  DiagnosticRepairResult,
+  SNIPoolItem,
+  QuotaAlertInfo,
+  DNSScanResult,
+  UsageReport,
+  PsiphonOptions,
+  MobileRemoteInfo,
 } from '../types'
 
 const isWails = () => {
@@ -77,170 +83,22 @@ async function callGo<T>(methodName: string, ...args: any[]): Promise<T> {
   const isDev = Boolean((import.meta as any)?.env?.DEV)
   if (isDev) {
     console.warn(`Wails not available for ${shortName}, using mock data.`)
+    const { getMockData } = await import('./api.mock')
     return getMockData<T>(shortName, args)
   }
   
-  // In production, returning mock data is a bug. Throw or return empty based on expected type.
+  // In production, missing binding is a bug - throw to surface it (do not silently hide with empty data)
   console.error(`Wails binding not found for ${shortName} in production!`)
-  
-  // Return a safe empty default based on method name to prevent UI crash
-  if (shortName.startsWith('GetProfiles') || shortName.startsWith('GetLogs') || shortName === 'GetGroups') {
-    return [] as unknown as T
-  }
-  if (shortName === 'GetSettings') {
-    return {} as unknown as T
-  }
-  
-  return undefined as unknown as T
-}
-
-function getMockData<T>(method: string, args: any[]): T {
-  if (method === 'GetProfiles') return mockProfiles as unknown as T
-  if (method === 'GetProfilesByCategory') {
-    const cat = args[0]
-    if (!cat) return mockProfiles as unknown as T
-    return mockProfiles.filter(p => p.category === cat) as unknown as T
-  }
-  if (method === 'GetConnectionStatus') return mockStatus as unknown as T
-  if (method === 'GetTrafficStats') return mockStats as unknown as T
-  if (method === 'GetSettings') return mockSettings as unknown as T
-  if (method === 'GetLogs') return mockLogs as unknown as T
-  if (method === 'CheckCoreBinaries') return mockBinaries as unknown as T
-  if (method === 'GetVersion') return '1.3.5' as unknown as T
-  if (method === 'GetGroups' || method === 'GetGroupsByCategory') return ['Germany', 'Subscriptions', 'VIP-WARP'] as unknown as T
-  if (method === 'PingProfile') return 65 as unknown as T
-  if (method === 'PingAllProfiles') return mockProfiles as unknown as T
-  if (method === 'RealPingActiveProfile') return 110 as unknown as T
-  if (method === 'UpdateAllSubscriptions') return 3 as unknown as T
-  if (method === 'LookupExternalIP') {
-    return {
-      ip: '185.220.101.5',
-      country: 'Germany',
-      country_code: 'DE',
-      city: 'Frankfurt',
-      isp: 'Hetzner Online GmbH',
-    } as unknown as T
-  }
-  if (method === 'GenerateWarpProfile') {
-    const p: Profile = {
-      id: 'warp-' + Date.now(),
-      name: 'Cloudflare WARP (162.159.192.1)',
-      protocol: 'warp',
-      category: 'wireguard_warp',
-      config_content: '',
-      server: '162.159.192.1',
-      port: 2408,
-      group: 'Cloudflare WARP',
-      latency_ms: 42,
-      real_delay_ms: 85,
-      description: 'Auto-generated high-speed Cloudflare WARP tunnel',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      usage_count: 0,
-    }
-    return p as unknown as T
-  }
-  return undefined as unknown as T
-}
-
-const mockProfiles: Profile[] = [
-  {
-    id: '1',
-    name: 'Amsterdam VLESS Reality VIP',
-    protocol: 'singbox',
-    category: 'v2ray',
-    config_content: '',
-    raw_uri: 'vless://uuid-1234@ams.nexvpn.dev:443?security=reality&sni=yahoo.com&fp=chrome&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#Amsterdam-Reality',
-    server: 'ams.nexvpn.dev',
-    port: 443,
-    group: 'Subscriptions',
-    latency_ms: 58,
-    real_delay_ms: 95,
-    description: 'VLESS Reality anti-censorship node',
-    tags: ['nl', 'reality'],
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    usage_count: 14,
-  },
-  {
-    id: '2',
-    name: 'Cloudflare WARP (162.159.192.1)',
-    protocol: 'warp',
-    category: 'wireguard_warp',
-    config_content: '',
-    server: '162.159.192.1',
-    port: 2408,
-    group: 'Cloudflare WARP',
-    latency_ms: 45,
-    real_delay_ms: 82,
-    description: 'High-speed Cloudflare WARP Clean IP',
-    tags: ['warp', 'cf'],
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    usage_count: 8,
-  },
-]
-
-const mockStatus: ConnectionStatus = {
-  state: 'disconnected',
-}
-
-const mockStats: TrafficStats = {
-  bytes_received: 0,
-  bytes_sent: 0,
-  speed_download: 0,
-  speed_upload: 0,
-  packets_received: 0,
-  packets_sent: 0,
-}
-
-const mockSettings: Settings = {
-  auto_connect: false,
-  start_minimized: false,
-  start_on_boot: false,
-  kill_switch_enabled: false,
-  dns_server: '1.1.1.1',
-  dns_fallback: '8.8.8.8',
-  language: 'fa',
-  theme: 'dark',
-  routing_mode: 'bypass_iran',
-  proxy_mode: 'tun',
-  real_delay_url: 'http://cp.cloudflare.com/generate_204',
-  last_profile_id: '',
-  log_level: 'info',
-  max_log_entries: 1000,
-  auto_reconnect: true,
-  reconnect_attempts: 3,
-  warp_clean_ip: '162.159.192.1',
-  warp_port: 2408,
-  fragment_enabled: false,
-  fragment_size: '100-200',
-  fragment_sleep: '10-20',
-  app_routing_mode: 'all',
-  selected_apps: ['telegram.exe', 'discord.exe', 'chrome.exe'],
-  auto_failover: true,
-  subscription_auto_update_hours: 12,
-  multi_hop_warp: false,
-}
-
-const mockLogs: LogEntry[] = [
-  { timestamp: new Date().toISOString(), level: 'info', message: 'NexVPN Engine v1.3.5 initialized', source: 'engine' },
-]
-
-const mockBinaries: Record<string, BinaryInfo> = {
-  xray: { name: 'Xray-core (VLESS, VMess, Reality)', filename: 'xray.exe', status: 'installed', path: 'C:\\bin\\xray.exe', download_url: '' },
-  singbox: { name: 'Sing-box (WARP, Hy2, TUN)', filename: 'sing-box.exe', status: 'installed', path: 'C:\\bin\\sing-box.exe', download_url: '' },
-  wireguard: { name: 'Wintun Virtual Adapter Driver', filename: 'wintun.dll', status: 'installed', path: 'C:\\bin\\wintun.dll', download_url: '' },
-  openvpn: { name: 'OpenVPN Core Client', filename: 'openvpn.exe', status: 'installed', path: 'C:\\bin\\openvpn.exe', download_url: '' },
+  throw new Error(`Wails binding not available: ${shortName}. Try rebuilding backend.`)
 }
 
 export const api = {
   getProfiles: () => callGo<Profile[]>('GetProfiles'),
+  getProfileById: (id: string) => callGo<Profile>('GetProfileByID', id),
   getProfilesByCategory: (category: string) => callGo<Profile[]>('GetProfilesByCategory', category),
   addProfile: (profile: Profile) => callGo<string>('AddProfile', profile),
   updateProfile: (profile: Profile) => callGo<void>('UpdateProfile', profile),
   deleteProfile: (id: string) => callGo<void>('DeleteProfile', id),
-  deleteAllProfiles: () => callGo<void>('DeleteAllProfiles'),
   deleteProfilesByCategory: (category: string) => callGo<void>('DeleteProfilesByCategory', category),
   
   importProfile: (name: string, protocol: string, content: string, group?: string, category?: string) =>
@@ -272,7 +130,6 @@ export const api = {
   realPingActiveProfile: () => callGo<number>('RealPingActiveProfile'),
   lookupExternalIP: () => callGo<IPInfo>('LookupExternalIP'),
   clearStaleProxy: () => callGo<void>('ClearStaleProxy'),
-  getGroups: () => callGo<string[]>('GetGroups'),
   getGroupsByCategory: (category: string) => callGo<string[]>('GetGroupsByCategory', category),
   checkCoreBinaries: () => callGo<Record<string, BinaryInfo>>('CheckCoreBinaries'),
   installCoreBinary: (key: string) => callGo<void>('InstallCoreBinary', key),
@@ -283,6 +140,7 @@ export const api = {
   disconnect: () => callGo<void>('Disconnect'),
   getConnectionStatus: () => callGo<ConnectionStatus>('GetConnectionStatus'),
   getTrafficStats: () => callGo<TrafficStats>('GetTrafficStats'),
+  getUsageReport: () => callGo<UsageReport>('GetUsageReport'),
 
   getSettings: () => callGo<Settings>('GetSettings'),
   saveSettings: (settings: Settings) => callGo<void>('SaveSettings', settings),
@@ -290,8 +148,22 @@ export const api = {
 
   getLogs: () => callGo<LogEntry[]>('GetLogs'),
   clearLogs: () => callGo<void>('ClearLogs'),
+  /** Absolute path of the directory holding config.json / history.json. */
+  getAppDataPath: () => callGo<string>('GetAppDataPath'),
+  /** Reveals that directory in the OS file manager. */
+  openProfilesFolder: () => callGo<void>('OpenProfilesFolder'),
+
+  /**
+   * Path to the on-disk launch diary (startup.log). Unlike the in-memory log
+   * buffer this survives a crash or a hang before the window is drawn, and it is
+   * what the standalone NexVPN-Report tool reads when the app will not start.
+   * Empty string when the diary could not be opened.
+   */
+  getStartupDiaryPath: () => callGo<string>('GetStartupDiaryPath'),
 
   getVersion: () => callGo<string>('GetVersion'),
+  /** Build/runtime metadata: app_version, go_version, platform, arch. */
+  getSystemInfo: () => callGo<Record<string, string>>('GetSystemInfo'),
   checkForUpdates: () => callGo<{
     has_update: boolean
     latest_version: string
@@ -316,32 +188,27 @@ export const api = {
   fixNetworkIssues: () => callGo<RepairResult>('FixNetworkIssues'),
   getInstalledApplications: () => callGo<InstalledApp[]>('GetInstalledApplications'),
   saveAppRouting: (mode: string, apps: string[]) => callGo<void>('SaveAppRouting', mode, apps),
-  fetchSubscriptionInfo: (url: string) => callGo<SubscriptionFetchResult>('FetchSubscriptionInfo', url),
   getLocalIPAddress: () => callGo<string>('GetLocalIPAddress'),
   toggleAllowLan: (enabled: boolean) => callGo<void>('ToggleAllowLan', enabled),
   runProtocolRadar: () => callGo<RadarReport>('RunProtocolRadar'),
   runEmergencyNetworkRepair: () => callGo<EmergencyRepairReport>('RunEmergencyNetworkRepair'),
   fetchLiveCleanIPFeed: () => callGo<Array<{ cidr: string; region: string; description: string }>>('FetchLiveCleanIPFeed'),
-  exportEncryptedBackup: (password: string) => callGo<string>('ExportEncryptedBackup', password),
-  importEncryptedBackup: (payload: string, password: string) => callGo<void>('ImportEncryptedBackup', payload, password),
+  exportEncryptedBackup: (password?: string) => callGo<string>('ExportEncryptedBackup', password || ''),
+  importEncryptedBackup: (payload: string, password?: string, overwrite?: boolean) => callGo<BackupSummary>('ImportEncryptedBackup', payload, password || '', Boolean(overwrite)),
   exportFullBackup: () => callGo<string>('ExportFullBackup'),
   importFullBackup: (jsonStr: string, overwrite: boolean) => callGo<number>('ImportFullBackup', jsonStr, overwrite),
   getConnectionHistory: () => callGo<ConnectionSession[]>('GetConnectionHistory'),
   clearConnectionHistory: () => callGo<void>('ClearConnectionHistory'),
-  testAllProfilesBatch: (category?: string) => callGo<BatchTestResult[]>('TestAllProfilesBatch', category || 'all'),
   runDNSLeakDiagnostics: () => callGo<DNSLeakReport>('RunDNSLeakDiagnostics'),
   sendSystemNotification: (title: string, message: string) => callGo<void>('SendSystemNotification', title, message),
   createProxyChain: (hopProfileIDs: string[], chainName: string) =>
     callGo<string>('CreateProxyChain', hopProfileIDs, chainName),
   startMobileRemote: (port?: number) => callGo<string>('StartMobileRemote', port || 10815),
   stopMobileRemote: () => callGo<void>('StopMobileRemote'),
-  getMobileRemoteInfo: () => callGo<{ running: boolean; url: string; auth_url: string; pin: string }>('GetMobileRemoteInfo'),
+  getMobileRemoteInfo: () => callGo<MobileRemoteInfo>('GetMobileRemoteInfo'),
   getProfileShareURI: (profileId: string) => callGo<string>('GetProfileShareURI', profileId),
   openBrowserURL: (url: string) => callGo<void>('OpenBrowserURL', url),
   panicWipe: () => callGo<void>('PanicWipe'),
-  updateGeoDatabase: () => callGo<Record<string, string>>('UpdateGeoDatabase'),
-  generateShareableSubscription: (category?: string) =>
-    callGo<string>('GenerateShareableSubscription', category || 'all'),
 
   // Discovery Hub Methods
   fetchTelegramProxies: (customSources?: string[]) =>
@@ -356,6 +223,64 @@ export const api = {
     callGo<import('../types').FreeConfigItem[]>('TestFreeConfigs', configs),
   importFreeConfigs: (configs: import('../types').FreeConfigItem[], groupName?: string) =>
     callGo<number>('ImportFreeConfigs', configs, groupName || 'Free Community'),
+
+  // Public OpenVPN server catalogues (VPN Gate, ...). The .ovpn bodies stay in
+  // the backend — only metadata crosses the bridge, and the import resolves the
+  // config by server id.
+  listOpenVPNSources: () =>
+    callGo<import('../types').OpenVPNSourceInfo[]>('ListOpenVPNSources'),
+  fetchOpenVPNServers: (sourceId?: string, mirrorUrl?: string) =>
+    callGo<import('../types').OpenVPNServer[]>('FetchOpenVPNServers', sourceId || 'vpngate', mirrorUrl || ''),
+  testOpenVPNServers: (servers: import('../types').OpenVPNServer[]) =>
+    callGo<import('../types').OpenVPNServer[]>('TestOpenVPNServers', servers),
+  importOpenVPNServers: (servers: import('../types').OpenVPNServer[], group?: string, username?: string, password?: string) =>
+    callGo<number>('ImportOpenVPNServers', servers, group || 'VPN Gate', username || '', password || ''),
+
+  // TunnelBear. The account password is written once and never read back — the
+  // backend returns accounts without it, so there is no call that would let a
+  // form repopulate the field.
+  listTunnelBearCountries: () =>
+    callGo<import('../types').TunnelBearCountry[]>('ListTunnelBearCountries'),
+  listTunnelBearAccounts: () =>
+    callGo<import('../types').TunnelBearAccount[]>('ListTunnelBearAccounts'),
+  saveTunnelBearAccount: (id: string, username: string, password: string) =>
+    callGo<string>('SaveTunnelBearAccount', id || '', username, password),
+  deleteTunnelBearAccount: (id: string) =>
+    callGo<void>('DeleteTunnelBearAccount', id),
+  setActiveTunnelBearAccount: (id: string) =>
+    callGo<void>('SetActiveTunnelBearAccount', id || ''),
+  tunnelBearSecretBackend: () => callGo<string>('TunnelBearSecretBackend'),
+  testTunnelBearCountry: (countryId: string) =>
+    callGo<number>('TestTunnelBearCountry', countryId),
+  importTunnelBearProfile: (countryId: string) =>
+    callGo<string>('ImportTunnelBearProfile', countryId),
+
+  // --- Diagnostics, history and maintenance -------------------------------
+
+  /** Recent launch-diary lines. The diary records per-phase connect timings. */
+  getDiaryEntries: (limit?: number) =>
+    callGo<import('../types').DiaryEntry[]>('GetDiaryEntries', limit ?? 800),
+  getConnectionStatistics: () =>
+    callGo<import('../types').ConnectionStatistics>('GetConnectionStatistics'),
+  /** Probes whether IPv6 traffic escapes the tunnel. Only meaningful when connected. */
+  testIPv6Leak: () => callGo<import('../types').IPv6LeakResult>('TestIPv6Leak'),
+  /** Compares the running version with the latest published release. Never installs. */
+  checkAppUpdate: () => callGo<import('../types').UpdateInfo>('CheckAppUpdate'),
+  hasPreviousConfigSnapshot: () => callGo<boolean>('HasPreviousConfigSnapshot'),
+  restorePreviousConfig: () => callGo<void>('RestorePreviousConfig'),
+  /** Writes a redacted zip of logs, diary and config. Returns "" when cancelled. */
+  exportDiagnosticsBundle: () => callGo<string>('ExportDiagnosticsBundle'),
+  getSubscriptionChanges: () =>
+    callGo<import('../types').SubscriptionChange[]>('GetSubscriptionChanges'),
+  clearSubscriptionChanges: () => callGo<void>('ClearSubscriptionChanges'),
+  /** Pins or unpins a profile; pinned profiles lead the list and the tray menu. */
+  setProfileFavorite: (id: string, favorite: boolean) =>
+    callGo<void>('SetProfileFavorite', id, favorite),
+  /** SSID of the joined Wi-Fi network, or "" on Ethernet or when unreadable. */
+  currentNetworkSSID: () => callGo<string>('CurrentNetworkSSID'),
+
+  /** Stops a bulk ping sweep that is in progress. Safe to call when idle. */
+  cancelPingAll: () => callGo<void>('CancelPingAll'),
 
   startCloudflareDiscoveryScan: (mode: string, isp?: string, customSubnets?: string[], customPorts?: number[]) =>
     callGo<void>('StartCloudflareDiscoveryScan', mode, isp || 'all', customSubnets || [], customPorts || []),
@@ -381,25 +306,74 @@ export const api = {
 
   // Smart ISP, Sub Info & P2P Local Sync
   detectCurrentISP: () =>
-    callGo<any>('DetectCurrentISP'),
-  broadcastProfilesToLAN: (category: string, deviceName: string) =>
-    callGo<number>('BroadcastProfilesToLAN', category, deviceName),
-  listenForNearbyProfiles: (timeoutSeconds: number) =>
-    callGo<any>('ListenForNearbyProfiles', timeoutSeconds),
-  importNearbyProfiles: (profiles: any[], groupName: string) =>
+    callGo<import('../types').ISPRecommendation>('DetectCurrentISP'),
+  broadcastProfilesToLAN: (category: string, deviceName: string, pin?: string) =>
+    callGo<number>('BroadcastProfilesToLAN', category, deviceName, pin || ''),
+  listenForNearbyProfiles: (timeoutSeconds: number, pin?: string) =>
+    callGo<any>('ListenForNearbyProfiles', timeoutSeconds, pin || ''),
+  generateSyncPIN: () =>
+    callGo<string>('GenerateSyncPIN'),
+  importNearbyProfiles: (profiles: Profile[], groupName: string) =>
     callGo<number>('ImportNearbyProfiles', profiles, groupName),
   getSubscriptionInfo: (subUrl: string) =>
-    callGo<any>('GetSubscriptionInfo', subUrl),
+    callGo<import('../types').SubscriptionUserInfo>('GetSubscriptionInfo', subUrl),
   setTrayLanguage: (lang: string) =>
     callGo<void>('SetTrayLanguage', lang),
+
+  // Native window controls
+  showWindow: () => callGo<void>('ShowWindow'),
+  hideWindow: () => callGo<void>('HideWindow'),
+  setTitle: (title: string) => callGo<void>('SetTitle', title),
 
   // Psiphon Emergency Shield Methods
   getPsiphonRegions: () =>
     callGo<string[]>('GetPsiphonRegions'),
-  generatePsiphonProfile: (region: string) =>
-    callGo<import('../types').Profile>('GeneratePsiphonProfile', region),
-  connectPsiphon: (region: string) =>
-    callGo<void>('ConnectPsiphon', region),
+  getPsiphonOptions: () =>
+    callGo<PsiphonOptions>('GetPsiphonOptions'),
+  connectPsiphonWithOptions: (region: string, opts: PsiphonOptions) =>
+    callGo<void>('ConnectPsiphonWithOptions', region, opts),
+
+  // Service Unblock Matrix & AI / Streaming Checker
+  checkServiceUnblock: () =>
+    callGo<ServiceUnblockResult[]>('CheckServiceUnblock'),
+
+  // Ultra-Low Jitter Windows Gaming Optimizations
+  applyGamingOptimizations: () =>
+    callGo<GamingOptimizationStatus>('ApplyGamingOptimizations'),
+  revertGamingOptimizations: () =>
+    callGo<GamingOptimizationStatus>('RevertGamingOptimizations'),
+  getGamingOptimizationStatus: () =>
+    callGo<GamingOptimizationStatus>('GetGamingOptimizationStatus'),
+
+  // 1-Click Diagnostics & Network Recovery
+  runDiagnosticAudit: () =>
+    callGo<DiagnosticReport>('RunDiagnosticAudit'),
+  repairDiagnosticIssues: () =>
+    callGo<DiagnosticRepairResult>('RepairDiagnosticIssues'),
+  flushWindowsDNS: () =>
+    callGo<void>('FlushWindowsDNS'),
+  scanAndSelectBestDNS: (useDoH: boolean) =>
+    callGo<DNSScanResult[]>('ScanAndSelectBestDNS', useDoH),
+
+  // Dynamic SNI Fallback Pool & REALITY Optimizer
+  getSNIPoolList: () =>
+    callGo<SNIPoolItem[]>('GetSNIPoolList'),
+  auditSNIPool: () =>
+    callGo<SNIPoolItem[]>('AuditSNIPool'),
+  addCustomSNI: (domain: string) =>
+    callGo<void>('AddCustomSNI', domain),
+  removeCustomSNI: (domain: string) =>
+    callGo<void>('RemoveCustomSNI', domain),
+  optimizeProfileSNI: (profileId: string) =>
+    callGo<Profile>('OptimizeProfileSNI', profileId),
+
+  // Adaptive MTU & MSS Clamping
+  runAutoMTUOptimization: (targetHost?: string) =>
+    callGo<number>('RunAutoMTUOptimization', targetHost || '1.1.1.1'),
+
+  // Subscription Quota & Background Alerts
+  checkSubscriptionQuotas: (subUrl: string) =>
+    callGo<QuotaAlertInfo>('CheckSubscriptionQuotas', subUrl),
 
   // Events listener helper
   onEvent: (eventName: string, callback: (...data: any[]) => void): (() => void) => {
@@ -414,11 +388,6 @@ export const api = {
       }
     }
     return () => {}
-  },
-  offEvent: (eventName: string, ...additionalArgs: any[]) => {
-    if (typeof window !== 'undefined' && (window as any).runtime && (window as any).runtime.EventsOff) {
-      (window as any).runtime.EventsOff(eventName, ...additionalArgs)
-    }
   },
 }
 

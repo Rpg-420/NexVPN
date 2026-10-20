@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Compass,
   Send,
@@ -11,18 +11,15 @@ import {
   Check,
   QrCode,
   Download,
-  Upload,
   CheckCircle2,
   XCircle,
   Clock,
-  Filter,
   Search,
   ExternalLink,
   ShieldCheck,
   Layers,
   Sparkles,
   Sliders,
-  Radio,
   Share2,
   CheckSquare,
   Square as SquareOutline,
@@ -38,7 +35,8 @@ import { api } from '../lib/api'
 import { t, getLanguage } from '../lib/i18n'
 import { sound } from '../lib/sound'
 import { generateQRCodeSVG } from '../lib/qrcode'
-import CountryFlag from '../components/CountryFlag'
+import CountryFlag, { cleanServerName } from '../components/CountryFlag'
+import { ModalShell } from '../components/ui/modal-shell'
 import type {
   TelegramProxy,
   TelegramTestProgress,
@@ -52,54 +50,12 @@ import type {
 } from '../types'
 
 interface Props {
-  status: ConnectionStatus
   onStatusChange?: (s: ConnectionStatus) => void
 }
 
 type DiscoveryTab = 'telegram' | 'configs' | 'cloudflare' | 'fragment'
 
-const INITIAL_STARTER_PROXIES: TelegramProxy[] = [
-  {
-    id: 'init-tg-1',
-    type: 'mtproto',
-    server: '149.154.175.50',
-    port: 443,
-    secret: 'ee000000000000000000000000000000007777772e676f6f676c652e636f6d',
-    country: 'Netherlands',
-    country_code: 'NL',
-    link: 'tg://proxy?server=149.154.175.50&port=443&secret=ee000000000000000000000000000000007777772e676f6f676c652e636f6d',
-    is_alive: true,
-    latency_ms: 85,
-    source: 'Built-in',
-  },
-  {
-    id: 'init-tg-2',
-    type: 'mtproto',
-    server: '149.154.167.51',
-    port: 443,
-    secret: 'ee00000000000000000000000000000000646c2e676f6f676c652e636f6d',
-    country: 'Germany',
-    country_code: 'DE',
-    link: 'tg://proxy?server=149.154.167.51&port=443&secret=ee00000000000000000000000000000000646c2e676f6f676c652e636f6d',
-    is_alive: true,
-    latency_ms: 120,
-    source: 'Built-in',
-  },
-  {
-    id: 'init-tg-3',
-    type: 'socks5',
-    server: '185.199.229.156',
-    port: 1080,
-    country: 'Finland',
-    country_code: 'FI',
-    link: 'tg://socks?server=185.199.229.156&port=1080',
-    is_alive: true,
-    latency_ms: 145,
-    source: 'Built-in',
-  },
-]
-
-export default function DiscoveryHub({ status }: Props) {
+export default function DiscoveryHub(_props: Props) {
   const [activeTab, setActiveTab] = useState<DiscoveryTab>('telegram')
 
   // --- Telegram Proxies State ---
@@ -110,7 +66,9 @@ export default function DiscoveryHub({ status }: Props) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed)) return parsed
       }
-    } catch {}
+    } catch {
+      // Corrupt cache is non-fatal; fall through to the empty default.
+    }
     return []
   })
   const [isFetchingTg, setIsFetchingTg] = useState(false)
@@ -136,7 +94,9 @@ export default function DiscoveryHub({ status }: Props) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) return parsed
       }
-    } catch {}
+    } catch {
+      // Corrupt cache is non-fatal; fall through to the empty default.
+    }
     return []
   })
   const [isFetchingConfigs, setIsFetchingConfigs] = useState(false)
@@ -166,11 +126,12 @@ export default function DiscoveryHub({ status }: Props) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) return parsed
       }
-    } catch {}
+    } catch {
+      // Corrupt cache is non-fatal; fall through to the empty default.
+    }
     return []
   })
   const [cfProgress, setCfProgress] = useState<CloudflareScanProgress | null>(null)
-  const [selectedCleanTarget, setSelectedCleanTarget] = useState<CloudflareTarget | null>(null)
   const [isApplyingWarp, setIsApplyingWarp] = useState(false)
   const [isApplyingV2Ray, setIsApplyingV2Ray] = useState(false)
 
@@ -178,19 +139,25 @@ export default function DiscoveryHub({ status }: Props) {
   useEffect(() => {
     try {
       localStorage.setItem('nexvpn_cached_tg_proxies', JSON.stringify(tgProxies))
-    } catch {}
+    } catch {
+      // Persisting the cache is best-effort (storage quota / private mode).
+    }
   }, [tgProxies])
 
   useEffect(() => {
     try {
       localStorage.setItem('nexvpn_cached_free_configs', JSON.stringify(freeConfigs))
-    } catch {}
+    } catch {
+      // Persisting the cache is best-effort (storage quota / private mode).
+    }
   }, [freeConfigs])
 
   useEffect(() => {
     try {
       localStorage.setItem('nexvpn_cached_cf_results', JSON.stringify(cfResults))
-    } catch {}
+    } catch {
+      // Persisting the cache is best-effort (storage quota / private mode).
+    }
   }, [cfResults])
 
   // --- Fragment Scanner State ---
@@ -279,6 +246,18 @@ export default function DiscoveryHub({ status }: Props) {
     }
     const fastest = alive.reduce((prev, curr) => (prev.latency_ms < curr.latency_ms ? prev : curr))
     await handleLaunchTelegram(fastest)
+  }
+
+  // Open Telegram through this app's own local proxy (127.0.0.1 socks/http)
+  // instead of a third-party proxy link. Requires an active tunnel.
+  const handleUseBuiltInProxy = async () => {
+    try {
+      await api.openTelegramProxy()
+      showToast(t('open_in_telegram'))
+    } catch (err) {
+      console.error('Built-in TG proxy error:', err)
+      showToast(t('error'))
+    }
   }
 
   const handleShowQrModal = (title: string, link: string) => {
@@ -616,6 +595,20 @@ export default function DiscoveryHub({ status }: Props) {
       }
     })
 
+    // Terminal error events. The backend emits `complete` on success and
+    // `error` otherwise, but only `complete` was subscribed to here — so a
+    // failed (or user-stopped) scan left the spinner running with no
+    // explanation, and the only way out was to close the page.
+    const unsubCfError = api.onEvent('cf_scanner:error', (msg: string) => {
+      setIsCfScanning(false)
+      showToast(typeof msg === 'string' && msg.trim() !== '' ? msg : t('error'))
+    })
+
+    const unsubFragError = api.onEvent('frag_scanner:error', (msg: string) => {
+      setIsFragScanning(false)
+      showToast(typeof msg === 'string' && msg.trim() !== '' ? msg : t('error'))
+    })
+
     return () => {
       if (typeof unsubCfProg === 'function') unsubCfProg()
       if (typeof unsubCfComplete === 'function') unsubCfComplete()
@@ -623,6 +616,8 @@ export default function DiscoveryHub({ status }: Props) {
       if (typeof unsubCfgProg === 'function') unsubCfgProg()
       if (typeof unsubFragProg === 'function') unsubFragProg()
       if (typeof unsubFragComplete === 'function') unsubFragComplete()
+      if (typeof unsubCfError === 'function') unsubCfError()
+      if (typeof unsubFragError === 'function') unsubFragError()
     }
   }, [])
 
@@ -640,45 +635,45 @@ export default function DiscoveryHub({ status }: Props) {
   }, [])
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto px-6 py-5 space-y-5 bg-gradient-to-b from-gray-900/40 via-transparent to-transparent text-gray-100">
+    <div className="flex flex-col h-full overflow-y-auto px-6 py-5 space-y-5 bg-gradient-to-b from-card/40 via-transparent to-transparent text-foreground">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-indigo-600/90 text-white rounded-xl shadow-2xl backdrop-blur-md border border-indigo-400/30 animate-in fade-in slide-in-from-top-4 duration-300">
-          <Sparkles className="w-4 h-4 text-indigo-200 animate-pulse" />
+        <div className="fixed top-6 end-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-primary/90 text-primary-foreground rounded-xl shadow-2xl backdrop-blur-md border border-primary/30 animate-in fade-in slide-in-from-top-4 duration-300">
+          <Sparkles className="w-4 h-4 text-primary animate-pulse" />
           <span className="text-sm font-medium">{toastMessage}</span>
         </div>
       )}
 
       {/* Header Bar */}
-      <div className="sticky top-0 z-30 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-950/90 backdrop-blur-xl -mx-6 -mt-5 px-6 py-4 border-b border-gray-800/80 shadow-md">
+      <div className="sticky top-0 z-30 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card/85 dark:bg-background backdrop-blur-xl -mx-6 -mt-5 px-6 py-4 border-b border-border/80 shadow-sm">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20 shrink-0">
-            <Compass className="w-5 h-5 text-white" />
+          <div className="bg-primary w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm ring-1 ring-white/20 shrink-0">
+            <Compass className="w-5 h-5 text-foreground" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-gray-100 to-gray-400 bg-clip-text text-transparent">
+            <h1 className="text-xl font-bold tracking-tight text-foreground">
               {t('discovery_title')}
             </h1>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {t('discovery_subtitle')}
             </p>
           </div>
         </div>
 
         {/* 4 Main Sub-Tabs Switcher */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center p-1 bg-gray-900/90 rounded-xl border border-gray-800/80 shadow-inner gap-1">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center p-1 bg-muted dark:bg-card/90 rounded-xl border border-border/80 shadow-inner gap-1">
           <button
             onClick={() => setActiveTab('telegram')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeTab === 'telegram'
-                ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground hover:bg-card/60 dark:hover:bg-card/40'
             }`}
           >
             <Send className="w-3.5 h-3.5" />
             <span>{t('tab_telegram_proxies')}</span>
             {tgProxies.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/20">
+              <span className="ms-1 px-1.5 py-0.5 text-[10px] rounded-full bg-info/30 text-primary border border-primary/20 font-bold">
                 {tgProxies.length}
               </span>
             )}
@@ -688,14 +683,14 @@ export default function DiscoveryHub({ status }: Props) {
             onClick={() => setActiveTab('configs')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeTab === 'configs'
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground hover:bg-card/60 dark:hover:bg-card/40'
             }`}
           >
             <Globe className="w-3.5 h-3.5" />
             <span>{t('tab_free_configs')}</span>
             {freeConfigs.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
+              <span className="ms-1 px-1.5 py-0.5 text-[10px] rounded-full bg-primary/30 text-primary border border-primary/20 font-bold">
                 {freeConfigs.length}
               </span>
             )}
@@ -705,14 +700,14 @@ export default function DiscoveryHub({ status }: Props) {
             onClick={() => setActiveTab('cloudflare')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeTab === 'cloudflare'
-                ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground hover:bg-card/60 dark:hover:bg-card/40'
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
             <span>{t('tab_cloudflare_scanner')}</span>
             {cfResults.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/30 text-amber-200 border border-amber-400/20">
+              <span className="ms-1 px-1.5 py-0.5 text-[10px] rounded-full bg-warning/30 text-warning border border-warning/20 font-bold">
                 {cfResults.length}
               </span>
             )}
@@ -722,8 +717,8 @@ export default function DiscoveryHub({ status }: Props) {
             onClick={() => setActiveTab('fragment')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeTab === 'fragment'
-                ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md shadow-rose-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
+                ? 'bg-destructive to-pink-600 text-destructive-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground hover:bg-card/60 dark:hover:bg-card/40'
             }`}
           >
             <Shield className="w-3.5 h-3.5" />
@@ -737,12 +732,12 @@ export default function DiscoveryHub({ status }: Props) {
       {/* ======================================================== */}
       {activeTab === 'telegram' && (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-gray-900/60 rounded-2xl border border-gray-800/80 backdrop-blur-md shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-card/80 dark:bg-card/60 rounded-2xl border border-border/80 backdrop-blur-md shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleFetchTelegramProxies}
                 disabled={isFetchingTg || isTestingTg}
-                className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-600/20 active:scale-95"
+                className="flex items-center gap-2 px-3.5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isFetchingTg ? 'animate-spin' : ''}`} />
                 <span>{isFetchingTg ? t('fetching_proxies') : t('fetch_proxies')}</span>
@@ -751,7 +746,7 @@ export default function DiscoveryHub({ status }: Props) {
               <button
                 onClick={handleTestTelegramProxies}
                 disabled={isTestingTg || tgProxies.length === 0}
-                className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-emerald-600/20 active:scale-95"
+                className="flex items-center gap-2 px-3.5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95"
               >
                 <Activity className={`w-3.5 h-3.5 ${isTestingTg ? 'animate-pulse' : ''}`} />
                 <span>{isTestingTg ? t('testing_proxies') : t('test_proxies')}</span>
@@ -760,7 +755,7 @@ export default function DiscoveryHub({ status }: Props) {
               {tgProxies.some(x => x.is_alive && x.latency_ms > 0) && (
                 <button
                   onClick={handleLaunchFastestTelegram}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-xl text-xs font-semibold shadow-md shadow-orange-500/20 active:scale-95 transition-all"
+                  className="bg-primary flex items-center gap-1.5 px-3.5 py-2 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
                 >
                   <Zap className="w-3.5 h-3.5 fill-current" />
                   <span>{t('auto_connect_fastest')}</span>
@@ -768,21 +763,30 @@ export default function DiscoveryHub({ status }: Props) {
               )}
 
               <button
+                onClick={handleUseBuiltInProxy}
+                title={t('tg_builtin_proxy_hint')}
+                className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted text-foreground dark:hover:text-foreground rounded-xl text-xs font-medium transition-all"
+              >
+                <Send className="w-3.5 h-3.5 text-primary" />
+                <span>{t('tg_builtin_proxy')}</span>
+              </button>
+
+              <button
                 onClick={() => handleOpenSourcesModal('telegram')}
                 title={t('custom_sources_modal_title')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl text-xs font-medium transition-all"
+                className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted text-foreground dark:hover:text-foreground rounded-xl text-xs font-medium transition-all"
               >
-                <Sliders className="w-3.5 h-3.5 text-blue-400" />
+                <Sliders className="w-3.5 h-3.5 text-primary" />
                 <span>{t('candidate_sources')}</span>
                 {customTgSources.length > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-blue-400" />
+                  <span className="w-2 h-2 rounded-full bg-info" />
                 )}
               </button>
 
               {tgProxies.some(x => !x.is_alive) && (
                 <button
                   onClick={() => setTgProxies(prev => prev.filter(x => x.is_alive))}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/30 text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive rounded-xl text-xs font-semibold transition-all active:scale-95"
                   title={t('remove_dead')}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -793,7 +797,7 @@ export default function DiscoveryHub({ status }: Props) {
               {tgProxies.length > 0 && (
                 <button
                   onClick={() => setTgProxies([])}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/60 hover:bg-rose-950/60 border border-gray-700/40 hover:border-rose-700/40 text-gray-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-destructive/10 dark:bg-card/60 dark:hover:bg-destructive/60 border border-border/40 text-muted-foreground hover:text-destructive dark:text-muted-foreground dark:hover:text-destructive rounded-xl text-xs font-semibold transition-all active:scale-95"
                   title={t('clear_all_proxies')}
                 >
                   <XCircle className="w-3.5 h-3.5" />
@@ -803,14 +807,14 @@ export default function DiscoveryHub({ status }: Props) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center p-0.5 bg-gray-950/60 rounded-lg border border-gray-800/60 text-xs">
+              <div className="flex items-center p-0.5 bg-muted dark:bg-card/60 rounded-xl border border-border/60 text-xs">
                 <button
                   type="button"
                   onClick={() => setTgTypeFilter('all')}
-                  className={`px-3 py-1 rounded-md transition-all font-semibold ${
+                  className={`px-3 py-1 rounded-lg transition-all font-bold ${
                     tgTypeFilter === 'all'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground'
                   }`}
                 >
                   {t('filter_all')}
@@ -819,80 +823,80 @@ export default function DiscoveryHub({ status }: Props) {
                 <button
                   type="button"
                   onClick={() => setTgTypeFilter('mtproto')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all font-semibold ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all font-semibold ${
                     tgTypeFilter === 'mtproto'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground'
                   }`}
                 >
-                  <Send className="w-3 h-3 text-blue-300" />
+                  <Send className="w-3 h-3 text-primary" />
                   <span dir="ltr">MTProto</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setTgTypeFilter('socks5')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all font-semibold ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all font-semibold ${
                     tgTypeFilter === 'socks5'
-                      ? 'bg-purple-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground'
                   }`}
                 >
-                  <Globe className="w-3 h-3 text-purple-300" />
+                  <Globe className="w-3 h-3 text-primary" />
                   <span dir="ltr">SOCKS5</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setTgTypeFilter('http')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all font-semibold ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all font-semibold ${
                     tgTypeFilter === 'http'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground dark:hover:text-foreground'
                   }`}
                 >
-                  <Layers className="w-3 h-3 text-amber-300" />
+                  <Layers className="w-3 h-3 text-warning" />
                   <span dir="ltr">HTTP</span>
                 </button>
               </div>
 
               <button
                 onClick={() => setTgStatusFilter(tgStatusFilter === 'all' ? 'alive' : 'all')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                   tgStatusFilter === 'alive'
-                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                    : 'bg-gray-950/40 border-gray-800/60 text-gray-400 hover:text-gray-200'
+                    ? 'bg-success/20 border-success/40 text-success'
+                    : 'bg-card/40 border-border/60 text-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground shadow-sm'
                 }`}
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
+                <ShieldCheck className="w-3.5 h-3.5 text-success" />
                 <span>{t('alive_proxies_found')}</span>
               </button>
 
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-muted-foreground absolute start-3 top-2.5" />
                 <input
                   type="text"
                   value={tgSearch}
                   onChange={e => setTgSearch(e.target.value)}
                   placeholder={t('search')}
-                  className="pl-8 pr-3 py-1.5 bg-gray-950/60 border border-gray-800/60 rounded-lg text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500/50 w-44"
+                  className="ps-8 pe-3 py-1.5 bg-card/60 border border-border/60 rounded-xl text-xs text-foreground placeholder:text-muted-foreground dark:placeholder-muted-foreground focus:outline-none focus:border-primary/50 w-44 shadow-sm"
                 />
               </div>
             </div>
           </div>
 
           {tgProgress && (
-            <div className="p-3 bg-blue-950/30 border border-blue-800/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-xs text-blue-200">
+            <div className="p-3 border border-border bg-muted rounded-xl space-y-1.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-xs text-primary font-semibold">
                 <span className="flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                  <Activity className="w-3.5 h-3.5 text-primary animate-spin" />
                   <span>{t('testing_proxies')} ({tgProgress.tested_count} / {tgProgress.total_count})</span>
                 </span>
-                <span className="font-mono text-gray-400 text-[11px] truncate max-w-xs">{tgProgress.current}</span>
+                <span className="font-mono text-muted-foreground text-[11px] truncate max-w-xs">{tgProgress.current}</span>
               </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-muted dark:bg-card rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-200"
+                  className="bg-info h-full transition-all duration-200"
                   style={{
                     width: `${Math.min(100, Math.round((tgProgress.tested_count / (tgProgress.total_count || 1)) * 100))}%`,
                   }}
@@ -902,12 +906,12 @@ export default function DiscoveryHub({ status }: Props) {
           )}
 
           {filteredTgProxies.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-gray-900/30 rounded-2xl border border-gray-800/40">
-              <Send className="w-10 h-10 text-gray-600" />
-              <p className="text-sm text-gray-400">{t('empty_discovery_results')}</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-card/70 dark:bg-card/30 rounded-2xl border border-border/40 shadow-sm">
+              <Send className="w-10 h-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('empty_discovery_results')}</p>
               <button
                 onClick={handleFetchTelegramProxies}
-                className="px-4 py-2 bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm"
               >
                 {t('fetch_proxies')}
               </button>
@@ -917,13 +921,13 @@ export default function DiscoveryHub({ status }: Props) {
               {filteredTgProxies.map(p => (
                 <div
                   key={p.id}
-                  className="group relative flex flex-col justify-between p-4 bg-gray-900/60 hover:bg-gray-850/80 rounded-2xl border border-gray-800/80 hover:border-blue-500/40 transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-blue-500/5 backdrop-blur-sm"
+                  className="group relative flex flex-col justify-between p-4 bg-card/60 hover:bg-muted/90 dark:hover:bg-card/80 rounded-2xl border border-border/80 hover:border-primary/40 transition-all duration-200 shadow-sm hover:shadow-md backdrop-blur-sm"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <CountryFlag codeOrName={p.country_code || p.country || p.server} size="sm" />
-                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-blue-500/20 text-blue-300 border border-blue-400/20">
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border-border bg-muted text-muted-foreground">
                           {p.type.toUpperCase()}
                         </span>
                       </div>
@@ -933,54 +937,54 @@ export default function DiscoveryHub({ status }: Props) {
                           <span
                             className={`flex items-center gap-1 text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
                               p.latency_ms < 300
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                ? 'bg-success/10 text-success border border-success/20 font-bold'
                                 : p.latency_ms < 700
-                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                ? 'bg-warning/10 text-warning border border-warning/20'
+                                : 'bg-destructive/10 text-destructive border border-destructive/20'
                             }`}
                           >
                             <Clock className="w-3 h-3" />
                             {p.latency_ms} ms
                           </span>
                         ) : p.is_alive ? (
-                          <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                          <span className="flex items-center gap-1 text-[11px] text-success bg-success/10 px-2 py-0.5 rounded-full font-medium">
                             <CheckCircle2 className="w-3 h-3" />
                             {t('active_status')}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-gray-500 font-mono">-- ms</span>
+                          <span className="text-[11px] text-muted-foreground font-mono">-- ms</span>
                         )}
 
                         <button
                           type="button"
                           onClick={() => setTgProxies(prev => prev.filter(x => x.id !== p.id))}
-                          title={t('delete') || 'حذف'}
-                          className="p-1 text-gray-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-all"
+                          title={t('delete')}
+                          className="p-1 text-muted-foreground hover:text-destructive rounded-lg transition-all"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="font-mono text-sm font-semibold text-gray-200 truncate flex items-center justify-between gap-1 mt-1" dir="ltr">
+                    <div className="font-mono text-sm font-bold text-foreground truncate flex items-center justify-between gap-1 mt-1" dir="ltr">
                       <div className="truncate">
                         <span className="truncate">{p.server}</span>
-                        <span className="text-xs text-blue-400 font-normal shrink-0 ml-0.5">:{p.port}</span>
+                        <span className="text-xs text-primary font-semibold shrink-0 ms-0.5">:{p.port}</span>
                       </div>
                     </div>
 
                     {p.secret && (
-                      <div className="mt-1 text-[11px] text-gray-500 font-mono truncate" dir="ltr">
+                      <div className="mt-1 text-[11px] text-muted-foreground font-mono truncate" dir="ltr">
                         Secret: {p.secret.slice(0, 16)}...
                       </div>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-gray-800/60">
+                  <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border/60">
                     <button
                       type="button"
                       onClick={() => handleLaunchTelegram(p)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all whitespace-nowrap"
+                      className="bg-primary flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all whitespace-nowrap"
                     >
                       <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                       <span>{t('open_in_telegram')}</span>
@@ -990,16 +994,16 @@ export default function DiscoveryHub({ status }: Props) {
                       type="button"
                       onClick={() => copyToClipboard(p.link, p.id, t('proxy_copied'))}
                       title={t('copy_proxy_link')}
-                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all shrink-0"
+                      className="p-2 bg-muted hover:bg-muted/90 dark:bg-card/60 dark:hover:bg-card text-foreground rounded-xl transition-all shrink-0"
                     >
-                      {copiedId === p.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedId === p.id ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleShowQrModal(`${p.type.toUpperCase()} - ${p.server}:${p.port}`, p.link)}
                       title={t('show_qr_code')}
-                      className="p-2 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl transition-all shrink-0"
+                      className="p-2 bg-muted hover:bg-muted/90 dark:bg-card/60 dark:hover:bg-card text-foreground rounded-xl transition-all shrink-0"
                     >
                       <QrCode className="w-3.5 h-3.5" />
                     </button>
@@ -1016,13 +1020,13 @@ export default function DiscoveryHub({ status }: Props) {
       {/* ======================================================== */}
       {activeTab === 'configs' && (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex flex-col gap-3 p-4 bg-gray-900/80 rounded-2xl border border-gray-800/80 backdrop-blur-md shadow-md">
+          <div className="flex flex-col gap-3 p-4 bg-card/85 dark:bg-card/80 rounded-2xl border border-border/80 backdrop-blur-md shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleFetchFreeConfigs}
                   disabled={isFetchingConfigs || isTestingConfigs}
-                  className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-indigo-600/20 active:scale-95"
+                  className="flex items-center gap-2 px-3.5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isFetchingConfigs ? 'animate-spin' : ''}`} />
                   <span>{isFetchingConfigs ? t('fetching_configs') : t('fetch_configs')}</span>
@@ -1031,17 +1035,17 @@ export default function DiscoveryHub({ status }: Props) {
                 <button
                   onClick={handleTestFreeConfigs}
                   disabled={isTestingConfigs || freeConfigs.length === 0}
-                  className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-emerald-600/20 active:scale-95"
+                  className="flex items-center gap-2 px-3.5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95"
                 >
                   <Activity className={`w-3.5 h-3.5 ${isTestingConfigs ? 'animate-pulse' : ''}`} />
-                  <span>{isTestingConfigs ? t('testing_configs') : t('test_latency') || 'تست تأخیر و سلامت'}</span>
+                  <span>{isTestingConfigs ? t('testing_configs') : t('test_latency')}</span>
                 </button>
 
                 {selectedConfigIds.length > 0 && (
                   <button
                     onClick={() => handleImportSelectedConfigs(false)}
                     disabled={isImportingConfigs}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-purple-600/20 transition-all active:scale-95"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm transition-all active:scale-95"
                   >
                     <ArrowDownToLine className="w-3.5 h-3.5" />
                     <span>{t('import_selected_configs')} ({selectedConfigIds.length})</span>
@@ -1051,9 +1055,9 @@ export default function DiscoveryHub({ status }: Props) {
                 <button
                   onClick={() => handleImportSelectedConfigs(true)}
                   disabled={isImportingConfigs || freeConfigs.filter(x => x.is_alive).length === 0}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl text-xs font-semibold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/90 dark:bg-card dark:hover:bg-muted text-foreground rounded-xl text-xs font-semibold transition-all"
                 >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <Download className="w-3.5 h-3.5 text-success" />
                   <span>{t('import_all_alive_configs')}</span>
                 </button>
 
@@ -1061,9 +1065,9 @@ export default function DiscoveryHub({ status }: Props) {
                   <button
                     onClick={handleExportSubscriptionLink}
                     title="Export subscription URL"
-                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl text-xs font-medium transition-all"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted text-foreground dark:hover:text-foreground rounded-xl text-xs font-medium transition-all"
                   >
-                    <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+                    <Share2 className="w-3.5 h-3.5 text-primary" />
                     <span>{t('subscription')}</span>
                   </button>
                 )}
@@ -1071,19 +1075,19 @@ export default function DiscoveryHub({ status }: Props) {
                 <button
                   onClick={() => handleOpenSourcesModal('configs')}
                   title={t('custom_sources_modal_title')}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl text-xs font-medium transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted text-foreground dark:hover:text-foreground rounded-xl text-xs font-medium transition-all"
                 >
-                  <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                  <Sliders className="w-3.5 h-3.5 text-primary" />
                   <span>{t('candidate_sources')}</span>
                   {customConfigSources.length > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    <span className="w-2 h-2 rounded-full bg-primary" />
                   )}
                 </button>
 
                 {freeConfigs.some(x => !x.is_alive) && (
                   <button
                     onClick={() => setFreeConfigs(prev => prev.filter(x => x.is_alive))}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/30 text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-destructive/30 hover:bg-destructive/50 border border-destructive/30 text-destructive rounded-xl text-xs font-semibold transition-all active:scale-95"
                     title={t('remove_dead')}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1094,7 +1098,7 @@ export default function DiscoveryHub({ status }: Props) {
                 {freeConfigs.length > 0 && (
                   <button
                     onClick={() => setFreeConfigs([])}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/60 hover:bg-rose-950/60 border border-gray-700/40 hover:border-rose-700/40 text-gray-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-card/60 hover:bg-destructive/60 border border-border/40 hover:border-destructive/40 text-muted-foreground hover:text-destructive rounded-xl text-xs font-semibold transition-all active:scale-95"
                     title={t('clear_all_proxies')}
                   >
                     <XCircle className="w-3.5 h-3.5" />
@@ -1104,27 +1108,27 @@ export default function DiscoveryHub({ status }: Props) {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-gray-800/60">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-border/60">
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleSelectAllConfigs}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-950/60 border border-gray-800/80 rounded-xl text-xs text-gray-300 hover:text-white transition-all font-medium"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-card/60 border border-border/80 rounded-xl text-xs text-foreground transition-all font-medium"
                 >
                   {selectedConfigIds.length === filteredConfigs.length && filteredConfigs.length > 0 ? (
-                    <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
+                    <CheckSquare className="w-3.5 h-3.5 text-primary" />
                   ) : (
-                    <SquareOutline className="w-3.5 h-3.5 text-gray-400" />
+                    <SquareOutline className="w-3.5 h-3.5 text-muted-foreground" />
                   )}
                   <span>{selectedConfigIds.length === filteredConfigs.length ? t('deselect_all') : t('select_all')}</span>
                 </button>
 
-                <div className="flex items-center p-0.5 bg-gray-950/80 rounded-xl border border-gray-800/80 text-xs gap-0.5 flex-wrap">
+                <div className="flex items-center p-0.5 bg-card/80 rounded-xl border border-border/80 text-xs gap-0.5 flex-wrap">
                   <button
                     onClick={() => setConfigProtoFilter('all')}
                     className={`px-3 py-1 rounded-lg uppercase transition-all font-bold ${
                       configProtoFilter === 'all'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-gray-400 hover:text-gray-200'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {getLanguage() === 'fa' ? 'همه' : 'ALL'}
@@ -1135,8 +1139,8 @@ export default function DiscoveryHub({ status }: Props) {
                       onClick={() => setConfigProtoFilter(proto)}
                       className={`px-3 py-1 rounded-lg uppercase text-[11px] transition-all font-bold ${
                         configProtoFilter.toLowerCase() === proto.toLowerCase()
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-gray-400 hover:text-gray-200'
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
                       {proto}
@@ -1146,30 +1150,30 @@ export default function DiscoveryHub({ status }: Props) {
               </div>
 
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-muted-foreground absolute start-3 top-2.5" />
                 <input
                   type="text"
                   value={configSearch}
                   onChange={e => setConfigSearch(e.target.value)}
                   placeholder={t('search')}
-                  className="pl-8 pr-3 py-1.5 bg-gray-950/80 border border-gray-800/80 rounded-xl text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 w-48"
+                  className="ps-8 pe-3 py-1.5 bg-card/80 border border-border/80 rounded-xl text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary/50 w-48"
                 />
               </div>
             </div>
           </div>
 
           {configsProgress && (
-            <div className="p-3 bg-indigo-950/30 border border-indigo-800/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-xs text-indigo-200">
+            <div className="p-3 bg-primary/30 border border-primary/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-xs text-primary">
                 <span className="flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                  <Activity className="w-3.5 h-3.5 text-primary animate-spin" />
                   <span>{t('testing_configs')} ({configsProgress.tested_count} / {configsProgress.total_count})</span>
                 </span>
-                <span className="font-mono text-gray-400 text-[11px] truncate max-w-xs">{configsProgress.current}</span>
+                <span className="font-mono text-muted-foreground text-[11px] truncate max-w-xs">{configsProgress.current}</span>
               </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-card rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-400 transition-all duration-200"
+                  className="bg-primary h-full transition-all duration-200"
                   style={{
                     width: `${Math.min(100, Math.round((configsProgress.tested_count / (configsProgress.total_count || 1)) * 100))}%`,
                   }}
@@ -1179,12 +1183,12 @@ export default function DiscoveryHub({ status }: Props) {
           )}
 
           {filteredConfigs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-gray-900/30 rounded-2xl border border-gray-800/40">
-              <Globe className="w-10 h-10 text-gray-600" />
-              <p className="text-sm text-gray-400">{t('empty_discovery_results')}</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-card/30 rounded-2xl border border-border/40">
+              <Globe className="w-10 h-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('empty_discovery_results')}</p>
               <button
                 onClick={handleFetchFreeConfigs}
-                className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+                className="px-4 py-2 bg-primary/80 hover:bg-primary text-primary-foreground rounded-xl text-xs font-semibold"
               >
                 {t('fetch_configs')}
               </button>
@@ -1200,8 +1204,8 @@ export default function DiscoveryHub({ status }: Props) {
                     onClick={() => toggleSelectConfig(c.id)}
                     className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
                       isSelected
-                        ? 'bg-indigo-950/40 border-indigo-500/50 shadow-md shadow-indigo-500/5'
-                        : 'bg-gray-900/60 hover:bg-gray-850/80 border-gray-800/80'
+                        ? 'bg-primary/40 border-primary/50 shadow-sm'
+                        : 'bg-card/60 hover:bg-muted dark:hover:bg-card/80 border-border/80 shadow-sm'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -1211,33 +1215,33 @@ export default function DiscoveryHub({ status }: Props) {
                           e.stopPropagation()
                           toggleSelectConfig(c.id)
                         }}
-                        className="text-gray-400 hover:text-white"
+                        className="text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
                       >
                         {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-indigo-400" />
+                          <CheckSquare className="w-4 h-4 text-primary" />
                         ) : (
-                          <SquareOutline className="w-4 h-4 text-gray-500" />
+                          <SquareOutline className="w-4 h-4 text-muted-foreground" />
                         )}
                       </button>
 
                       <CountryFlag codeOrName={c.country_code || c.country || c.name || c.server} size="sm" />
 
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-400/20">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-primary/20 text-primary border border-primary/20">
                         {itemProto}
                       </span>
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-gray-200 truncate max-w-sm">
-                            {c.name || `${c.server}:${c.port}`}
+                          <span className="text-xs font-semibold text-foreground truncate max-w-sm">
+                            {cleanServerName(c.name) || `${c.server}:${c.port}`}
                           </span>
                           {c.country && (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/50">
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground border border-border">
                               {c.country}
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] font-mono text-gray-400 truncate max-w-xs">
+                        <div className="text-[11px] font-mono text-muted-foreground truncate max-w-xs">
                           {c.server}:{c.port} {c.source_name ? `• ${c.source_name}` : ''}
                         </div>
                       </div>
@@ -1248,45 +1252,45 @@ export default function DiscoveryHub({ status }: Props) {
                         <span
                           className={`flex items-center gap-1 text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
                             c.latency_ms < 300
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              ? 'bg-success/10 text-success border border-success/20'
                               : c.latency_ms < 700
-                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              ? 'bg-warning/10 text-warning border border-warning/20'
+                              : 'bg-destructive/10 text-destructive border border-destructive/20'
                           }`}
                         >
                           <Clock className="w-3 h-3" />
                           {c.latency_ms} ms
                         </span>
                       ) : c.is_alive ? (
-                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                        <span className="flex items-center gap-1 text-[11px] text-success bg-success/10 px-2 py-0.5 rounded-full">
                           <CheckCircle2 className="w-3 h-3" />
                           OK
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-500 font-mono">-- ms</span>
+                        <span className="text-xs text-muted-foreground font-mono">-- ms</span>
                       )}
 
-                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1" role="dialog" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => copyToClipboard(c.raw_uri, c.id)}
                           title={t('copy')}
-                          className="p-1.5 bg-gray-800/60 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all"
+                          className="p-1.5 bg-muted hover:bg-muted/90 text-muted-foreground hover:text-foreground dark:bg-card/60 dark:hover:bg-card dark:text-muted-foreground dark:hover:text-foreground rounded-lg transition-all"
                         >
-                          {copiedId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedId === c.id ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
 
                         <button
                           onClick={() => handleShowQrModal(c.name, c.raw_uri)}
                           title={t('show_qr_code')}
-                          className="p-1.5 bg-gray-800/60 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all"
+                          className="p-1.5 bg-muted hover:bg-muted/90 text-muted-foreground hover:text-foreground dark:bg-card/60 dark:hover:bg-card dark:text-muted-foreground dark:hover:text-foreground rounded-lg transition-all"
                         >
                           <QrCode className="w-3.5 h-3.5" />
                         </button>
 
                         <button
                           onClick={() => setFreeConfigs(prev => prev.filter(x => x.id !== c.id))}
-                          title={t('delete') || 'حذف'}
-                          className="p-1.5 bg-gray-800/60 hover:bg-rose-950/60 text-gray-400 hover:text-rose-400 rounded-lg transition-all"
+                          title={t('delete')}
+                          className="p-1.5 bg-muted hover:bg-destructive text-muted-foreground hover:text-destructive dark:bg-card/60 dark:hover:bg-destructive/60 dark:text-muted-foreground dark:hover:text-destructive rounded-lg transition-all"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1305,17 +1309,17 @@ export default function DiscoveryHub({ status }: Props) {
       {/* ======================================================== */}
       {activeTab === 'cloudflare' && (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gray-900/60 rounded-2xl border border-gray-800/80 backdrop-blur-md shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-card/60 rounded-2xl border border-border/80 backdrop-blur-md shadow-sm">
             <div className="flex flex-wrap items-center gap-2.5">
               {/* Dual Mode Switcher */}
-              <div className="flex items-center p-0.5 bg-gray-950/60 rounded-xl border border-gray-800/60 text-xs">
+              <div className="flex items-center p-0.5 bg-muted dark:bg-card/60 rounded-xl border border-border/60 text-xs">
                 <button
                   onClick={() => setCfMode('warp')}
                   disabled={isCfScanning}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
                     cfMode === 'warp'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground'
                   }`}
                 >
                   <Zap className="w-3.5 h-3.5" />
@@ -1327,8 +1331,8 @@ export default function DiscoveryHub({ status }: Props) {
                   disabled={isCfScanning}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
                     cfMode === 'cdn'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground'
                   }`}
                 >
                   <Globe className="w-3.5 h-3.5" />
@@ -1337,15 +1341,15 @@ export default function DiscoveryHub({ status }: Props) {
               </div>
 
               {/* ISP Filter Pills */}
-              <div className="flex items-center p-0.5 bg-gray-950/60 rounded-xl border border-gray-800/60 text-[11px]">
+              <div className="flex items-center p-0.5 bg-muted dark:bg-card/60 rounded-xl border border-border/60 text-[11px]">
                 {(['all', 'mci', 'mtn', 'rtl'] as const).map(isp => (
                   <button
                     key={isp}
                     onClick={() => setCfIspFilter(isp)}
                     className={`px-2.5 py-1 rounded-lg transition-all ${
-                  cfIspFilter === isp
-                        ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30'
-                        : 'text-gray-400 hover:text-gray-200'
+                      cfIspFilter === isp
+                        ? 'bg-warning/20 text-warning font-semibold border border-warning/30'
+                        : 'text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground'
                     }`}
                   >
                     {isp === 'all' ? t('isp_filter_all') : isp === 'mci' ? t('isp_filter_mci') : isp === 'mtn' ? t('isp_filter_mtn') : t('isp_filter_rtl')}
@@ -1356,7 +1360,7 @@ export default function DiscoveryHub({ status }: Props) {
               {!isCfScanning ? (
                 <button
                   onClick={handleStartCfScan}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-amber-600/20 active:scale-95 transition-all"
+                  className="bg-primary flex items-center gap-2 px-4 py-2 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>{t('start_scanner')}</span>
@@ -1364,7 +1368,7 @@ export default function DiscoveryHub({ status }: Props) {
               ) : (
                 <button
                   onClick={handleStopCfScan}
-                  className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-600/20 active:scale-95 transition-all"
+                  className="flex items-center gap-2 px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                   <span>{t('stop_scanner')}</span>
@@ -1374,7 +1378,7 @@ export default function DiscoveryHub({ status }: Props) {
               {cfResults.some(x => x.loss_rate > 0) && (
                 <button
                   onClick={() => setCfResults(prev => prev.filter(x => x.loss_rate === 0))}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/30 text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-destructive hover:bg-destructive/30 dark:hover:bg-destructive/50 border border-destructive/30 text-destructive rounded-xl text-xs font-semibold transition-all active:scale-95"
                   title={t('remove_unstable')}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1385,7 +1389,7 @@ export default function DiscoveryHub({ status }: Props) {
               {cfResults.length > 0 && (
                 <button
                   onClick={() => setCfResults([])}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800/60 hover:bg-rose-950/60 border border-gray-700/40 hover:border-rose-700/40 text-gray-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-destructive border border-border hover:border-destructive dark:bg-card/60 dark:hover:bg-destructive/60 dark:border-border/40 dark:hover:border-destructive/40 text-muted-foreground hover:text-destructive dark:text-muted-foreground dark:hover:text-destructive rounded-xl text-xs font-semibold transition-all active:scale-95"
                   title={t('clear_all_proxies')}
                 >
                   <XCircle className="w-3.5 h-3.5" />
@@ -1395,25 +1399,25 @@ export default function DiscoveryHub({ status }: Props) {
             </div>
 
             <div className="flex items-center gap-3 text-xs">
-              <div className="px-3 py-1.5 bg-gray-950/60 rounded-xl border border-gray-800/60">
-                <span className="text-gray-400">{t('alive_proxies_found')}: </span>
-                <span className="font-bold text-amber-400">{cfResults.length}</span>
+              <div className="px-3 py-1.5 bg-muted dark:bg-card/60 rounded-xl border border-border/60">
+                <span className="text-muted-foreground">{t('alive_proxies_found')}: </span>
+                <span className="font-bold text-warning">{cfResults.length}</span>
               </div>
             </div>
           </div>
 
           {isCfScanning && cfProgress && (
-            <div className="p-3 bg-amber-950/30 border border-amber-800/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-xs text-amber-200">
+            <div className="p-3 bg-warning/10 border border-warning/20 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-xs text-warning">
                 <span className="flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                  <Activity className="w-3.5 h-3.5 text-warning animate-spin" />
                   <span>{t('scanning')} ({cfProgress.scanned} / {cfProgress.total})</span>
                 </span>
-                <span className="font-mono text-gray-400 text-[11px]">{cfProgress.current_ip}</span>
+                <span className="font-mono text-muted-foreground text-[11px]">{cfProgress.current_ip}</span>
               </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-muted dark:bg-card rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-200"
+                  className="bg-warning h-full transition-all duration-200"
                   style={{
                     width: `${Math.min(100, Math.round((cfProgress.scanned / (cfProgress.total || 1)) * 100))}%`,
                   }}
@@ -1423,12 +1427,12 @@ export default function DiscoveryHub({ status }: Props) {
           )}
 
           {cfResults.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-gray-900/30 rounded-2xl border border-gray-800/40">
-              <Zap className="w-10 h-10 text-gray-600" />
-              <p className="text-sm text-gray-400">{t('empty_discovery_results')}</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-card/30 rounded-2xl border border-border/80 dark:border-border/40 shadow-sm">
+              <Zap className="w-10 h-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('empty_discovery_results')}</p>
               <button
                 onClick={handleStartCfScan}
-                className="px-4 py-2 bg-amber-600/80 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm"
               >
                 {t('start_scanner')}
               </button>
@@ -1438,31 +1442,31 @@ export default function DiscoveryHub({ status }: Props) {
               {cfResults.map((target, idx) => (
                 <div
                   key={`${target.ip}:${target.port}-${idx}`}
-                  className="group flex flex-col justify-between p-4 bg-gray-900/60 hover:bg-gray-850/80 rounded-2xl border border-gray-800/80 hover:border-amber-500/40 transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-amber-500/5 backdrop-blur-sm"
+                  className="group flex flex-col justify-between p-4 bg-card/60 hover:bg-muted dark:hover:bg-card/80 rounded-2xl border border-border/80 hover:border-warning/40 transition-all duration-200 shadow-sm hover:shadow-sm backdrop-blur-sm"
                 >
-                    <div>
+                  <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${
                         target.mode === 'cdn'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/20'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-400/20'
+                          ? 'bg-success/20 text-success border border-success/20'
+                          : 'bg-warning/20 text-warning border border-warning/20'
                       }`}>
                         {target.mode === 'cdn' ? '🌐 CDN Clean IP' : 'WARP Endpoint'}
                       </span>
 
                       <div className="flex items-center gap-1.5">
                         {target.loss_rate > 0 && (
-                          <span className="text-[10px] text-rose-400 font-mono">
+                          <span className="text-[10px] text-destructive font-mono">
                             {target.loss_rate}% loss
                           </span>
                         )}
                         <span
                           className={`flex items-center gap-1 text-xs font-mono font-medium px-2 py-0.5 rounded-full ${
                             target.latency_ms < 200
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              ? 'bg-success/10 text-success border border-success/20'
                               : target.latency_ms < 500
-                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              ? 'bg-warning/10 text-warning border border-warning/20'
+                              : 'bg-destructive/10 text-destructive border border-destructive/20'
                           }`}
                         >
                           <Clock className="w-3 h-3" />
@@ -1472,27 +1476,27 @@ export default function DiscoveryHub({ status }: Props) {
                         <button
                           type="button"
                           onClick={() => setCfResults(prev => prev.filter(x => !(x.ip === target.ip && x.port === target.port)))}
-                          title={t('delete') || 'حذف'}
-                          className="p-1 text-gray-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-all"
+                          title={t('delete')}
+                          className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive dark:text-muted-foreground dark:hover:text-destructive dark:hover:bg-destructive/40 rounded-lg transition-all"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="font-mono text-sm font-semibold text-gray-200 truncate flex items-center justify-between gap-1" dir="ltr">
+                    <div className="font-mono text-sm font-semibold text-foreground truncate flex items-center justify-between gap-1" dir="ltr">
                       <div className="truncate">
                         <span>{target.ip}</span>
-                        <span className={`text-xs font-normal ml-0.5 ${target.mode === 'cdn' ? 'text-emerald-400' : 'text-amber-400'}`}>:{target.port}</span>
+                        <span className={`text-xs font-normal ms-0.5 ${target.mode === 'cdn' ? 'text-success' : 'text-warning'}`}>:{target.port}</span>
                       </div>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(`${target.ip}:${target.port}`, `${target.ip}:${target.port}`, t('clean_ip_copied'))}
                         title={t('copy_clean_ip')}
-                        className="p-1 text-gray-500 hover:text-white rounded transition-all shrink-0"
+                        className="p-1 text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground rounded transition-all shrink-0"
                       >
                         {copiedId === `${target.ip}:${target.port}` ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <Check className="w-3.5 h-3.5 text-success" />
                         ) : (
                           <Copy className="w-3.5 h-3.5" />
                         )}
@@ -1500,23 +1504,23 @@ export default function DiscoveryHub({ status }: Props) {
                     </div>
 
                     {target.location && (
-                      <div className="mt-1 text-[11px] text-gray-400 truncate">
+                      <div className="mt-1 text-[11px] text-muted-foreground truncate">
                         {target.location}
                       </div>
                     )}
                   </div>
 
-                  <div className="mt-3 pt-2.5 border-t border-gray-800/60">
+                  <div className="mt-3 pt-2.5 border-t border-border/60">
                     {target.mode === 'warp' ? (
                       <div className="grid grid-cols-2 gap-1.5 w-full">
                         <button
                           type="button"
                           onClick={() => handleGenerateWarpConfig(target)}
                           disabled={isGeneratingWarp === `${target.ip}:${target.port}`}
-                          className="flex items-center justify-center gap-1 py-2 px-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 hover:text-amber-100 border border-amber-500/35 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all truncate"
+                          className="bg-warning/20 hover:bg-warning/30 flex items-center justify-center gap-1 py-2 px-2 text-warning hover:text-warning border border-warning/35 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all truncate"
                           title={t('generate_warp_config')}
                         >
-                          <Zap className={`w-3.5 h-3.5 text-amber-400 shrink-0 ${isGeneratingWarp === `${target.ip}:${target.port}` ? 'animate-spin' : ''}`} />
+                          <Zap className={`w-3.5 h-3.5 text-warning shrink-0 ${isGeneratingWarp === `${target.ip}:${target.port}` ? 'animate-spin' : ''}`} />
                           <span className="truncate">{isGeneratingWarp === `${target.ip}:${target.port}` ? t('generating') : t('create_warp_btn')}</span>
                         </button>
                         <button
@@ -1524,9 +1528,9 @@ export default function DiscoveryHub({ status }: Props) {
                           onClick={() => handleApplyToWarpProfiles(target)}
                           disabled={isApplyingWarp}
                           title={t('apply_to_warp_profiles')}
-                          className="flex items-center justify-center gap-1 py-2 px-2 bg-gray-800/70 hover:bg-gray-750 text-gray-300 hover:text-white border border-gray-700/50 rounded-xl text-xs font-semibold transition-all active:scale-95 truncate"
+                          className="flex items-center justify-center gap-1 py-2 px-2 bg-muted hover:bg-muted/90 text-foreground border border-border dark:bg-card/70 dark:hover:bg-muted dark:text-foreground dark:hover:text-foreground dark:border-border/50 rounded-xl text-xs font-semibold transition-all active:scale-95 truncate"
                         >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <Sparkles className="w-3.5 h-3.5 text-warning shrink-0" />
                           <span className="truncate">{t('apply_to_warp_btn')}</span>
                         </button>
                       </div>
@@ -1536,10 +1540,10 @@ export default function DiscoveryHub({ status }: Props) {
                           type="button"
                           onClick={() => handleApplyToV2RayProfiles(target, true)}
                           disabled={isApplyingV2Ray}
-                          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 hover:text-emerald-100 border border-emerald-500/35 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all"
+                          className="bg-success/20 hover:bg-success/30 w-full flex items-center justify-center gap-1.5 py-2 px-3 text-success hover:text-success border border-success/35 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all"
                           title={t('apply_to_v2ray_profiles')}
                         >
-                          <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <Globe className="w-3.5 h-3.5 text-success shrink-0" />
                           <span>{t('apply_to_v2ray_btn')}</span>
                         </button>
                       </div>
@@ -1557,14 +1561,14 @@ export default function DiscoveryHub({ status }: Props) {
       {/* ======================================================== */}
       {activeTab === 'fragment' && (
         <div className="space-y-4 animate-in fade-in duration-300">
-          <div className="p-4 bg-gray-900/60 rounded-2xl border border-gray-800/80 backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="p-4 bg-card/60 rounded-2xl border border-border/80 backdrop-blur-md shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center justify-center text-destructive">
                 <Flame className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-gray-200">{t('tab_fragment_scanner')}</h3>
-                <p className="text-xs text-gray-400 mt-0.5">{t('fragment_scanner_desc')}</p>
+                <h3 className="text-sm font-bold text-foreground">{t('tab_fragment_scanner')}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('fragment_scanner_desc')}</p>
               </div>
             </div>
 
@@ -1572,7 +1576,7 @@ export default function DiscoveryHub({ status }: Props) {
               {!isFragScanning ? (
                 <button
                   onClick={handleStartFragScan}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-600/20 active:scale-95 transition-all"
+                  className="bg-destructive flex items-center gap-2 px-4 py-2 to-pink-600 hover:to-pink-500 text-destructive-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>{t('start_scanner')}</span>
@@ -1580,7 +1584,7 @@ export default function DiscoveryHub({ status }: Props) {
               ) : (
                 <button
                   onClick={handleStopFragScan}
-                  className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-600/20 active:scale-95 transition-all"
+                  className="flex items-center gap-2 px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                   <span>{t('stop_scanner')}</span>
@@ -1591,17 +1595,17 @@ export default function DiscoveryHub({ status }: Props) {
 
           {/* Real-time Scanning Progress */}
           {isFragScanning && fragProgress && (
-            <div className="p-3 bg-rose-950/30 border border-rose-800/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-xs text-rose-200">
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-xs text-destructive">
                 <span className="flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-rose-400 animate-spin" />
+                  <Activity className="w-3.5 h-3.5 text-destructive animate-spin" />
                   <span>{t('scanning')} ({fragProgress.scanned} / {fragProgress.total})</span>
                 </span>
-                <span className="font-mono text-gray-400 text-[11px]">{fragProgress.current}</span>
+                <span className="font-mono text-muted-foreground text-[11px]">{fragProgress.current}</span>
               </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-muted dark:bg-card rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-rose-500 to-pink-400 transition-all duration-200"
+                  className="bg-destructive h-full to-pink-400 transition-all duration-200"
                   style={{
                     width: `${Math.min(100, Math.round((fragProgress.scanned / (fragProgress.total || 1)) * 100))}%`,
                   }}
@@ -1612,22 +1616,22 @@ export default function DiscoveryHub({ status }: Props) {
 
           {/* Optimal Setting Spotlight Banner */}
           {bestFragment && (
-            <div className="p-4 bg-gradient-to-r from-emerald-950/40 via-gray-900/60 to-rose-950/30 rounded-2xl border border-emerald-500/40 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="bg-success/10 p-4 rounded-2xl border border-success/30 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <div className="w-10 h-10 rounded-xl bg-success/20 border border-success/30 flex items-center justify-center text-success">
                   <Award className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                    <span className="text-xs font-bold text-success uppercase tracking-wider">
                       {t('optimal_fragment_found')}
                     </span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-success/20 text-success border border-success/30">
                       {bestFragment.success_rate}% {t('success_rate')}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-300 font-mono mt-1">
-                    {t('chunk_size')}: <span className="text-white font-bold">{bestFragment.size_range}</span> | {t('delay_sleep')}: <span className="text-white font-bold">{bestFragment.sleep_range} ms</span> ({t('latency')}: {bestFragment.avg_latency} ms)
+                  <div className="text-xs text-foreground font-mono mt-1">
+                    {t('chunk_size')}: <span className="text-foreground font-bold">{bestFragment.size_range}</span> | {t('delay_sleep')}: <span className="text-foreground font-bold">{bestFragment.sleep_range} ms</span> ({t('latency')}: {bestFragment.avg_latency} ms)
                   </div>
                 </div>
               </div>
@@ -1635,7 +1639,7 @@ export default function DiscoveryHub({ status }: Props) {
               <button
                 onClick={() => handleApplyOptimalFragment(bestFragment)}
                 disabled={isApplyingFrag}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 active:scale-95 transition-all shrink-0"
+                className="bg-primary flex items-center gap-2 px-4 py-2 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all shrink-0"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>{t('apply_optimal_fragment')}</span>
@@ -1645,12 +1649,12 @@ export default function DiscoveryHub({ status }: Props) {
 
           {/* Candidates List Table */}
           {fragResults.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-gray-900/30 rounded-2xl border border-gray-800/40">
-              <Flame className="w-10 h-10 text-gray-600" />
-              <p className="text-sm text-gray-400">{t('empty_discovery_results')}</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-card/30 rounded-2xl border border-border/80 dark:border-border/40 shadow-sm">
+              <Flame className="w-10 h-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('empty_discovery_results')}</p>
               <button
                 onClick={handleStartFragScan}
-                className="px-4 py-2 bg-rose-600/80 hover:bg-rose-600 text-white rounded-xl text-xs font-semibold"
+                className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl text-xs font-semibold shadow-sm"
               >
                 {t('start_scanner')}
               </button>
@@ -1662,37 +1666,37 @@ export default function DiscoveryHub({ status }: Props) {
                   key={cand.id}
                   className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${
                     cand.recommended
-                      ? 'bg-emerald-950/30 border-emerald-500/50 shadow-md shadow-emerald-500/5'
+                      ? 'bg-success/70 dark:bg-success/30 border-success/50 shadow-sm'
                       : cand.status === 'optimal'
-                      ? 'bg-gray-900/60 border-gray-800 hover:border-gray-700'
-                      : 'bg-gray-950/40 border-gray-900 opacity-70'
+                      ? 'bg-card/60 border-border/80 dark:border-border hover:border-border dark:hover:border-border shadow-sm'
+                      : 'bg-muted dark:bg-card/40 border-border opacity-80'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
                         cand.success_rate >= 80
-                          ? 'bg-emerald-500/20 text-emerald-300'
+                          ? 'bg-success/20 text-success'
                           : cand.success_rate >= 50
-                          ? 'bg-amber-500/20 text-amber-300'
-                          : 'bg-rose-500/20 text-rose-400'
+                          ? 'bg-warning/20 text-warning'
+                          : 'bg-destructive/20 text-destructive'
                       }`}
                     >
                       {cand.success_rate}%
                     </div>
 
                     <div>
-                      <div className="text-xs font-bold text-gray-200 flex items-center gap-2">
-                        <span>Size: <span className="font-mono text-indigo-300">{cand.size_range}</span></span>
-                        <span className="text-gray-500">•</span>
-                        <span>Sleep: <span className="font-mono text-purple-300">{cand.sleep_range} ms</span></span>
+                      <div className="text-xs font-bold text-foreground flex items-center gap-2">
+                        <span>Size: <span className="font-mono text-primary">{cand.size_range}</span></span>
+                        <span className="text-muted-foreground">•</span>
+                        <span>Sleep: <span className="font-mono text-primary">{cand.sleep_range} ms</span></span>
                         {cand.recommended && (
-                          <span className="px-2 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-md font-bold">
+                          <span className="px-2 py-0.5 text-[10px] bg-success/20 text-success border border-success/30 rounded-md font-bold">
                             TOP 1
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-400 font-mono mt-0.5">
+                      <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
                         Score: {cand.score}/100 • Latency: {cand.avg_latency > 0 ? `${cand.avg_latency} ms` : '--'}
                       </div>
                     </div>
@@ -1701,9 +1705,9 @@ export default function DiscoveryHub({ status }: Props) {
                   <button
                     onClick={() => handleApplyOptimalFragment(cand)}
                     disabled={isApplyingFrag}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white rounded-lg text-xs font-semibold transition-all active:scale-95"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/90 text-foreground border border-border dark:bg-card dark:hover:bg-muted dark:text-foreground dark:hover:text-foreground dark:border-transparent rounded-lg text-xs font-semibold transition-all active:scale-95"
                   >
-                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                    <Sparkles className="w-3 h-3 text-success" />
                     <span>{t('apply')}</span>
                   </button>
                 </div>
@@ -1717,24 +1721,28 @@ export default function DiscoveryHub({ status }: Props) {
       {/* Custom Sources Management Modal                          */}
       {/* ======================================================== */}
       {sourcesModalTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+        <ModalShell
+          isOpen={true}
+          onClose={() => setSourcesModalTab(null)}
+          maxWidth="max-w-lg"
+          bodyClassName="p-6 space-y-4"
+        >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-bold text-gray-100">
+                <Sliders className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-bold text-foreground">
                   {t('custom_sources_modal_title')} ({sourcesModalTab === 'telegram' ? 'Telegram' : 'Free Configs'})
                 </h3>
               </div>
               <button
                 onClick={() => setSourcesModalTab(null)}
-                className="p-1 text-gray-400 hover:text-white rounded-lg"
+                className="p-1 text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-muted-foreground">
               {t('custom_sources_desc')}
             </p>
 
@@ -1743,14 +1751,14 @@ export default function DiscoveryHub({ status }: Props) {
               value={sourcesInputText}
               onChange={e => setSourcesInputText(e.target.value)}
               placeholder="https://raw.githubusercontent.com/user/repo/main/list.txt&#10;https://example.com/sub/configs"
-              className="w-full p-3 bg-gray-950/80 border border-gray-800/80 rounded-xl text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500/50 resize-y"
+              className="w-full p-3 bg-muted dark:bg-card/80 border border-border/80 rounded-xl text-xs font-mono text-foreground placeholder:text-muted-foreground dark:placeholder-muted-foreground focus:outline-none focus:border-primary/50 resize-y"
             />
 
             <div className="flex items-center justify-between gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setSourcesInputText('')}
-                className="text-xs text-gray-400 hover:text-rose-400 transition"
+                className="text-xs text-muted-foreground hover:text-destructive dark:text-muted-foreground dark:hover:text-destructive transition"
               >
                 {t('clear_all')}
               </button>
@@ -1758,44 +1766,47 @@ export default function DiscoveryHub({ status }: Props) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSourcesModalTab(null)}
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold"
+                  className="px-4 py-2 bg-muted hover:bg-muted/90 text-foreground dark:bg-card dark:hover:bg-muted dark:text-foreground rounded-xl text-xs font-semibold"
                 >
                   {t('cancel')}
                 </button>
                 <button
                   onClick={handleSaveCustomSources}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20"
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm"
                 >
                   {t('custom_sources_save')}
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* ======================================================== */}
       {/* QR Code Modal                                            */}
       {/* ======================================================== */}
       {qrModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center">
+        <ModalShell
+          isOpen={true}
+          onClose={() => setQrModalData(null)}
+          maxWidth="max-w-sm"
+          bodyClassName="p-6 space-y-4 text-center"
+        >
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-200 truncate">{qrModalData.title}</h3>
+              <h3 className="text-sm font-semibold text-foreground truncate">{qrModalData.title}</h3>
               <button
                 onClick={() => setQrModalData(null)}
-                className="p-1 text-gray-400 hover:text-white rounded-lg"
+                className="p-1 text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="bg-white p-3 rounded-xl mx-auto inline-block shadow-lg">
+            <div className="bg-card p-3 rounded-xl mx-auto inline-block shadow-lg border border-border">
               <img src={qrModalData.qrSvg} alt="QR Code" className="w-[220px] h-[220px]" />
             </div>
 
-            <div className="p-2.5 bg-gray-950/60 rounded-xl text-left border border-gray-800/60">
-              <p className="font-mono text-[11px] text-gray-400 break-all select-all line-clamp-3">
+            <div className="p-2.5 bg-muted dark:bg-card/60 rounded-xl text-start border border-border/60">
+              <p className="font-mono text-[11px] text-muted-foreground break-all select-all line-clamp-3">
                 {qrModalData.link}
               </p>
             </div>
@@ -1803,19 +1814,18 @@ export default function DiscoveryHub({ status }: Props) {
             <div className="flex gap-2">
               <button
                 onClick={() => copyToClipboard(qrModalData.link, 'modal_qr')}
-                className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold"
+                className="flex-1 py-2 px-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm"
               >
                 {t('copy')}
               </button>
               <button
                 onClick={() => setQrModalData(null)}
-                className="py-2 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold"
+                className="py-2 px-4 bg-muted hover:bg-muted/90 text-foreground dark:bg-card dark:hover:bg-muted dark:text-foreground rounded-xl text-xs font-semibold"
               >
                 {t('close')}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   )

@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -83,6 +84,19 @@ const (
 	CMD_CONNECT_FASTEST = 1003
 	CMD_PANIC_WIPE      = 1004
 	CMD_EXIT            = 1005
+
+	// Diagnostics commands. Numbered with the fixed block, not from
+	// CMD_SERVER_BASE, because the server range is dynamic.
+	CMD_OPEN_REPORT = 1006
+	CMD_TOGGLE_GPU  = 1007
+
+	// CMD_SERVER_BASE is the first command id reserved for the dynamic
+	// "Servers" submenu. Entries are numbered from here upwards, so the handler
+	// can tell a server selection apart from a fixed command without a lookup
+	// table that would have to stay in sync with the menu.
+	CMD_SERVER_BASE = 2000
+
+	MF_POPUP = 0x00000010
 )
 
 type POINT struct {
@@ -131,19 +145,66 @@ type NOTIFYICONDATAW struct {
 }
 
 var (
-	trayMu             sync.RWMutex
-	activeNID          *NOTIFYICONDATAW
-	trayHWnd           uintptr
-	isConnected        bool
-	profileName        string
-	latencyMs          int
-	currentLanguage    string = "fa"
-	toggleConnectFunc  func()
-	fastConnectFunc    func()
-	panicWipeFunc      func()
-	showFunc           func()
-	exitFunc           func()
+	trayMu            sync.RWMutex
+	activeNID         *NOTIFYICONDATAW
+	trayHWnd          uintptr
+	isConnected       bool
+	profileName       string
+	latencyMs         int
+	currentLanguage   string = "fa"
+	toggleConnectFunc func()
+	fastConnectFunc   func()
+	panicWipeFunc     func()
+	showFunc          func()
+	exitFunc          func()
+	isShowingAtomic   uint32
+
+	// serverListFunc supplies the entries for the "Servers" submenu, and
+	// serverSelectFunc receives the id of the one the user picked. Both are
+	// injected by the app so the tray package stays free of profile knowledge.
+	serverListFunc   func() []ServerItem
+	serverSelectFunc func(string)
+
+	// Diagnostics entries. The tray is the only surface reachable when the window
+	// cannot be drawn — a black WebView2 pane leaves the UI unusable but the icon
+	// alive — which is why the launch report and the rendering lever live here
+	// rather than only inside the app.
+	//
+	// gpuStateFunc reports whether GPU rendering is currently off, so the menu
+	// item can read as the action it performs ("turn off" vs "turn back on")
+	// instead of a toggle whose state the user has to guess.
+	openReportFunc func()
+	gpuToggleFunc  func()
+	gpuStateFunc   func() bool
 )
+
+// SetDiagnosticsHandlers registers the tray's diagnostics entries. Any of them
+// may be nil, and a nil handler simply hides its item, so a build without the
+// report tool loses the menu row instead of showing a dead click target.
+func SetDiagnosticsHandlers(onOpenReport, onToggleGPU func(), gpuDisabled func() bool) {
+	trayMu.Lock()
+	openReportFunc = onOpenReport
+	gpuToggleFunc = onToggleGPU
+	gpuStateFunc = gpuDisabled
+	trayMu.Unlock()
+}
+
+// SetServerListProvider registers the callback that supplies the tray's server
+// submenu. Returning an empty slice hides the submenu entirely, which is the
+// right behaviour when the user has no profiles yet.
+func SetServerListProvider(fn func() []ServerItem) {
+	trayMu.Lock()
+	serverListFunc = fn
+	trayMu.Unlock()
+}
+
+// SetServerSelectHandler registers the callback invoked with the id of the
+// profile the user picked from the tray submenu.
+func SetServerSelectHandler(fn func(string)) {
+	trayMu.Lock()
+	serverSelectFunc = fn
+	trayMu.Unlock()
+}
 
 // SetToggleConnectHandler registers a callback for toggling connection (connect / disconnect)
 func SetToggleConnectHandler(fn func()) {
@@ -302,9 +363,17 @@ func showContextMenu(hWnd uintptr) {
 	pName := profileName
 	lat := latencyMs
 	lang := currentLanguage
+	openReport := openReportFunc
+	gpuToggle := gpuToggleFunc
+	gpuState := gpuStateFunc
 	trayMu.RUnlock()
 
-	var sStatus, sAction, sShow, sPanic, sExit string
+	// The menu has to say which way it is going to flip the lever: an item that
+	// just reads "GPU rendering" tells the user nothing about the current state,
+	// and this one is the fix people reach for when the window is blank.
+	gpuRenderingOff := gpuState != nil && gpuState()
+
+	var sStatus, sAction, sShow, sPanic, sExit, sReport, sGPU string
 
 	if lang == "en" {
 		if conn {
@@ -323,6 +392,11 @@ func showContextMenu(hWnd uintptr) {
 		sShow = "🛡️ Show NexVPN"
 		sPanic = "🚨 Emergency Panic Wipe"
 		sExit = "🚪 Exit NexVPN"
+		sReport = "📄 Open startup report"
+		sGPU = "🖥️ Turn off GPU rendering (restart to apply)"
+		if gpuRenderingOff {
+			sGPU = "🖥️ Turn GPU rendering back on (restart to apply)"
+		}
 	} else {
 		// Persian (fa)
 		if conn {
@@ -341,6 +415,11 @@ func showContextMenu(hWnd uintptr) {
 		sShow = "🛡️ نمایش برنامه"
 		sPanic = "🚨 پاکسازی و قطع اضطراری"
 		sExit = "🚪 خروج از برنامه"
+		sReport = "📄 باز کردن گزارش راه‌اندازی"
+		sGPU = "🖥️ خاموش کردن رندر با کارت گرافیک (بعد از ری‌استارت)"
+		if gpuRenderingOff {
+			sGPU = "🖥️ روشن کردن رندر با کارت گرافیک (بعد از ری‌استارت)"
+		}
 	}
 
 	ptrStatus, _ := syscall.UTF16PtrFromString(sStatus)
@@ -357,11 +436,70 @@ func showContextMenu(hWnd uintptr) {
 	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_CONNECT), uintptr(unsafe.Pointer(ptrAction)))
 	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
+	// Servers submenu.
+	//
+	// TrackPopupMenuEx with TPM_RETURNCMD reports the id of the selected item
+	// wherever it sits in the hierarchy, so a submenu needs nothing more than
+	// unique ids. The map below is what turns the chosen id back into a profile
+	// id, and it is deliberately a local: it only has to survive this call.
+	trayMu.RLock()
+	listFn := serverListFunc
+	trayMu.RUnlock()
+
+	serverSelection := make(map[uintptr]string)
+	if listFn != nil {
+		if servers := listFn(); len(servers) > 0 {
+			hSub, _, _ := createPopupMenu.Call()
+			if hSub != 0 {
+				for i, server := range servers {
+					// Pinned servers get a marker rather than a separate
+					// section: a flat list stays scannable at a glance, which
+					// is the entire point of a tray menu.
+					label := server.Name
+					if server.Favorite {
+						label = "★ " + label
+					}
+					ptr, err := syscall.UTF16PtrFromString(label)
+					if err != nil {
+						continue
+					}
+					id := uintptr(CMD_SERVER_BASE + i)
+					appendMenuW.Call(hSub, uintptr(MF_STRING), id, uintptr(unsafe.Pointer(ptr)))
+					serverSelection[id] = server.ID
+				}
+
+				sServers := "🖥️ Servers"
+				if lang != "en" {
+					sServers = "🖥️ سرورها"
+				}
+				ptrServers, _ := syscall.UTF16PtrFromString(sServers)
+				appendMenuW.Call(hMenu, uintptr(MF_POPUP|MF_STRING), hSub, uintptr(unsafe.Pointer(ptrServers)))
+				appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
+			}
+		}
+	}
+
 	// Show Window
 	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_SHOW), uintptr(unsafe.Pointer(ptrShow)))
 
 	// Panic Wipe
 	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_PANIC_WIPE), uintptr(unsafe.Pointer(ptrPanic)))
+
+	// Diagnostics. Both are only listed when the app registered a handler: a menu
+	// row that does nothing is worse than no row, and this menu is the only
+	// surface a user with an undrawable window still has.
+	if openReport != nil {
+		ptrReport, err := syscall.UTF16PtrFromString(sReport)
+		if err == nil {
+			appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_OPEN_REPORT), uintptr(unsafe.Pointer(ptrReport)))
+		}
+	}
+	if gpuToggle != nil {
+		ptrGPU, err := syscall.UTF16PtrFromString(sGPU)
+		if err == nil {
+			appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_GPU), uintptr(unsafe.Pointer(ptrGPU)))
+		}
+	}
 	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
 	// Exit
@@ -408,16 +546,54 @@ func showContextMenu(hWnd uintptr) {
 		if pFn != nil {
 			go pFn()
 		}
+	case CMD_OPEN_REPORT:
+		trayMu.RLock()
+		rFn := openReportFunc
+		trayMu.RUnlock()
+		if rFn != nil {
+			go rFn()
+		}
+	case CMD_TOGGLE_GPU:
+		trayMu.RLock()
+		gFn := gpuToggleFunc
+		trayMu.RUnlock()
+		if gFn != nil {
+			go gFn()
+		}
+	default:
+		// Server submenu selection. The command id is an index into the map
+		// built while the menu was assembled, so an id that is not in it can
+		// only mean a stale menu — ignore it rather than guessing.
+		if profileID, ok := serverSelection[cmd]; ok && profileID != "" {
+			trayMu.RLock()
+			selFn := serverSelectFunc
+			trayMu.RUnlock()
+			if selFn != nil {
+				go selFn(profileID)
+			}
+		}
 	case CMD_EXIT:
 		trayMu.RLock()
 		eFn := exitFunc
 		trayMu.RUnlock()
+		RemoveSystemTray()
 		if eFn != nil {
+			// eFn is runtime.Quit(ctx): it triggers Wails' OnShutdown, which runs
+			// app.shutdown() -> engine.Disconnect(), sysproxy.ClearSystemProxy() and
+			// KillSwitch.Disable(). That cleanup takes seconds (core teardown, netsh
+			// calls, DNS flush), so it must run in the background - calling it
+			// synchronously from the window procedure would block the message loop.
 			go eFn()
 		}
-		RemoveSystemTray()
-		time.Sleep(150 * time.Millisecond)
-		os.Exit(0)
+		// Safety net only. Previously this forced os.Exit(0) after just 150ms,
+		// which routinely killed the process in the middle of the cleanup and left
+		// users with a stale system proxy or an active kill-switch firewall policy
+		// (i.e. no internet at all). Wait long enough for a graceful shutdown and
+		// force-exit only if it genuinely hangs.
+		go func() {
+			time.Sleep(15 * time.Second)
+			os.Exit(0)
+		}()
 	}
 }
 
@@ -456,7 +632,10 @@ func ApplyMainWindowIcon() {
 
 // InitSystemTray initializes the notification area icon near the clock with right-click menu
 func InitSystemTray(tooltip string) {
-	if activeNID != nil {
+	trayMu.RLock()
+	alreadyInit := activeNID != nil
+	trayMu.RUnlock()
+	if alreadyInit {
 		return
 	}
 
@@ -488,7 +667,9 @@ func InitSystemTray(tooltip string) {
 			0, 0, hInst, 0,
 		)
 
+		trayMu.Lock()
 		trayHWnd = hWnd
+		trayMu.Unlock()
 
 		var nid NOTIFYICONDATAW
 		nid.CbSize = uint32(unsafe.Sizeof(nid))
@@ -503,7 +684,9 @@ func InitSystemTray(tooltip string) {
 
 		ret, _, _ := shellNotifyIconW.Call(uintptr(NIM_ADD), uintptr(unsafe.Pointer(&nid)))
 		if ret != 0 {
+			trayMu.Lock()
 			activeNID = &nid
+			trayMu.Unlock()
 		}
 
 		// Message loop for tray window
@@ -521,6 +704,11 @@ func InitSystemTray(tooltip string) {
 
 // ShowMainWindow finds the NexVPN window and brings it to the foreground
 func ShowMainWindow() {
+	if !atomic.CompareAndSwapUint32(&isShowingAtomic, 0, 1) {
+		return
+	}
+	defer atomic.StoreUint32(&isShowingAtomic, 0)
+
 	if showFunc != nil {
 		showFunc()
 	}
@@ -535,18 +723,25 @@ func ShowMainWindow() {
 
 // RemoveSystemTray removes the icon when the app shuts down
 func RemoveSystemTray() {
-	if activeNID != nil {
-		shellNotifyIconW.Call(uintptr(NIM_DELETE), uintptr(unsafe.Pointer(activeNID)))
-		activeNID = nil
+	trayMu.Lock()
+	nid := activeNID
+	activeNID = nil
+	hWnd := trayHWnd
+	trayHWnd = 0
+	trayMu.Unlock()
+
+	if nid != nil {
+		shellNotifyIconW.Call(uintptr(NIM_DELETE), uintptr(unsafe.Pointer(nid)))
 	}
-	if trayHWnd != 0 {
-		destroyWindow.Call(trayHWnd)
-		trayHWnd = 0
+	if hWnd != 0 {
+		destroyWindow.Call(hWnd)
 	}
 }
 
 // UpdateTooltip updates the tooltip text on the tray icon
 func UpdateTooltip(tooltip string) {
+	trayMu.Lock()
+	defer trayMu.Unlock()
 	if activeNID != nil {
 		tip16, _ := syscall.UTF16FromString(tooltip)
 		copy(activeNID.SzTip[:], tip16)

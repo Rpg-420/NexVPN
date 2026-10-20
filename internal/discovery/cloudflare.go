@@ -81,6 +81,15 @@ var defaultCDNPorts = []int{
 	443, 8443, 2053, 2083, 2087, 2096, 80, 8080, 8880, 2052, 2082, 2086, 2095,
 }
 
+// maxFeedBytes caps every remote clean-IP feed read in this file.
+//
+// These are third-party documents fetched from GitHub mirrors: without a cap, a
+// hostile or merely broken host can make the scanner allocate until the process
+// dies, and the failure would look like a crash rather than a bad feed. 8 MiB is
+// roughly five times the largest known feed and far below a problem; an
+// oversized response is skipped exactly like an unreachable one.
+const maxFeedBytes = 8 << 20
+
 // FetchRemoteCDNFeed gets genuine HTTP/HTTPS Cloudflare CDN clean IP feeds for V2Ray/Xray fronting
 func FetchRemoteCDNFeed(ctx context.Context) []CloudflareTarget {
 	urls := []string{
@@ -104,9 +113,9 @@ func FetchRemoteCDNFeed(ctx context.Context) []CloudflareTarget {
 		if err != nil || resp.StatusCode != http.StatusOK {
 			continue
 		}
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
 		resp.Body.Close()
-		if err != nil {
+		if err != nil || len(body) > maxFeedBytes {
 			continue
 		}
 
@@ -188,9 +197,9 @@ func FetchRemoteWARPFeed(ctx context.Context) []CloudflareTarget {
 		if err != nil || resp.StatusCode != http.StatusOK {
 			continue
 		}
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
 		resp.Body.Close()
-		if err != nil {
+		if err != nil || len(body) > maxFeedBytes {
 			continue
 		}
 
@@ -339,17 +348,27 @@ func TestCDNIP(ctx context.Context, ip string, port int, timeout time.Duration) 
 	}
 
 	// For TLS/HTTPS ports (443, 8443, 2053, 2083, 2087, 2096), perform TLS Handshake
+	// Verify genuine Cloudflare certificate (no InsecureSkipVerify) to ensure clean IP is authentic
 	tlsConn := tls.Client(conn, &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         "speed.cloudflare.com",
+		ServerName: "speed.cloudflare.com",
+		MinVersion: tls.VersionTLS12,
 	})
 	_ = tlsConn.SetDeadline(time.Now().Add(timeout))
 
 	if err := tlsConn.Handshake(); err != nil {
-		// Try fallback SNI
-		tlsConn2 := tls.Client(conn, &tls.Config{
-			InsecureSkipVerify: true,
-			ServerName:         "www.cloudflare.com",
+		// A failed TLS handshake leaves the underlying TCP connection's record layer in a
+		// broken/undefined state, so retrying with a different SNI over the SAME conn would
+		// almost always fail too. Dial a fresh connection for the fallback attempt.
+		_ = conn.Close()
+		conn2, dialErr := dialer.DialContext(ctx, "tcp", addr)
+		if dialErr != nil {
+			return 0, false
+		}
+		defer conn2.Close()
+
+		tlsConn2 := tls.Client(conn2, &tls.Config{
+			ServerName: "www.cloudflare.com",
+			MinVersion: tls.VersionTLS12,
 		})
 		_ = tlsConn2.SetDeadline(time.Now().Add(timeout))
 		if err2 := tlsConn2.Handshake(); err2 != nil {
@@ -368,7 +387,7 @@ func TestCDNIP(ctx context.Context, ip string, port int, timeout time.Duration) 
 func ScanCloudflareTargets(
 	ctx context.Context,
 	mode string, // "warp" or "cdn"
-	isp string,  // "all" | "mci" | "mtn" | "rtl" | "fixed"
+	isp string, // "all" | "mci" | "mtn" | "rtl" | "fixed"
 	customSubnets []string,
 	customPorts []int,
 	concurrency int,

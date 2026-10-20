@@ -14,6 +14,7 @@ import jsQR from 'jsqr'
 import { api } from '../lib/api'
 import { sound } from '../lib/sound'
 import { t } from '../lib/i18n'
+import { ModalShell } from '../components/ui/modal-shell'
 
 interface Props {
   isOpen: boolean
@@ -167,27 +168,31 @@ export default function ScreenQRScannerModal({ isOpen, onClose, onProfileImporte
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth="max-w-xl"
+      className="max-h-[90vh]"
+    >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+        <div className="flex items-center justify-between p-5 border-b border-border bg-background">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+            <div className="w-10 h-10 rounded-2xl bg-info/20 border border-border flex items-center justify-center text-primary">
               <Scan className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                 <span>{t('screen_qr_title')}</span>
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary/20 text-primary border border-primary/30">
                   AI Scanner
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">{t('screen_qr_subtitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('screen_qr_subtitle')}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+            className="p-1.5 rounded-xl bg-muted hover:bg-muted/90 text-muted-foreground hover:text-foreground transition-all"
           >
             <X className="w-4 h-4" />
           </button>
@@ -202,22 +207,22 @@ export default function ScreenQRScannerModal({ isOpen, onClose, onProfileImporte
               type="button"
               onClick={handleCaptureScreen}
               disabled={isScanningScreen}
-              className="p-4 rounded-2xl bg-gradient-to-b from-slate-800/80 to-slate-900/90 border border-slate-700/80 hover:border-cyan-500/50 hover:bg-slate-800 transition flex flex-col items-center justify-center text-center gap-2 group active:scale-95"
+              className="bg-card/80 p-4 rounded-2xl border border-border hover:border-primary/50 transition flex flex-col items-center justify-center text-center gap-2 group active:scale-95"
             >
-              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 group-hover:bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 transition">
+              <div className="w-10 h-10 rounded-xl bg-info/10 group-hover:bg-primary/20 border border-border flex items-center justify-center text-primary transition">
                 <Monitor className="w-5 h-5" />
               </div>
-              <span className="text-xs font-bold text-slate-200">{t('scan_from_screen')}</span>
-              <span className="text-[10px] text-slate-400 leading-tight">Capture window or desktop</span>
+              <span className="text-xs font-bold text-foreground">{t('scan_from_screen')}</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">Capture window or desktop</span>
             </button>
 
             {/* Paste from Clipboard Tile */}
-            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-800/80 to-slate-900/90 border border-slate-700/80 flex flex-col items-center justify-center text-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+            <div className="bg-card/80 p-4 rounded-2xl border border-border flex flex-col items-center justify-center text-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
                 <Clipboard className="w-5 h-5" />
               </div>
-              <span className="text-xs font-bold text-slate-200">{t('paste_from_clipboard')}</span>
-              <span className="text-[10px] text-purple-300 font-mono bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+              <span className="text-xs font-bold text-foreground">{t('paste_from_clipboard')}</span>
+              <span className="text-[10px] text-primary font-mono bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
                 Press Ctrl + V
               </span>
             </div>
@@ -226,13 +231,13 @@ export default function ScreenQRScannerModal({ isOpen, onClose, onProfileImporte
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-4 rounded-2xl bg-gradient-to-b from-slate-800/80 to-slate-900/90 border border-slate-700/80 hover:border-emerald-500/50 hover:bg-slate-800 transition flex flex-col items-center justify-center text-center gap-2 group active:scale-95"
+              className="bg-card/80 p-4 rounded-2xl border border-border hover:border-success/50 transition flex flex-col items-center justify-center text-center gap-2 group active:scale-95"
             >
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 group-hover:bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 transition">
+              <div className="w-10 h-10 rounded-xl bg-success/10 group-hover:bg-success/20 border border-success/30 flex items-center justify-center text-success transition">
                 <Upload className="w-5 h-5" />
               </div>
-              <span className="text-xs font-bold text-slate-200">{t('select_image_file')}</span>
-              <span className="text-[10px] text-slate-400 leading-tight">PNG, JPG, WebP</span>
+              <span className="text-xs font-bold text-foreground">{t('select_image_file')}</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">PNG, JPG, WebP</span>
             </button>
             <input
               ref={fileInputRef}
@@ -245,34 +250,34 @@ export default function ScreenQRScannerModal({ isOpen, onClose, onProfileImporte
 
           {/* Status / Scanning Indicator */}
           {isScanningScreen && (
-            <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 flex items-center gap-3 animate-pulse">
-              <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />
-              <span className="text-xs text-cyan-200">{t('capturing_screen')}</span>
+            <div className="p-3.5 rounded-2xl bg-info/40 border border-primary/40 flex items-center gap-3 animate-pulse">
+              <RefreshCw className="w-4 h-4 text-primary animate-spin" />
+              <span className="text-xs text-primary">{t('capturing_screen')}</span>
             </div>
           )}
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/40 flex items-center gap-3 text-rose-300 text-xs">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <div className="p-3.5 rounded-2xl bg-destructive/40 border border-destructive/40 flex items-center gap-3 text-destructive text-xs">
+              <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {/* Decoded QR Content Box */}
           {decodedText && (
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-700/80 space-y-3 animate-in fade-in duration-200">
+            <div className="p-4 rounded-2xl bg-background border border-border space-y-3 animate-in fade-in duration-200">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                <div className="flex items-center gap-2 text-xs font-bold text-success">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{t('qr_decoded_success')}</span>
                 </div>
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
                   {decodedText.slice(0, 15)}...
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-900 rounded-xl font-mono text-[11px] text-slate-300 break-all select-all max-h-24 overflow-y-auto border border-white/5">
+              <div className="p-2.5 bg-card rounded-xl font-mono text-[11px] text-muted-foreground break-all select-all max-h-24 overflow-y-auto border border-border">
                 {decodedText}
               </div>
 
@@ -280,12 +285,12 @@ export default function ScreenQRScannerModal({ isOpen, onClose, onProfileImporte
                 type="button"
                 onClick={handleImport}
                 disabled={isImporting || importedSuccess}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-md shadow-cyan-600/20 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                className="bg-primary w-full py-2.5 px-4 text-primary-foreground rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
               >
                 {isImporting ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : importedSuccess ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-success" />
                 ) : (
                   <Sparkles className="w-3.5 h-3.5" />
                 )}
@@ -302,16 +307,15 @@ export default function ScreenQRScannerModal({ isOpen, onClose, onProfileImporte
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end p-4 border-t border-slate-800 bg-slate-950/40">
+        <div className="flex items-center justify-end p-4 border-t border-border bg-background">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+            className="px-4 py-2 bg-muted hover:bg-muted/90 text-muted-foreground rounded-xl text-xs font-semibold"
           >
             {t('close')}
           </button>
         </div>
-      </div>
-    </div>
+      </ModalShell>
   )
 }

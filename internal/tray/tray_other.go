@@ -20,6 +20,17 @@ func SetShowHandler(fn func()) {}
 // SetExitHandler registers a callback invoked when Exit is clicked from tray menu
 func SetExitHandler(fn func()) {}
 
+// SetServerListProvider is a no-op off Windows: there is no tray menu to fill.
+func SetServerListProvider(fn func() []ServerItem) {}
+
+// SetServerSelectHandler is a no-op off Windows.
+func SetServerSelectHandler(fn func(string)) {}
+
+// SetDiagnosticsHandlers is a no-op off Windows: there is no tray menu to add
+// the diagnostics rows to. The startup report itself is still written, and
+// tools/NexVPN-Report.cmd still reads it.
+func SetDiagnosticsHandlers(onOpenReport, onToggleGPU func(), gpuDisabled func() bool) {}
+
 // UpdateTrayState syncs the current connection state and updates tooltip
 func UpdateTrayState(connected bool, profile string, latency int) {}
 

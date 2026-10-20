@@ -6,7 +6,27 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
+
+// IsSystemProxyEnabled reports whether a system proxy is currently active via
+// GNOME (gsettings) or KDE (kioslaurc).
+func IsSystemProxyEnabled() bool {
+	if out, err := exec.Command("gsettings", "get", "org.gnome.system.proxy", "mode").Output(); err == nil {
+		if strings.Contains(strings.ToLower(string(out)), "manual") {
+			return true
+		}
+	}
+	outKDE, errKDE := exec.Command("kreadconfig5", "--file", "kioslaurc", "--group", "Proxy Settings", "--key", "ProxyType").Output()
+	return errKDE == nil && strings.TrimSpace(string(outKDE)) == "1"
+}
+
+// isStaleNexVPNProxy: on Linux, clearSystemProxyPlatform only switches gsettings/KDE
+// proxy mode to "none"/off (it never overwrites a stored third-party proxy host), so
+// unconditionally allowing the cleanup here carries much less risk than on Windows.
+func isStaleNexVPNProxy() bool {
+	return true
+}
 
 func setSystemProxyPlatform(host string, port int) error {
 	httpPort := port

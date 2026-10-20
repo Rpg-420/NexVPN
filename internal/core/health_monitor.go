@@ -31,6 +31,9 @@ type HealthMonitor struct {
 	proxyPort        int
 	onStatusChange   func(HealthStatus)
 	onUnhealthy      func(consecutiveFails int)
+	// unhealthyNotified guards onUnhealthy so it fires once per outage episode
+	// rather than on every probe tick while the connection stays down.
+	unhealthyNotified bool
 }
 
 func NewHealthMonitor(probeURL string, proxyPort int) *HealthMonitor {
@@ -69,10 +72,19 @@ func (hm *HealthMonitor) Start(ctx context.Context) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
-	// Initial probe after short delay
-	time.AfterFunc(2*time.Second, func() {
-		hm.probe()
+	// Initial probe after a short delay. The timer is tracked so it can be
+	// cancelled when the connection ends — otherwise a stale probe fires
+	// against a torn-down proxy port.
+	var initialTimer *time.Timer
+	initialTimer = time.AfterFunc(2*time.Second, func() {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			hm.probe()
+		}
 	})
+	defer initialTimer.Stop()
 
 	for {
 		select {
@@ -110,6 +122,9 @@ func (hm *HealthMonitor) probe() {
 	start := time.Now()
 	resp, err := client.Get(hm.probeURL)
 	latency := int(time.Since(start).Milliseconds())
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
@@ -123,7 +138,8 @@ func (hm *HealthMonitor) probe() {
 		if hm.consecutiveFails >= 3 {
 			hm.status.QualityScore = 0
 			hm.status.QualityLevel = "unhealthy"
-			if hm.onUnhealthy != nil {
+			if hm.onUnhealthy != nil && !hm.unhealthyNotified {
+				hm.unhealthyNotified = true
 				go hm.onUnhealthy(hm.consecutiveFails)
 			}
 		} else {
@@ -131,10 +147,8 @@ func (hm *HealthMonitor) probe() {
 			hm.status.QualityLevel = "poor"
 		}
 	} else {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
 		hm.consecutiveFails = 0
+		hm.unhealthyNotified = false
 		hm.status.ConsecutiveFails = 0
 		hm.status.IsAlive = true
 		hm.status.LatencyMs = latency

@@ -2,8 +2,13 @@ package core
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -18,17 +23,48 @@ import (
 	"nexvpn/internal/config"
 )
 
+// DefaultIdleTimeout is how long the LAN remote-control service stays alive
+// without any authenticated request before it shuts itself down. This limits
+// the window in which the PIN entry page is reachable from other devices.
+const DefaultIdleTimeout = 30 * time.Minute
+
+// maxAuthAttempts is the number of failed PIN attempts tolerated inside
+// authWindow before the endpoint starts rejecting everything.
+const (
+	maxAuthAttempts = 5
+	authWindow      = time.Minute
+)
+
 type RemoteServer struct {
 	mu           sync.RWMutex
 	httpServer   *http.Server
+	listener     net.Listener
 	port         int
 	running      bool
 	authToken    string
 	authPin      string
 	authAttempts int
 	authResetAt  time.Time
-	engine       *Engine
-	store        *config.Store
+	lastActivity time.Time
+	idleTimeout  time.Duration
+	// requireLAN restricts the listener to loopback + RFC1918 peers. It is on
+	// by default: the endpoint is meant for phones on the same Wi-Fi, and
+	// there is no reason for a public IP or a neighbouring guest network to
+	// even reach the PIN prompt.
+	requireLAN bool
+	// useTLS wraps the listener in TLS with an in-memory self-signed
+	// certificate, so the 6-digit PIN is never sent in the clear.
+	useTLS  bool
+	tlsCert *tls.Certificate
+	lanIP   string
+	// scheme is "https" when TLS is active, otherwise "http". It is what
+	// GetURL advertises to the paired phone.
+	scheme string
+	// stopCh is closed when the server stops, so the idle watchdog of a given
+	// run exits instead of lingering (and so a restart cannot accumulate them).
+	stopCh chan struct{}
+	engine *Engine
+	store  *config.Store
 }
 
 var (
@@ -43,6 +79,9 @@ func GetRemoteServer(engine *Engine, store *config.Store) *RemoteServer {
 			engine:      engine,
 			store:       store,
 			authResetAt: time.Now().Add(time.Minute),
+			idleTimeout: DefaultIdleTimeout,
+			requireLAN:  true,
+			useTLS:      true,
 		}
 		globalRemoteServer.generateCredentials()
 	})
@@ -52,11 +91,20 @@ func GetRemoteServer(engine *Engine, store *config.Store) *RemoteServer {
 func (rs *RemoteServer) generateCredentials() {
 	// Generate 32-byte secure random token
 	tokenBytes := make([]byte, 16)
-	_, _ = rand.Read(tokenBytes)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		rs.authToken = ""
+		rs.authPin = ""
+		return
+	}
 	rs.authToken = hex.EncodeToString(tokenBytes)
 
 	// Generate 6-digit random PIN
-	pinNum, _ := rand.Int(rand.Reader, big.NewInt(900000))
+	pinNum, err := rand.Int(rand.Reader, big.NewInt(900000))
+	if err != nil {
+		rs.authToken = ""
+		rs.authPin = ""
+		return
+	}
 	rs.authPin = fmt.Sprintf("%06d", pinNum.Int64()+100000)
 }
 
@@ -64,6 +112,80 @@ func (rs *RemoteServer) GetAuthPIN() string {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 	return rs.authPin
+}
+
+// generateSelfSignedCert builds an ephemeral ECDSA P-256 certificate valid for
+// the loopback and LAN IPs the phone will connect to.
+//
+// The certificate lives only in memory for the lifetime of the process: there
+// is nothing to persist, nothing to leak, and nothing to rotate.
+func generateSelfSignedCert(lanIP string) (*tls.Certificate, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate key: %w", err)
+	}
+
+	serialMax := new(big.Int).Lsh(big.NewInt(1), 128)
+	serial, err := rand.Int(rand.Reader, serialMax)
+	if err != nil {
+		return nil, fmt.Errorf("generate serial: %w", err)
+	}
+
+	ips := []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
+	if lanIP != "" {
+		if parsed := net.ParseIP(lanIP); parsed != nil {
+			ips = append(ips, parsed)
+		}
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "NexVPN Remote", Organization: []string{"NexVPN"}},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IPAddresses:           ips,
+		DNSNames:              []string{"localhost", "nexvpn.local"},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return nil, fmt.Errorf("create certificate: %w", err)
+	}
+
+	cert := &tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  key,
+	}
+	return cert, nil
+}
+
+// isLANPeer reports whether the connection originates from a device we are
+// willing to serve: loopback, or an RFC1918 / link-local / unique-local peer.
+//
+// SECURITY: without this check the server is reachable from any routable
+// address that can hit the port - a public IP if the machine is directly
+// exposed, or a neighbouring guest Wi-Fi segment.
+func isLANPeer(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+		return true
+	}
+	// IsPrivate() only covers 10/8, 172.16/12 and 192.168/16. CGNAT
+	// (100.64/10) shows up on some ISP routers and is equally non-routable.
+	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
+		return true
+	}
+	return false
 }
 
 func (rs *RemoteServer) GetAuthToken() string {
@@ -84,6 +206,13 @@ func (rs *RemoteServer) Start(port int) error {
 	}
 	rs.port = port
 	rs.generateCredentials()
+	if rs.authToken == "" || rs.authPin == "" {
+		return fmt.Errorf("failed to generate remote credentials")
+	}
+	if rs.idleTimeout <= 0 {
+		rs.idleTimeout = DefaultIdleTimeout
+	}
+	rs.lastActivity = time.Now()
 
 	mux := http.NewServeMux()
 
@@ -103,26 +232,138 @@ func (rs *RemoteServer) Start(port int) error {
 	// Responsive Web Mobile UI
 	mux.HandleFunc("/", rs.handleWebUI)
 
-	// Bind only to the loopback interface by default. LAN exposure must be an explicit,
-	// separately reviewed feature because this server controls the VPN engine.
+	// Bind on 0.0.0.0 so devices on local Wi-Fi / LAN network can connect.
+	// Every accepted connection is filtered by isLANPeer before it can reach
+	// the mux, so "0.0.0.0" here means "the LAN interface", not "the internet".
+	listenAddr := fmt.Sprintf("0.0.0.0:%d", port)
+	rawListener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("remote server listen failed: %w", err)
+	}
+
+	// Wrap the listener so non-LAN peers are dropped before any HTTP parsing.
+	var listener net.Listener = rawListener
+	if rs.requireLAN {
+		listener = &lanGuardListener{Listener: rawListener}
+	}
+
+	scheme := "http"
+	if rs.useTLS {
+		lanIP := getLocalLANIP()
+		cert, certErr := generateSelfSignedCert(lanIP)
+		if certErr != nil {
+			// Fall back to plain HTTP rather than refusing to start, but make
+			// the downgrade visible in the log.
+			rs.log("warn", fmt.Sprintf("Remote control TLS unavailable (%v); continuing over plain HTTP on the LAN", certErr))
+			rs.useTLS = false
+			rs.tlsCert = nil
+		} else {
+			rs.tlsCert = cert
+			rs.lanIP = lanIP
+			listener = tls.NewListener(listener, &tls.Config{
+				Certificates: []tls.Certificate{*cert},
+				MinVersion:   tls.VersionTLS12,
+			})
+			scheme = "https"
+		}
+	}
+	rs.scheme = scheme
+
 	server := &http.Server{
-		Addr:              fmt.Sprintf("127.0.0.1:%d", port),
-		Handler:           mux,
+		Addr:              listenAddr,
+		Handler:           securityHeadersMiddleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
+		// The remote UI is same-origin only; no third-party embedding.
+		ErrorLog: nil,
 	}
 
 	rs.httpServer = server
+	rs.listener = listener
 	rs.running = true
 
 	go func() {
-		_ = server.ListenAndServe()
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			rs.mu.Lock()
+			rs.running = false
+			rs.mu.Unlock()
+		}
 	}()
 
+	// Auto-stop the service after a period of inactivity so the PIN entry page
+	// is not left reachable from the whole LAN indefinitely.
+	stopCh := make(chan struct{})
+	rs.stopCh = stopCh
+	go rs.idleWatchdog(stopCh)
+
 	return nil
+}
+
+// touchActivity records that an authenticated request was served. It is called
+// on every authorized API call so the idle watchdog only fires when the service
+// is genuinely unused.
+func (rs *RemoteServer) touchActivity() {
+	rs.mu.Lock()
+	rs.lastActivity = time.Now()
+	rs.mu.Unlock()
+}
+
+// idleWatchdog stops the remote server once no authenticated request has been
+// seen for idleTimeout. It exits as soon as the server is stopped, or when its
+// own run is superseded (stopCh closed).
+func (rs *RemoteServer) idleWatchdog(stopCh chan struct{}) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+		}
+
+		rs.mu.RLock()
+		last := rs.lastActivity
+		timeout := rs.idleTimeout
+		rs.mu.RUnlock()
+
+		if timeout <= 0 {
+			timeout = DefaultIdleTimeout
+		}
+		if time.Since(last) >= timeout {
+			rs.log("warn", fmt.Sprintf("Remote control service stopped automatically after %v of inactivity", timeout.Round(time.Minute)))
+			rs.Stop()
+			return
+		}
+	}
+}
+
+// log writes to the engine log when available, otherwise silently discards.
+func (rs *RemoteServer) log(level, msg string) {
+	if rs.engine != nil {
+		rs.engine.AddLog(level, msg, "remote")
+	}
+}
+
+// SetIdleTimeout overrides the inactivity window (used by settings/tests).
+func (rs *RemoteServer) SetIdleTimeout(d time.Duration) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if d > 0 {
+		rs.idleTimeout = d
+	}
+}
+
+// IdleTimeout returns the configured inactivity window.
+func (rs *RemoteServer) IdleTimeout() time.Duration {
+	rs.mu.RLock()
+	defer rs.mu.RUnlock()
+	if rs.idleTimeout <= 0 {
+		return DefaultIdleTimeout
+	}
+	return rs.idleTimeout
 }
 
 func (rs *RemoteServer) Stop() {
@@ -134,31 +375,116 @@ func (rs *RemoteServer) Stop() {
 		defer cancel()
 		_ = rs.httpServer.Shutdown(ctx)
 		rs.httpServer = nil
+		rs.listener = nil
+	}
+	// Signal this run's idle watchdog to exit.
+	if rs.stopCh != nil {
+		select {
+		case <-rs.stopCh:
+		default:
+			close(rs.stopCh)
+		}
+		rs.stopCh = nil
 	}
 	rs.running = false
+	rs.scheme = ""
+	rs.listener = nil
+	// Any credentials minted for this run are dead; the next Start() mints
+	// fresh ones so a leaked token cannot be replayed after a restart.
+	rs.authToken = ""
+	rs.authPin = ""
 }
 
+// IsRunning reports whether the LAN controller is currently serving.
 func (rs *RemoteServer) IsRunning() bool {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 	return rs.running
 }
 
+// TransportSecurity describes how the LAN controller is protected, for display
+// in the desktop UI so the user can see exactly what they enabled.
+type TransportSecurity struct {
+	TLSActive       bool   `json:"tls_active"`
+	LANOnly         bool   `json:"lan_only"`
+	Scheme          string `json:"scheme"`
+	PINLength       int    `json:"pin_length"`
+	MaxFailedPins   int    `json:"max_failed_pins"`
+	IdleTimeoutMins int    `json:"idle_timeout_minutes"`
+}
+
+// GetTransportSecurity returns the live security posture of the controller.
+func (rs *RemoteServer) GetTransportSecurity() TransportSecurity {
+	rs.mu.RLock()
+	defer rs.mu.RUnlock()
+	scheme := rs.scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return TransportSecurity{
+		TLSActive:       rs.tlsCert != nil && scheme == "https",
+		LANOnly:         rs.requireLAN,
+		Scheme:          scheme,
+		PINLength:       6,
+		MaxFailedPins:   maxAuthAttempts,
+		IdleTimeoutMins: int(rs.idleTimeout.Minutes()),
+	}
+}
+
+// SetSecureDefaults configures the LAN controller policy. It must be called
+// before Start; it exists so a future settings toggle can disable the LAN
+// guard or TLS, and so tests can exercise both paths.
+func (rs *RemoteServer) SetSecureDefaults(lanOnly, tls bool) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.running {
+		return
+	}
+	rs.requireLAN = lanOnly
+	rs.useTLS = tls
+}
+
 func (rs *RemoteServer) GetURL() string {
 	rs.mu.RLock()
 	port := rs.port
 	running := rs.running
+	scheme := rs.scheme
 	rs.mu.RUnlock()
 	if !running {
 		return ""
 	}
-	return fmt.Sprintf("http://127.0.0.1:%d", port)
+	if scheme == "" {
+		scheme = "http"
+	}
+	ip := getLocalLANIP()
+	return fmt.Sprintf("%s://%s:%d", scheme, ip, port)
 }
 
 func (rs *RemoteServer) GetURLWithToken() string {
 	// Do not put bearer credentials in URLs. Callers must use Authorization or
 	// X-NexVPN-Token headers after an explicit pairing step.
 	return rs.GetURL()
+}
+
+// IsPrivate172 reports whether ipStr falls inside the 172.16.0.0/12 private
+// range. Exported so other packages (e.g. the LAN bridge in app_network.go) use
+// this single implementation instead of keeping a divergent copy.
+func IsPrivate172(ipStr string) bool {
+	if !strings.HasPrefix(ipStr, "172.") {
+		return false
+	}
+	parts := strings.Split(ipStr, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	second := 0
+	for _, c := range parts[1] {
+		if c < '0' || c > '9' {
+			return false
+		}
+		second = second*10 + int(c-'0')
+	}
+	return second >= 16 && second <= 31
 }
 
 func getLocalLANIP() string {
@@ -170,7 +496,7 @@ func getLocalLANIP() string {
 		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
 			if ipNet.IP.To4() != nil {
 				ipStr := ipNet.IP.String()
-				if strings.HasPrefix(ipStr, "192.168.") || strings.HasPrefix(ipStr, "10.") || strings.HasPrefix(ipStr, "172.") {
+				if strings.HasPrefix(ipStr, "192.168.") || strings.HasPrefix(ipStr, "10.") || IsPrivate172(ipStr) {
 					return ipStr
 				}
 			}
@@ -179,22 +505,57 @@ func getLocalLANIP() string {
 	return "127.0.0.1"
 }
 
+// lanGuardListener rejects connections from addresses that are not on the
+// local network before they ever reach the HTTP handler or the TLS handshake.
+//
+// This is a defence-in-depth companion to the PIN: even if the PIN were weak,
+// a remote host simply cannot complete a connection.
+type lanGuardListener struct {
+	net.Listener
+}
+
+func (l *lanGuardListener) Accept() (net.Conn, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		if isLANPeer(conn.RemoteAddr().String()) {
+			return conn, nil
+		}
+		// Silently drop: no HTTP error, no TLS alert, no information leak.
+		_ = conn.Close()
+	}
+}
+
 func secureEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-func (rs *RemoteServer) allowAuthAttempt() bool {
+// authAllowed reports whether another PIN attempt may be made in the current
+// window. It deliberately does not consume an attempt — the caller records a
+// failure only once the PIN has actually been compared and rejected.
+func (rs *RemoteServer) authAllowed() bool {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	if time.Now().After(rs.authResetAt) {
 		rs.authAttempts = 0
-		rs.authResetAt = time.Now().Add(time.Minute)
+		rs.authResetAt = time.Now().Add(authWindow)
 	}
-	if rs.authAttempts >= 5 {
-		return false
-	}
+	return rs.authAttempts < maxAuthAttempts
+}
+
+// recordAuthFailure consumes one attempt in the current window.
+//
+// Attempts used to be counted up front, before the comparison, so a *correct*
+// PIN still burned one of the five slots. Signing in five times inside the
+// window therefore locked the user out of their own controller, and the error
+// they saw was "Invalid PIN code" for a PIN that was right. Only failures are
+// rate-limited now.
+func (rs *RemoteServer) recordAuthFailure() {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
 	rs.authAttempts++
-	return true
 }
 
 func (rs *RemoteServer) isAuthorized(r *http.Request) bool {
@@ -207,11 +568,13 @@ func (rs *RemoteServer) isAuthorized(r *http.Request) bool {
 	}
 
 	// 1. Check Header
-	if reqToken := r.Header.Get("X-NexVPN-Token"); reqToken == validToken {
+	if reqToken := r.Header.Get("X-NexVPN-Token"); secureEqual(reqToken, validToken) {
+		rs.touchActivity()
 		return true
 	}
 	if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
-		if strings.TrimPrefix(authHeader, "Bearer ") == validToken {
+		if secureEqual(strings.TrimPrefix(authHeader, "Bearer "), validToken) {
+			rs.touchActivity()
 			return true
 		}
 	}
@@ -241,7 +604,19 @@ func (rs *RemoteServer) handleAuth(w http.ResponseWriter, r *http.Request) {
 	token := rs.authToken
 	rs.mu.RUnlock()
 
-	if !rs.allowAuthAttempt() || !secureEqual(strings.TrimSpace(req.PIN), validPin) {
+	// The rate limit is checked first so a locked-out client cannot even reach
+	// the comparison, but the attempt is only counted when the PIN is wrong.
+	if !rs.authAllowed() {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Too many attempts. Try again shortly.",
+		})
+		return
+	}
+
+	if !secureEqual(strings.TrimSpace(req.PIN), validPin) {
+		rs.recordAuthFailure()
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -258,6 +633,10 @@ func (rs *RemoteServer) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 func (rs *RemoteServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if rs.engine == nil || rs.store == nil {
+		http.Error(w, `{"error":"remote service unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
 
 	if !rs.isAuthorized(r) {
 		http.Error(w, `{"error":"Unauthorized access - PIN required"}`, http.StatusUnauthorized)
@@ -301,6 +680,10 @@ func (rs *RemoteServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (rs *RemoteServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if rs.engine == nil || rs.store == nil {
+		http.Error(w, `{"error":"remote service unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
 
 	if !rs.isAuthorized(r) {
 		http.Error(w, `{"error":"Unauthorized access"}`, http.StatusUnauthorized)
@@ -339,9 +722,23 @@ func (rs *RemoteServer) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 func (rs *RemoteServer) handleDisconnect(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if rs.engine == nil {
+		http.Error(w, `{"error":"remote service unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
 
 	if !rs.isAuthorized(r) {
 		http.Error(w, `{"error":"Unauthorized access"}`, http.StatusUnauthorized)
+		return
+	}
+
+	// Disconnecting is a state change, so it is POST-only, exactly like
+	// /api/connect. Without this a GET (which any browser, prefetcher or image
+	// tag can issue, and which carries no CSRF protection) would tear the tunnel
+	// down — the token would have to leak first, but a state change must never be
+	// reachable by a safe method.
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -352,6 +749,33 @@ func (rs *RemoteServer) handleDisconnect(w http.ResponseWriter, r *http.Request)
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// setSecurityHeaders applies defensive headers to every response the LAN
+// controller serves. The UI is entirely self-contained (inline CSS/JS, no
+// external assets), so the CSP can be maximally strict.
+func setSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Cross-Origin-Opener-Policy", "same-origin")
+	h.Set("Cross-Origin-Resource-Policy", "same-origin")
+	h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+	// 'unsafe-inline' is required because the page inlines its own style and
+	// script blocks; everything is same-origin and there are no remote loads.
+	h.Set("Content-Security-Policy",
+		"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "+
+			"connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+}
+
+// securityHeadersMiddleware guarantees every handler - including ones added
+// later - carries the defensive headers without each having to remember.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setSecurityHeaders(w)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (rs *RemoteServer) handleWebUI(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +815,7 @@ func (rs *RemoteServer) handleWebUI(w http.ResponseWriter, r *http.Request) {
   <div id="auth-screen" class="card auth-lock">
     <div class="title">🔒 NexVPN Authentication</div>
     <div class="subtitle">Enter the 6-Digit PIN shown on your desktop screen</div>
+    <div style="color:#fbbf24;font-size:11px;margin-bottom:12px;line-height:1.5;">This page is reachable by every device on your local network. Keep your PIN private and stop the service from the desktop app when you are done.</div>
     <input id="pin-field" type="number" pattern="[0-9]*" class="pin-input" placeholder="000000" maxlength="6" autofocus />
     <button class="btn btn-primary" onclick="submitPIN()">Unlock Controller</button>
     <div id="auth-error" style="color: #f43f5e; font-size: 12px; margin-top: 12px; font-weight: 600;"></div>

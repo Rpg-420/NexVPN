@@ -7,6 +7,21 @@ import (
 	"os"
 )
 
+func isStaleNexVPNProxy() bool {
+	return true
+}
+
+// IsSystemProxyEnabled reports whether a proxy is configured through the
+// standard HTTP(S)/ALL_PROXY environment variables.
+func IsSystemProxyEnabled() bool {
+	for _, v := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		if os.Getenv(v) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func setSystemProxyPlatform(host string, port int) error {
 	return setFullSystemProxyPlatform(port, port)
 }

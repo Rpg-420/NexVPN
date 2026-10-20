@@ -2,26 +2,20 @@ package main
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
-	"os/exec"
-	sysruntime "runtime"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nexvpn/internal/config"
 	"nexvpn/internal/core"
-	"nexvpn/internal/parser"
-	"nexvpn/internal/sysproc"
+	"nexvpn/internal/diary"
+	"nexvpn/internal/discovery"
+	"nexvpn/internal/dnsscan"
 	"nexvpn/internal/sysproxy"
 	"nexvpn/internal/tray"
 
@@ -30,10 +24,42 @@ import (
 
 // App struct is the main application backend binding
 type App struct {
-	ctx     context.Context
-	store   *config.Store
-	engine  *core.Engine
-	scanner *core.CleanIPScanner
+	// ctx is set once during startup and read from many background goroutines,
+	// so every access must go through ctxMu (see appCtx) to avoid a data race.
+	ctxMu       sync.RWMutex
+	ctx         context.Context
+	store       *config.Store
+	engine      *core.Engine
+	scanner     *core.CleanIPScanner
+	subDaemon   *discovery.SubscriptionDaemon
+	quotaDaemon *core.QuotaMonitorDaemon
+
+	// netWatchMu guards lastNetEvent, which debounces the burst of interface
+	// notifications a single Wi-Fi switch produces into one revalidation.
+	netWatchMu   sync.Mutex
+	lastNetEvent time.Time
+
+	// pingAllCancel stops a running bulk ping. It is a flag rather than a
+	// context because PingAllProfiles is a synchronous binding call: the
+	// frontend's promise only settles when it returns, so the only way to give
+	// the user a stop button is to have the workers observe a flag and return
+	// early.
+	pingAllCancel atomic.Bool
+}
+
+// appCtx returns the Wails runtime context in a race-free way.
+// It returns nil before startup has completed, which callers already guard for.
+func (a *App) appCtx() context.Context {
+	a.ctxMu.RLock()
+	defer a.ctxMu.RUnlock()
+	return a.ctx
+}
+
+// setAppCtx stores the runtime context once during startup.
+func (a *App) setAppCtx(ctx context.Context) {
+	a.ctxMu.Lock()
+	a.ctx = ctx
+	a.ctxMu.Unlock()
 }
 
 // NewApp creates a new App instance
@@ -71,17 +97,48 @@ func NewApp() *App {
 		app.triggerAutoFailover(failedProfileID)
 	})
 
+	// The engine is what proves a server reachable or unreachable — the store is
+	// what remembers it. Recording the verdict as a per-profile cooldown keeps
+	// failover, "fastest server" and the automatic retries from walking back onto
+	// a host that refused a connection seconds earlier, and it survives an app
+	// restart because it lives in the profile rather than in memory.
+	engine.OnServerHealth(func(profileID string, healthy bool, reason string) {
+		if store == nil || profileID == "" {
+			return
+		}
+		if healthy {
+			if err := store.ClearProfileFailure(profileID); err != nil {
+				diary.Log("store", "clear-server-failure-failed", "profile", profileID, "err", err.Error())
+			}
+			return
+		}
+		if err := store.RecordProfileFailure(profileID, reason); err != nil {
+			diary.Log("store", "record-server-failure-failed", "profile", profileID, "err", err.Error())
+		}
+	})
+
 	return app
 }
 
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+	a.setAppCtx(ctx)
 	a.engine.SetContext(ctx)
 
-	// Clean any dangling proxy, firewall rules, or core processes left by a crash or previous session
+	// Repair the debris of a previous run that did not exit cleanly, before
+	// anything else touches the network stack. The generic stale-cleanup below
+	// handles the common cases; this adds the ones only a killed process leaves
+	// behind (a system proxy pointing at a dead port, a ghost TUN adapter, a
+	// half-applied kill switch).
+	a.runStartupRepair()
+
+	// Clean any dangling proxy, firewall rules, or core processes left by a crash or previous session.
+	// ForceCleanup, not Disable: a force-killed previous run can leave the global
+	// outbound policy set to "block" with no in-process record of it, and this is
+	// the only place that repairs that.
 	sysproxy.CheckAndClearStaleProxy()
-	_ = core.GetKillSwitch().Disable()
+	_ = core.GetKillSwitch().ForceCleanup()
 	core.CleanupStaleCores()
+	diary.Log("launch", "stale-cleanup-done")
 
 	// Initialize Windows Taskbar Notification Area (System Tray) icon near the clock
 	tray.SetToggleConnectHandler(func() {
@@ -99,34 +156,92 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.PanicWipe()
 	})
 	tray.SetShowHandler(func() {
-		if a.ctx != nil {
-			runtime.WindowShow(a.ctx)
-			runtime.WindowUnminimise(a.ctx)
+		if a.appCtx() != nil {
+			runtime.WindowShow(a.appCtx())
+			runtime.WindowUnminimise(a.appCtx())
 		}
 		tray.ShowMainWindow()
 	})
 	tray.SetExitHandler(func() {
-		if a.ctx != nil {
-			runtime.Quit(a.ctx)
+		if a.appCtx() != nil {
+			runtime.Quit(a.appCtx())
+		}
+	})
+	// The tray's server submenu: pinned profiles first, then the most recently
+	// used. Selecting one connects to it without bringing the window forward,
+	// which is the entire point of having the list there.
+	tray.SetServerListProvider(a.trayServerItems)
+	tray.SetServerSelectHandler(func(profileID string) {
+		if err := a.Connect(profileID); err != nil {
+			a.engine.AddLog("error", fmt.Sprintf("Tray connect failed: %v", err), "tray")
 		}
 	})
 	tray.InitSystemTray("NexVPN Pro")
 	tray.ApplyMainWindowIcon()
+	diary.Log("launch", "tray-ready")
 
 	// Load store data
 	if err := a.store.Load(); err != nil {
+		diary.LogErr("launch", "store-load-failed", err)
 		fmt.Printf("Failed to load store: %v\n", err)
 	}
+	diary.Log("launch", "store-loaded", "profiles", fmt.Sprintf("%d", len(a.store.GetProfiles())))
+
+	// Registered after the store loads, because the menu labels itself from the
+	// persisted rendering mode — reading it before Load would show the default and
+	// offer the action that is already in effect.
+	a.registerTrayDiagnostics()
 
 	// Sync auto-reconnect setting
 	settings := a.store.GetSettings()
 	a.engine.SetAutoReconnect(settings.AutoReconnect)
 
-	// Start subscription auto-update scheduler
-	a.StartSubscriptionScheduler()
+	// Apply the persisted core-download integrity policy. Off by default, so a
+	// compromised mirror cannot substitute an unverified binary unless the
+	// user deliberately opted in.
+	core.SetAllowUnverifiedCoreDownloads(settings.AllowUnverifiedCoreDownloads)
+
+	// Start autonomous subscription daemon
+	a.subDaemon = discovery.NewSubscriptionDaemon(a.store, a.engine.AddLog)
+	if settings.SubscriptionAutoUpdateHours > 0 {
+		a.subDaemon.SetInterval(time.Duration(settings.SubscriptionAutoUpdateHours) * time.Hour)
+	}
+	a.subDaemon.Start()
+
+	// Start background quota monitor (checks remaining data / expiry and
+	// dispatches the configured webhook alert).
+	a.quotaDaemon = core.NewQuotaMonitorDaemon(a.store, a.engine.AddLog)
+	a.quotaDaemon.Start()
+
+	// OS event watchers (network change, sleep/resume, mains power) plus the
+	// scheduled connect/disconnect ticker. They are started after the daemons
+	// so that a network event arriving immediately cannot race with store
+	// loading, and they are pure latency improvements over the health monitor.
+	a.startWatchdogs(ctx)
+	diary.Log("launch", "watchdogs-started")
+
+	// StartAutoQuarantineService is deliberately NOT called. It has been a no-op
+	// since hourly background probing was retired, and calling it did nothing
+	// except push a deprecation warning into every launch log. The bound method
+	// stays in place for older frontends.
+	diary.Log("launch", "daemons-started")
+
+	// Check if started minimized via command-line or settings
+	startMinimized := settings.StartMinimized
+	for _, arg := range os.Args[1:] {
+		if strings.EqualFold(arg, "--minimized") || strings.EqualFold(arg, "-minimized") {
+			startMinimized = true
+			break
+		}
+	}
+	if startMinimized && a.appCtx() != nil {
+		runtime.WindowHide(a.appCtx())
+	}
+	diary.Log("launch", "ready", "start_minimized", fmt.Sprintf("%t", startMinimized))
 
 	// Auto-connect if enabled
 	if settings.AutoConnect {
+		diary.Log("launch", "auto-connect-queued", "last_profile", settings.LastProfileID)
 		go func() {
 			time.Sleep(1 * time.Second)
 			targetID := settings.LastProfileID
@@ -150,475 +265,22 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(ctx context.Context) {
 	tray.RemoveSystemTray()
+	if a.subDaemon != nil {
+		a.subDaemon.Stop()
+	}
+	if a.quotaDaemon != nil {
+		a.quotaDaemon.Stop()
+	}
 	if a.engine != nil {
 		_ = a.engine.Disconnect()
 	}
 	sysproxy.ClearSystemProxy()
-	_ = core.GetKillSwitch().Disable()
+	_ = core.GetKillSwitch().ForceCleanup()
 	core.CleanupStaleCores()
-}
 
-// ============================================================
-// Profile Management
-// ============================================================
-
-func (a *App) GetProfiles() []config.Profile {
-	if a.store == nil {
-		return []config.Profile{}
-	}
-	return a.store.GetProfiles()
-}
-
-func (a *App) GetProfilesByCategory(category string) []config.Profile {
-	if a.store == nil {
-		return []config.Profile{}
-	}
-	return a.store.GetProfilesByCategory(config.ProfileCategory(category))
-}
-
-func (a *App) AddProfile(profile config.Profile) (string, error) {
-	if a.store == nil {
-		return "", fmt.Errorf("store not initialized")
-	}
-	return a.store.AddProfile(profile)
-}
-
-func (a *App) UpdateProfile(profile config.Profile) error {
-	if a.store == nil {
-		return fmt.Errorf("store not initialized")
-	}
-	return a.store.UpdateProfile(profile)
-}
-
-func (a *App) DeleteProfile(id string) error {
-	if a.store == nil {
-		return fmt.Errorf("store not initialized")
-	}
-	return a.store.DeleteProfile(id)
-}
-
-func (a *App) DeleteAllProfiles() error {
-	if a.store == nil {
-		return fmt.Errorf("store not initialized")
-	}
-	// Fix #9: Use atomic ClearAllProfiles instead of looping DeleteProfile (N file writes -> 1)
-	return a.store.ClearAllProfiles()
-}
-
-func (a *App) DeleteProfilesByCategory(category string) error {
-	if a.store == nil {
-		return fmt.Errorf("store not initialized")
-	}
-	return a.store.DeleteProfilesByCategory(config.ProfileCategory(category))
-}
-
-func (a *App) ImportProfile(name string, protocol string, configContent string, group string, category string) (string, error) {
-	cat := config.ProfileCategory(category)
-	if cat == "" {
-		cat = config.InferCategory(config.Protocol(protocol))
-	}
-	profile := config.Profile{
-		Name:          name,
-		Protocol:      config.Protocol(protocol),
-		Category:      cat,
-		ConfigContent: configContent,
-		Group:         group,
-		CreatedAt:     time.Now(),
-	}
-	return a.AddProfile(profile)
-}
-
-func (a *App) ImportURI(rawURI string, group string) (string, error) {
-	rawURI = strings.TrimSpace(rawURI)
-	lines := strings.Split(rawURI, "\n")
-	if len(lines) > 1 {
-		// Fix: batch all profiles into a single AddProfileBatch call (1 file write vs N)
-		var batch []config.Profile
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			node, err := parser.ParseURI(line)
-			if err == nil {
-				if group != "" {
-					node.Group = group
-				}
-				batch = append(batch, config.Profile{
-					Name:          node.Name,
-					Protocol:      node.Protocol,
-					Category:      node.Category,
-					ConfigContent: node.ConfigContent,
-					RawURI:        node.RawURI,
-					Server:        node.Server,
-					Port:          node.Port,
-					Group:         node.Group,
-					CreatedAt:     time.Now(),
-				})
-			}
-		}
-		if len(batch) > 0 {
-			ids, err := a.store.AddProfileBatch(batch)
-			if err != nil {
-				return "", err
-			}
-			return ids[len(ids)-1], nil
-		}
-	}
-
-	node, err := parser.ParseURI(rawURI)
-	if err != nil {
-		return "", err
-	}
-	if group != "" {
-		node.Group = group
-	}
-
-	profile := config.Profile{
-		Name:          node.Name,
-		Protocol:      node.Protocol,
-		Category:      node.Category,
-		ConfigContent: node.ConfigContent,
-		RawURI:        node.RawURI,
-		Server:        node.Server,
-		Port:          node.Port,
-		Group:         node.Group,
-		CreatedAt:     time.Now(),
-	}
-
-	return a.AddProfile(profile)
-}
-
-func (a *App) ImportSubscription(subURL string, groupName string) (int, error) {
-	nodes, err := parser.FetchSubscription(subURL)
-	if err != nil {
-		return 0, err
-	}
-
-	if groupName == "" {
-		groupName = "Subscription"
-	}
-
-	var newProfiles []config.Profile
-	for _, node := range nodes {
-		profile := config.Profile{
-			Name:             node.Name,
-			Protocol:         node.Protocol,
-			Category:         node.Category,
-			ConfigContent:    node.ConfigContent,
-			RawURI:           node.RawURI,
-			Server:           node.Server,
-			Port:             node.Port,
-			Group:            groupName,
-			SubscriptionURL:  subURL,
-			SubscriptionName: groupName,
-			CreatedAt:        time.Now(),
-		}
-		newProfiles = append(newProfiles, profile)
-	}
-
-	if err := a.store.ReplaceSubscriptionProfiles(subURL, newProfiles); err != nil {
-		return 0, err
-	}
-
-	return len(newProfiles), nil
-}
-
-func (a *App) UpdateAllSubscriptions() (int, error) {
-	profiles := a.store.GetProfiles()
-	subMap := make(map[string]string)
-	for _, p := range profiles {
-		if p.SubscriptionURL != "" {
-			name := p.SubscriptionName
-			if name == "" {
-				name = p.Group
-			}
-			subMap[p.SubscriptionURL] = name
-		}
-	}
-
-	totalUpdated := 0
-	for url, name := range subMap {
-		if count, err := a.ImportSubscription(url, name); err == nil {
-			totalUpdated += count
-		}
-	}
-
-	return totalUpdated, nil
-}
-
-// DeleteGroup deletes all profiles belonging to a group or subscription
-func (a *App) DeleteGroup(groupName string) error {
-	return a.store.DeleteGroup(groupName)
-}
-
-// RenameGroup renames a group or subscription across all its profiles
-func (a *App) RenameGroup(oldName string, newName string) error {
-	return a.store.RenameGroup(oldName, newName)
-}
-
-// UpdateSubscriptionGroup updates profiles for a specific subscription group
-func (a *App) UpdateSubscriptionGroup(groupName string) (int, error) {
-	subURL := a.store.GetSubscriptionURLByGroup(groupName)
-	if subURL == "" {
-		return 0, fmt.Errorf("no subscription URL found for group %s", groupName)
-	}
-	return a.ImportSubscription(subURL, groupName)
-}
-
-// GenerateWarpAccount creates a 1-click Cloudflare WARP profile
-func (a *App) GenerateWarpProfile(cleanIP string, port int) (*config.Profile, error) {
-	if cleanIP == "" {
-		cleanIP = "162.159.192.1"
-	}
-	if port <= 0 {
-		port = 2408
-	}
-
-	profile, err := parser.GenerateCloudflareWarp(cleanIP, port)
-	if err != nil {
-		return nil, err
-	}
-
-	id, err := a.store.AddProfile(*profile)
-	if err != nil {
-		return nil, err
-	}
-	profile.ID = id
-	return profile, nil
-}
-
-// GenerateWarpOnWarpProfile creates a 2-hop nested WARP-on-WARP profile
-func (a *App) GenerateWarpOnWarpProfile(cleanIP string, port int, egressIP string, egressPort int) (*config.Profile, error) {
-	profile, err := parser.GenerateWarpOnWarp(cleanIP, port, egressIP, egressPort)
-	if err != nil {
-		return nil, err
-	}
-	id, err := a.store.AddProfile(*profile)
-	if err != nil {
-		return nil, err
-	}
-	profile.ID = id
-	return profile, nil
-}
-
-// DeduplicateProfiles removes duplicate nodes in a category
-func (a *App) DeduplicateProfiles(category string) int {
-	return a.store.DeduplicateProfiles(config.ProfileCategory(category))
-}
-
-// RemoveDeadProfiles removes all profiles with failed ping (latency <= 0)
-func (a *App) RemoveDeadProfiles(category string) int {
-	return a.store.RemoveDeadProfiles(config.ProfileCategory(category))
-}
-
-// ExportAllProfiles exports all profiles in a category as a newline-separated string
-func (a *App) ExportAllProfiles(category string) string {
-	return a.store.ExportAllProfiles(config.ProfileCategory(category))
-}
-
-// OpenTelegramProxy launches Telegram with the local SOCKS5 proxy URL
-func (a *App) OpenTelegramProxy() error {
-	tgURL := "tg://socks?server=127.0.0.1&port=10808"
-	if a.ctx != nil {
-		runtime.BrowserOpenURL(a.ctx, tgURL)
-		return nil
-	}
-	switch goos := sysruntime.GOOS; goos {
-	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", tgURL)
-		cmd.SysProcAttr = sysproc.HideWindowAttr()
-		return cmd.Start()
-	case "darwin":
-		return exec.Command("open", tgURL).Start()
-	default:
-		return exec.Command("xdg-open", tgURL).Start()
-	}
-}
-
-// ImportOpenVPNProfile imports an OpenVPN .ovpn profile with optional auth credentials
-func (a *App) ImportOpenVPNProfile(name string, ovpnContent string, username string, password string, group string) (string, error) {
-	if name == "" {
-		name = "OpenVPN Profile"
-	}
-	if group == "" {
-		group = "OpenVPN"
-	}
-
-	profile := config.Profile{
-		Name:          name,
-		Protocol:      config.ProtocolOpenVPN,
-		Category:      config.CategoryOpenVPN,
-		ConfigContent: ovpnContent,
-		Username:      username,
-		Password:      password,
-		Group:         group,
-		CreatedAt:     time.Now(),
-	}
-
-	return a.store.AddProfile(profile)
-}
-
-// ImportWireGuardProfile imports a WireGuard .conf file
-func (a *App) ImportWireGuardProfile(name string, confContent string, group string) (string, error) {
-	if name == "" {
-		name = "WireGuard Profile"
-	}
-	if group == "" {
-		group = "WireGuard"
-	}
-
-	server := ""
-	port := 51820
-	outbound, host, err := parser.ParseWireGuardConf(confContent)
-	if err == nil && outbound != nil {
-		server = host
-		if p, ok := outbound["server_port"].(int); ok && p > 0 {
-			port = p
-		}
-	}
-
-	profile := config.Profile{
-		Name:          name,
-		Protocol:      config.ProtocolWireGuard,
-		Category:      config.CategoryWireGuardWarp,
-		ConfigContent: confContent,
-		Server:        server,
-		Port:          port,
-		Group:         group,
-		CreatedAt:     time.Now(),
-	}
-
-	return a.store.AddProfile(profile)
-}
-
-func (a *App) PingProfile(id string) (int, error) {
-	profile, err := a.store.GetProfile(id)
-	if err != nil {
-		return -1, err
-	}
-
-	server := profile.Server
-	port := profile.Port
-
-	// If server address is missing, extract it dynamically from config content
-	if (server == "" || port <= 0) && profile.ConfigContent != "" && (profile.Protocol == config.ProtocolWireGuard || profile.Protocol == config.ProtocolWARP || profile.Category == config.CategoryWireGuardWarp) {
-		_, host, err := parser.ParseWireGuardConf(profile.ConfigContent)
-		if err == nil && host != "" {
-			server = host
-			profile.Server = host
-		}
-	}
-
-	if server == "" {
-		return -1, fmt.Errorf("profile has no server address")
-	}
-
-	latency := parser.SmartPing(server, port, profile.Protocol, 3*time.Second)
-	profile.LatencyMs = latency
-	_ = a.store.UpdateProfile(profile)
-
-	return latency, nil
-}
-
-func (a *App) PingAllProfiles(category string) []config.Profile {
-	profiles := a.store.GetProfiles()
-	var wg sync.WaitGroup
-
-	cat := config.ProfileCategory(category)
-	for i := range profiles {
-		if cat != "" && profiles[i].Category != cat {
-			continue
-		}
-		wg.Add(1)
-		go func(p *config.Profile) {
-			defer wg.Done()
-			server := p.Server
-			port := p.Port
-			if (server == "" || port <= 0) && p.ConfigContent != "" && (p.Protocol == config.ProtocolWireGuard || p.Protocol == config.ProtocolWARP || p.Category == config.CategoryWireGuardWarp) {
-				_, host, err := parser.ParseWireGuardConf(p.ConfigContent)
-				if err == nil && host != "" {
-					server = host
-					p.Server = host
-				}
-			}
-			if server != "" {
-				p.LatencyMs = parser.SmartPing(server, port, p.Protocol, 3*time.Second)
-				_ = a.store.UpdateProfile(*p)
-			}
-		}(&profiles[i])
-	}
-
-	wg.Wait()
-	if cat != "" {
-		return a.store.GetProfilesByCategory(cat)
-	}
-	return a.store.GetProfiles()
-}
-
-func (a *App) RealPingActiveProfile() (int, error) {
-	st := a.engine.GetStatus()
-	if st.State != core.StateConnected {
-		return -1, fmt.Errorf("VPN is not connected")
-	}
-
-	settings := a.store.GetSettings()
-	testURL := settings.RealDelayUrl
-	if testURL == "" {
-		testURL = "http://cp.cloudflare.com/generate_204"
-	}
-
-	port := 0
-	if settings.ProxyMode == "system_proxy" {
-		port = 10809
-	}
-
-	latency, err := parser.RealDelayPing(port, testURL, 4*time.Second)
-	if err != nil {
-		return -1, err
-	}
-
-	if st.ProfileID != "" {
-		if profile, err := a.store.GetProfile(st.ProfileID); err == nil {
-			profile.RealDelayMs = latency
-			_ = a.store.UpdateProfile(profile)
-		}
-	}
-
-	return latency, nil
-}
-
-func (a *App) LookupExternalIP() (*parser.IPInfo, error) {
-	st := a.engine.GetStatus()
-	port := 0
-	if st.State == core.StateConnected {
-		if conn, err := net.DialTimeout("tcp", "127.0.0.1:10809", 200*time.Millisecond); err == nil {
-			conn.Close()
-			port = 10809
-		} else if conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 200*time.Millisecond); err == nil {
-			conn.Close()
-			port = 10808
-		}
-	}
-	return parser.LookupIPInfo(port)
-}
-
-func (a *App) ClearStaleProxy() {
-	sysproxy.ClearSystemProxy()
-}
-
-func (a *App) GetGroups() []string {
-	return a.store.GetGroupsByCategory("")
-}
-
-func (a *App) GetGroupsByCategory(category string) []string {
-	return a.store.GetGroupsByCategory(config.ProfileCategory(category))
-}
-
-func (a *App) OpenBrowserURL(targetURL string) {
-	if targetURL != "" && a.ctx != nil {
-		runtime.BrowserOpenURL(a.ctx, targetURL)
-	}
+	// This run cleaned up after itself, so the crash-recovery marker must not
+	// survive to make the next launch repair state that is already fine.
+	core.ClearConnectJournal()
 }
 
 // ============================================================
@@ -651,8 +313,49 @@ func (a *App) Connect(profileID string) error {
 		}
 	}
 
-	if err := a.engine.Connect(profile, settings); err != nil {
+	// TunnelBear profiles are rewritten here rather than stored ready. The
+	// relay's loopback port, the addresses the operator's hostname resolves to
+	// right now, and the account the user has selected all exist only at this
+	// moment — baking any of them into the saved profile would make it stale
+	// the first time the relay restarted or the account changed.
+	//
+	// The rewrite lands on `connectProfile`; `profile` stays exactly what came
+	// out of the store. That separation is load-bearing: the bookkeeping write
+	// at the end of this function persists `profile`, and if the rewrite had
+	// been applied to it, config.json would end up holding the relay's
+	// ephemeral port and the account's plaintext password — precisely what the
+	// account vault exists to prevent.
+	connectProfile := profile
+	tunnelBearAccount := ""
+	if profile.Protocol == config.ProtocolOpenVPN && tunnelBearHostOf(profile) != "" {
+		prepared, accountID, prepErr := a.prepareTunnelBearProfile(profile)
+		if prepErr != nil {
+			diary.LogErr("connect", "tunnelbear-prepare-failed", prepErr)
+			return prepErr
+		}
+		connectProfile = prepared
+		tunnelBearAccount = accountID
+	}
+
+	if err := a.engine.Connect(connectProfile, settings); err != nil {
+		if tunnelBearAccount != "" {
+			// A TunnelBear failure is worth attributing to the account, but only
+			// when the core actually said the credentials were rejected —
+			// marking a timeout as an authentication failure would send the user
+			// to re-enter a password that was never the problem.
+			if strings.Contains(err.Error(), "AUTH_FAILED") {
+				discovery.NoteTunnelBearAuthResult(tunnelBearAccount, discovery.TunnelBearAuthFailed, err.Error())
+			}
+			// Whatever the reason, nothing is going to use the relay now.
+			closeTunnelBearRelay()
+		}
 		return err
+	}
+
+	if tunnelBearAccount != "" {
+		// Reaching here means the tunnel came up, which means the operator's
+		// servers accepted the credentials.
+		discovery.NoteTunnelBearAuthResult(tunnelBearAccount, discovery.TunnelBearAuthOK, "")
 	}
 
 	settings.LastProfileID = profileID
@@ -665,52 +368,117 @@ func (a *App) Connect(profileID string) error {
 }
 
 func (a *App) Disconnect() error {
+	// The relay exists to carry one connection. Leaving it listening would hold
+	// a loopback port and a socket to a server the user has just left.
+	closeTunnelBearRelay()
 	return a.engine.Disconnect()
 }
 
+// failoverProbeCandidates bounds how many backups are probed before a failover.
+// Probing all of a large subscription would take longer than the failover is
+// worth; the fastest few are the only realistic winners.
+const failoverProbeCandidates = 6
+
+// failoverProbeBudget bounds the whole probe. The callback runs on its own
+// goroutine, so blocking here is safe, but the user is staring at a spinner
+// while it happens.
+const failoverProbeBudget = 4 * time.Second
+
+// triggerAutoFailover picks a backup server and connects to it.
+//
+// The backup is probed before it is used. Previously the choice was made purely
+// from the cached LatencyMs field, which is a number from whenever the server
+// was last measured — it says nothing about whether the server is alive *now*.
+// In the TUN crash-loop incident that produced four consecutive failovers onto
+// an independently dead WARP/WireGuard backend: the attempt budget was spent,
+// the real cause (a local adapter fault) stayed hidden, and the user was left
+// watching a spinner. When nothing answers, saying so is more useful than
+// switching to another dead server.
 func (a *App) triggerAutoFailover(failedProfileID string) {
+	// Every exit from this function is recorded. The 2026-10-09 log showed an
+	// "[Auto-Failover] Server unreachable" warning in the app log with nothing
+	// at all in the diary afterwards, which made "failover ran and gave up",
+	// "failover was skipped" and "the callback never fired" indistinguishable.
+	diary.Log("connect", "failover-begin", "failed_profile", failedProfileID)
+
 	if a.store == nil {
+		diary.Log("connect", "failover-skip", "reason", "no-store")
 		return
 	}
 	profiles := a.store.GetProfiles()
 	if len(profiles) <= 1 {
+		diary.Log("connect", "failover-skip",
+			"reason", "no-other-profiles",
+			"profiles", fmt.Sprintf("%d", len(profiles)))
 		return
 	}
 
-	var candidate *config.Profile
-	bestLatency := 999999
-
-	for i := range profiles {
-		if profiles[i].ID == failedProfileID {
-			continue
-		}
-		lat := profiles[i].LatencyMs
-		if lat <= 0 {
-			lat = 9999
-		}
-		if lat < bestLatency {
-			bestLatency = lat
-			// Fix: use index-based reference to avoid loop variable capture bug
-			pCopy := profiles[i]
-			candidate = &pCopy
-		}
+	candidates := core.RankFailoverCandidates(profiles, failedProfileID, failoverProbeCandidates)
+	if len(candidates) == 0 {
+		diary.Log("connect", "failover-skip",
+			"reason", "no-candidates",
+			"profiles", fmt.Sprintf("%d", len(profiles)))
+		return
 	}
 
-	if candidate == nil {
-		for i := range profiles {
-			if profiles[i].ID != failedProfileID {
-				// Fix: use index-based reference to avoid loop variable capture bug
-				pCopy := profiles[i]
-				candidate = &pCopy
-				break
-			}
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), failoverProbeBudget)
+	reachable := core.ProbeReachableProfiles(ctx, candidates)
+	// Release the probe context before connecting: Connect can block for a
+	// while, and there is no reason to keep a timeout armed over it.
+	cancel()
+
+	if len(reachable) > 0 {
+		target := reachable[0].Profile
+		diary.Log("connect", "failover-probe-ok",
+			"reachable", fmt.Sprintf("%d/%d", len(reachable), len(candidates)),
+			"target", target.Name,
+			"latency_ms", fmt.Sprintf("%d", reachable[0].LatencyMs))
+
+		a.engine.AddLog("info", fmt.Sprintf(
+			"[Auto-Failover] %d of %d backup servers answered; switching to the fastest: %s (%s, %dms)",
+			len(reachable), len(candidates), target.Name, target.Protocol, reachable[0].LatencyMs), "engine")
+
+		_ = a.Connect(target.ID)
+		return
 	}
 
-	if candidate != nil {
-		a.engine.AddLog("info", fmt.Sprintf("[Auto-Failover] Seamlessly switching to backup server: %s (%s)", candidate.Name, candidate.Protocol), "engine")
-		_ = a.Connect(candidate.ID)
+	// Nothing we could dial answered. Profiles whose endpoint is buried inside a
+	// pasted config (an imported .ovpn, a WireGuard file whose server could not
+	// be parsed) can never pass a probe, and for those we genuinely do not know
+	// whether they are alive — one blind attempt beats doing nothing, as long as
+	// we say that is what we are doing.
+	if fallbacks := core.UnprobeableCandidates(candidates); len(fallbacks) > 0 {
+		target := fallbacks[0]
+		diary.Log("connect", "failover-blind-attempt",
+			"probed", fmt.Sprintf("%d", len(candidates)-len(fallbacks)),
+			"target", target.Name)
+
+		a.engine.AddLog("warning", fmt.Sprintf(
+			"[Auto-Failover] None of the %d testable backup servers answered. Trying %s anyway — "+
+				"its address cannot be checked before connecting.",
+			len(candidates)-len(fallbacks), target.Name), "engine")
+
+		_ = a.Connect(target.ID)
+		return
 	}
+
+	cooling := core.CountCoolingDown(profiles)
+	diary.Log("connect", "failover-none-reachable",
+		"probed", fmt.Sprintf("%d", len(candidates)),
+		"cooling_down", fmt.Sprintf("%d", cooling))
+	msg := fmt.Sprintf(
+		"[Auto-Failover] None of the %d backup servers answered a reachability probe. "+
+			"Staying disconnected instead of switching to a server that is likely dead too — "+
+			"the problem is more likely your network or ISP than this particular profile.",
+		len(candidates))
+	if cooling > 0 {
+		// Without this the message reads "everything is dead", when what actually
+		// happened is that everything already failed minutes ago and is being
+		// avoided on purpose. Refreshing the subscription is the fix in that case,
+		// and the user needs to be told which of the two they are looking at.
+		msg += fmt.Sprintf(" %d of them had already failed in the last few minutes and are on a short cooldown; update the subscription if this keeps happening.", cooling)
+	}
+	a.engine.AddLog("error", msg, "engine")
 }
 
 func (a *App) GetConnectionStatus() core.ConnectionStatus {
@@ -721,9 +489,107 @@ func (a *App) GetTrafficStats() core.TrafficStats {
 	return a.engine.GetStats()
 }
 
+// UsageReport is the honest answer to "how much of my monthly quota have I
+// actually used?".
+//
+// Previously the Quota Manager compared the *current session's* byte counters
+// against the configured monthly allowance, so a fresh connection always looked
+// like it had barely used anything. This aggregates real per-session totals
+// from the connection history over a defined window, and states which window it
+// used so the UI can label it accurately.
+type UsageReport struct {
+	// WindowStart / WindowEnd bound the measured period (UTC).
+	WindowStart string `json:"window_start"`
+	WindowEnd   string `json:"window_end"`
+	// WindowKind is "calendar_month" or "rolling_30d".
+	WindowKind string `json:"window_kind"`
+	// BytesFromHistory is the sum of every recorded session in the window.
+	BytesFromHistory int64 `json:"bytes_from_history"`
+	// BytesCurrentSession is the live session's counters, which are NOT yet
+	// included in the history (a session is recorded on disconnect).
+	BytesCurrentSession int64 `json:"bytes_current_session"`
+	// TotalBytes is BytesFromHistory + BytesCurrentSession.
+	TotalBytes int64 `json:"total_bytes"`
+	// SessionCount is how many recorded sessions fall inside the window.
+	SessionCount int `json:"session_count"`
+	// QuotaBytes is the configured allowance; 0 means "not configured".
+	QuotaBytes int64 `json:"quota_bytes"`
+	// UsedPercent is TotalBytes / QuotaBytes, or 0 when no quota is set.
+	UsedPercent float64 `json:"used_percent"`
+	// HistoryAvailable is false when no session history exists at all, so the
+	// UI can distinguish "nothing used" from "nothing recorded".
+	HistoryAvailable bool `json:"history_available"`
+}
+
+// GetUsageReport aggregates month-to-date traffic from the connection history.
+func (a *App) GetUsageReport() UsageReport {
+	now := time.Now().UTC()
+	// Calendar month to date: usage-based plans bill per calendar month, so
+	// this is the window the user's quota number refers to.
+	windowStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	windowEnd := now
+
+	report := UsageReport{
+		WindowStart: windowStart.Format(time.RFC3339),
+		WindowEnd:   windowEnd.Format(time.RFC3339),
+		WindowKind:  "calendar_month",
+	}
+
+	if a.store != nil {
+		history := a.store.GetConnectionHistory()
+		report.HistoryAvailable = len(history) > 0
+		for _, s := range history {
+			// Attribute a session to the window by when it started. A session
+			// that began before the window but is still running is not counted
+			// here; its bytes land in the next window via the live counters.
+			if s.ConnectedAt.Before(windowStart) || s.ConnectedAt.After(windowEnd) {
+				continue
+			}
+			report.BytesFromHistory += s.BytesReceived + s.BytesSent
+			report.SessionCount++
+		}
+		settings := a.store.GetSettings()
+		if settings.MonthlyQuotaGB > 0 {
+			report.QuotaBytes = int64(settings.MonthlyQuotaGB) * 1024 * 1024 * 1024
+		}
+	}
+
+	if a.engine != nil {
+		stats := a.engine.GetStats()
+		report.BytesCurrentSession = stats.BytesReceived + stats.BytesSent
+	}
+
+	report.TotalBytes = report.BytesFromHistory + report.BytesCurrentSession
+	if report.QuotaBytes > 0 {
+		report.UsedPercent = float64(report.TotalBytes) / float64(report.QuotaBytes) * 100
+		if report.UsedPercent > 100 {
+			report.UsedPercent = 100
+		}
+	}
+	return report
+}
+
 // ============================================================
-// Settings Management
+// Settings & System Management
 // ============================================================
+
+func (a *App) ScanAndSelectBestDNS(useDoH bool) []interface{} { // Returns generic slice for Wails binding simplicity
+	results := dnsscan.ScanAll(useDoH)
+
+	// Convert to generic map for frontend
+	var out []interface{}
+	for _, r := range results {
+		out = append(out, map[string]interface{}{
+			"server_name": r.Server.Name,
+			"address":     r.Server.Address,
+			"is_doh":      r.Server.IsDoH,
+			"latency":     r.Latency,
+			"is_success":  r.IsSuccess,
+			"raw_value":   r.RawValue,
+		})
+	}
+	return out
+}
 
 func (a *App) GetSettings() config.Settings {
 	if a.store == nil {
@@ -738,6 +604,22 @@ func (a *App) SaveSettings(settings config.Settings) error {
 	}
 	_ = core.SetAutoStart(settings.StartOnBoot)
 	a.engine.SetAutoReconnect(settings.AutoReconnect)
+	// Apply a changed subscription auto-update interval to the running daemon
+	// immediately (previously this only took effect after an app restart).
+	if a.subDaemon != nil && settings.SubscriptionAutoUpdateHours > 0 {
+		a.subDaemon.SetInterval(time.Duration(settings.SubscriptionAutoUpdateHours) * time.Hour)
+	}
+	// Ensure the quota watcher is running and re-check right away when the user
+	// changes the alert threshold or webhook URL.
+	if a.quotaDaemon != nil {
+		if !a.quotaDaemon.IsRunning() {
+			a.quotaDaemon.Start()
+		}
+		go a.quotaDaemon.CheckAll()
+	}
+	// Re-apply the core-download integrity policy so toggling it takes effect
+	// without an app restart.
+	core.SetAllowUnverifiedCoreDownloads(settings.AllowUnverifiedCoreDownloads)
 	return a.store.SaveSettings(settings)
 }
 
@@ -759,6 +641,13 @@ func (a *App) ClearLogs() {
 	a.engine.ClearLogs()
 }
 
+// GetStartupDiaryPath returns the on-disk launch diary. Unlike the in-memory log
+// buffer, this file survives a crash or a hang before the window is drawn, so
+// the UI surfaces it as the thing to attach to a bug report.
+func (a *App) GetStartupDiaryPath() string {
+	return diary.Path()
+}
+
 func (a *App) GetVersion() string {
 	return AppVersion
 }
@@ -778,7 +667,11 @@ func (a *App) CheckForUpdates() UpdateCheckResult {
 	const repoAPI = "https://api.github.com/repos/Rpg-420/NexVPN/releases/latest"
 
 	client := &http.Client{Timeout: 8 * time.Second}
-	req, err := http.NewRequestWithContext(a.ctx, "GET", repoAPI, nil)
+	reqCtx := a.appCtx()
+	if reqCtx == nil {
+		reqCtx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(reqCtx, "GET", repoAPI, nil)
 	if err != nil {
 		return UpdateCheckResult{Error: "Failed to build request: " + err.Error(), CurrentVersion: AppVersion}
 	}
@@ -820,7 +713,11 @@ func (a *App) CheckForUpdates() UpdateCheckResult {
 
 	notes := release.Body
 	if len(notes) > 300 {
-		notes = notes[:300] + "..."
+		// UTF-8 safe truncation
+		runes := []rune(notes)
+		if len(runes) > 300 {
+			notes = string(runes[:300]) + "..."
+		}
 	}
 
 	hasUpdate := latest != "" && latest != current
@@ -833,444 +730,3 @@ func (a *App) CheckForUpdates() UpdateCheckResult {
 		ReleaseNotes:   notes,
 	}
 }
-
-// ============================================================
-// LAN Proxy Sharing & Bridge
-// ============================================================
-
-// GetLocalIPAddress detects the active LAN IP of the host machine
-func (a *App) GetLocalIPAddress() (string, error) {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "127.0.0.1", err
-	}
-	for _, addr := range addrs {
-		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-			if ipNet.IP.To4() != nil {
-				ipStr := ipNet.IP.String()
-				// Fix: complete RFC 1918 private address space check
-				// 10.0.0.0/8, 172.16.0.0/12 (172.16-31.x.x), 192.168.0.0/16
-				if strings.HasPrefix(ipStr, "192.168.") || strings.HasPrefix(ipStr, "10.") || isRFC1918_172(ipStr) {
-					return ipStr, nil
-				}
-			}
-		}
-	}
-	return "127.0.0.1", nil
-}
-
-// isRFC1918_172 checks the full 172.16.0.0/12 private range (172.16.x.x through 172.31.x.x)
-func isRFC1918_172(ipStr string) bool {
-	if !strings.HasPrefix(ipStr, "172.") {
-		return false
-	}
-	parts := strings.Split(ipStr, ".")
-	if len(parts) < 2 {
-		return false
-	}
-	second := 0
-	for _, c := range parts[1] {
-		if c < '0' || c > '9' {
-			return false
-		}
-		second = second*10 + int(c-'0')
-	}
-	return second >= 16 && second <= 31
-}
-
-
-func (a *App) ToggleAllowLan(enabled bool) error {
-	settings := a.store.GetSettings()
-	settings.AllowLan = enabled
-	return a.store.SaveSettings(settings)
-}
-
-// ============================================================
-// Live ISP Protocol Censorship Radar
-// ============================================================
-
-type RadarProtocolResult struct {
-	Name        string `json:"name"`
-	Protocol    string `json:"protocol"`
-	Status      string `json:"status"` // "excellent", "good", "throttled", "blocked"
-	LatencyMs   int    `json:"latency_ms"`
-	PacketLoss  int    `json:"packet_loss"`
-	Description string `json:"description"`
-}
-
-type RadarReport struct {
-	ISPName           string                `json:"isp_name"`
-	IPAddress         string                `json:"ip_address"`
-	CensorshipLevel   string                `json:"censorship_level"`
-	BestProtocol      string                `json:"best_protocol"`
-	RecommendedAction string                `json:"recommended_action"`
-	Protocols         []RadarProtocolResult `json:"protocols"`
-	Timestamp         string                `json:"timestamp"`
-}
-
-// RunProtocolRadar concurrently tests various protocols against censorship filters
-func (a *App) RunProtocolRadar() (*RadarReport, error) {
-	ipInfo, _ := a.LookupExternalIP()
-	ispName := "Unknown ISP"
-	ipAddr := "127.0.0.1"
-	if ipInfo != nil {
-		if ipInfo.ISP != "" {
-			ispName = ipInfo.ISP
-		}
-		if ipInfo.IP != "" {
-			ipAddr = ipInfo.IP
-		}
-	}
-
-	targets := []struct {
-		name     string
-		protocol string
-		host     string
-		port     int
-		desc     string
-	}{
-		{"VLESS Reality (TLS 1.3)", "vless_reality", "162.159.192.1", 443, "Standard SNI / Reality anti-DPI tunnel"},
-		{"Cloudflare WARP (WireGuard UDP)", "wireguard_warp", "162.159.192.1", 2408, "Cloudflare clean UDP WireGuard port"},
-		{"Hysteria 2 (QUIC / UDP 443)", "hysteria2", "162.159.193.1", 443, "High-speed UDP congestion-controlled QUIC"},
-		{"Fastly CDN (WebSocket / HTTPUpgrade)", "vmess_ws", "151.101.1.1", 443, "CDN-fronted WebSocket HTTP tunnel"},
-		{"OpenVPN TCP (Fallback Tunnel)", "openvpn_tcp", "1.1.1.1", 443, "TCP encapsulation bypass mode"},
-		{"Raw DNS (UDP 53 Hijack Test)", "dns_udp", "8.8.8.8", 53, "Local ISP DNS interception & poisoning probe"},
-	}
-
-	results := make([]RadarProtocolResult, len(targets))
-	var wg sync.WaitGroup
-
-	for i, t := range targets {
-		wg.Add(1)
-		go func(idx int, target struct {
-			name     string
-			protocol string
-			host     string
-			port     int
-			desc     string
-		}) {
-			defer wg.Done()
-			lat := parser.SmartPing(target.host, target.port, config.Protocol(target.protocol), 2500*time.Millisecond)
-			status := "excellent"
-			loss := 0
-			if lat <= 0 {
-				status = "blocked"
-				loss = 100
-				lat = -1
-			} else if lat > 300 {
-				status = "throttled"
-				loss = 25
-			} else if lat > 150 {
-				status = "good"
-				loss = 0
-			}
-			results[idx] = RadarProtocolResult{
-				Name:        target.name,
-				Protocol:    target.protocol,
-				Status:      status,
-				LatencyMs:   lat,
-				PacketLoss:  loss,
-				Description: target.desc,
-			}
-		}(i, t)
-	}
-
-	wg.Wait()
-
-	// Calculate censorship severity
-	blockedCount := 0
-	bestProtocol := "VLESS Reality (TLS 1.3)"
-	lowestLat := 99999
-	for _, r := range results {
-		if r.Status == "blocked" {
-			blockedCount++
-		} else if r.LatencyMs > 0 && r.LatencyMs < lowestLat {
-			lowestLat = r.LatencyMs
-			bestProtocol = r.Name
-		}
-	}
-
-	level := "Low"
-	action := "Network conditions are optimal. VLESS Reality or Cloudflare WARP recommended."
-	if blockedCount >= 4 {
-		level = "Severe (Severe Filtering / Outage)"
-		action = "Most direct ports blocked. Use VLESS Reality with TLS Fragment or WARP-on-WARP."
-	} else if blockedCount >= 2 {
-		level = "Medium (Targeted Filtering)"
-		action = "High-speed protocols like Hysteria 2 and VLESS Reality offer optimal throughput."
-	}
-
-	report := &RadarReport{
-		ISPName:           ispName,
-		IPAddress:         ipAddr,
-		CensorshipLevel:   level,
-		BestProtocol:      bestProtocol,
-		RecommendedAction: action,
-		Protocols:         results,
-		Timestamp:         time.Now().Format("2006-01-02 15:04:05"),
-	}
-
-	return report, nil
-}
-
-// ============================================================
-// Windows Emergency Network Repair
-// ============================================================
-
-type RepairStep struct {
-	Name    string `json:"name"`
-	Command string `json:"command"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-type EmergencyRepairReport struct {
-	OverallStatus string       `json:"overall_status"`
-	Steps         []RepairStep `json:"steps"`
-	Timestamp     string       `json:"timestamp"`
-}
-
-// RunEmergencyNetworkRepair runs automated diagnostic and repair commands for networking
-func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
-	var steps []struct {
-		name string
-		prog string
-		args []string
-	}
-
-	switch sysruntime.GOOS {
-	case "windows":
-		steps = []struct {
-			name string
-			prog string
-			args []string
-		}{
-			{"Flush Windows DNS Cache (ipconfig /flushdns)", "ipconfig", []string{"/flushdns"}},
-			{"Reset Winsock Catalog & Network Sockets", "netsh", []string{"winsock", "reset"}},
-			{"Reset Windows TCP/IP Protocol Stack", "netsh", []string{"int", "ip", "reset"}},
-			{"Clear Routing Table & ARP Cache", "arp", []string{"-d", "*"}},
-		}
-	case "darwin":
-		steps = []struct {
-			name string
-			prog string
-			args []string
-		}{
-			{"Flush macOS DNS Cache (dscacheutil)", "dscacheutil", []string{"-flushcache"}},
-			{"Reset DNS Responder (killall mDNSResponder)", "killall", []string{"-HUP", "mDNSResponder"}},
-		}
-	default: // linux
-		steps = []struct {
-			name string
-			prog string
-			args []string
-		}{
-			{"Flush Systemd DNS Cache (resolvectl)", "resolvectl", []string{"flush-caches"}},
-			{"Clear ARP Neighbor Cache (ip neigh)", "ip", []string{"neigh", "flush", "all"}},
-		}
-	}
-
-	reportSteps := make([]RepairStep, 0)
-	for _, s := range steps {
-		cmd := exec.Command(s.prog, s.args...)
-		cmd.SysProcAttr = sysproc.HideWindowAttr()
-		out, err := cmd.CombinedOutput()
-		status := "success"
-		msg := strings.TrimSpace(string(out))
-		if err != nil {
-			if s.prog == "arp" {
-				status = "success"
-			} else {
-				status = "error"
-			}
-			if msg == "" {
-				msg = err.Error()
-			}
-		}
-		if len(msg) > 120 {
-			msg = msg[:120] + "..."
-		}
-		reportSteps = append(reportSteps, RepairStep{
-			Name:    s.name,
-			Command: s.prog + " " + strings.Join(s.args, " "),
-			Status:  status,
-			Message: msg,
-		})
-	}
-
-	// Clear system proxy
-	_ = sysproxy.ClearSystemProxy()
-	reportSteps = append(reportSteps, RepairStep{
-		Name:    "Reset System Proxy Settings",
-		Command: "SystemProxy: Clear",
-		Status:  "success",
-		Message: "System proxy settings cleaned and restored to default standard direct state.",
-	})
-
-	return &EmergencyRepairReport{
-		OverallStatus: "success",
-		Steps:         reportSteps,
-		Timestamp:     time.Now().Format("2006-01-02 15:04:05"),
-	}, nil
-}
-
-// ============================================================
-// Live Cloud Clean IP Feed & Encrypted Backup
-// ============================================================
-
-type CleanIPRange struct {
-	CIDR        string `json:"cidr"`
-	Region      string `json:"region"`
-	Description string `json:"description"`
-}
-
-// FetchLiveCleanIPFeed returns curated community clean IP ranges for Iran
-func (a *App) FetchLiveCleanIPFeed() ([]CleanIPRange, error) {
-	ranges := []CleanIPRange{
-		{"162.159.192.0/24", "IR-Clean (Cloudflare Edge)", "Best stability on Mobile ISPs (MCI & Irancell)"},
-		{"188.114.96.0/24", "IR-Clean (Cloudflare VIP)", "Ultra-low ping on Fixed ISPs (TCI & Shatel)"},
-		{"104.16.0.0/13", "Global CDN Anycast", "Optimized for VLESS Reality & WebSocket"},
-		{"172.64.0.0/13", "Cloudflare POP Frankfurt", "Optimized routing for gaming and streaming"},
-		{"198.41.128.0/17", "Cloudflare Tier-1", "High stability during peak bandwidth congestion"},
-		{"141.101.64.0/18", "Cloudflare Edge Subnet", "Lowest packet loss during peak hours"},
-	}
-	return ranges, nil
-}
-
-// ExportEncryptedBackup exports all data encrypted with AES-256-GCM if password is provided
-func (a *App) ExportEncryptedBackup(password string) (string, error) {
-	profiles := a.store.GetProfiles()
-	settings := a.store.GetSettings()
-	payload := struct {
-		Profiles []config.Profile `json:"profiles"`
-		Settings config.Settings  `json:"settings"`
-		Exported string           `json:"exported_at"`
-		App      string           `json:"app"`
-	}{
-		Profiles: profiles,
-		Settings: settings,
-		Exported: time.Now().Format(time.RFC3339),
-		App:      "NexVPN",
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	password = strings.TrimSpace(password)
-	if password == "" {
-		// Plain base64 export if no password
-		return base64.StdEncoding.EncodeToString(data), nil
-	}
-
-	// Derive AES-256 key using SHA-256 of password
-	key := sha256.Sum256([]byte(password))
-
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		return "", fmt.Errorf("cipher init error: %w", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("gcm init error: %w", err)
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("nonce generation error: %w", err)
-	}
-
-	// Format: "NEXENC:" + base64(nonce + ciphertext)
-	ciphertext := gcm.Seal(nonce, nonce, data, nil)
-	return "NEXENC:" + base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-// ImportEncryptedBackup imports and decrypts data from a backup string
-func (a *App) ImportEncryptedBackup(payload string, password string) error {
-	payload = strings.TrimSpace(payload)
-	if payload == "" {
-		return fmt.Errorf("empty backup payload")
-	}
-
-	var data []byte
-	var err error
-
-	if strings.HasPrefix(payload, "NEXENC:") {
-		// Encrypted payload
-		b64Content := strings.TrimPrefix(payload, "NEXENC:")
-		rawBytes, decodeErr := base64.StdEncoding.DecodeString(b64Content)
-		if decodeErr != nil {
-			return fmt.Errorf("invalid encrypted payload encoding: %w", decodeErr)
-		}
-
-		password = strings.TrimSpace(password)
-		if password == "" {
-			return fmt.Errorf("password is required to decrypt this backup")
-		}
-
-		key := sha256.Sum256([]byte(password))
-		block, cipherErr := aes.NewCipher(key[:])
-		if cipherErr != nil {
-			return fmt.Errorf("cipher init error: %w", cipherErr)
-		}
-
-		gcm, gcmErr := cipher.NewGCM(block)
-		if gcmErr != nil {
-			return fmt.Errorf("gcm error: %w", gcmErr)
-		}
-
-		nonceSize := gcm.NonceSize()
-		if len(rawBytes) < nonceSize {
-			return fmt.Errorf("corrupted encrypted backup payload (too short)")
-		}
-
-		nonce, ciphertext := rawBytes[:nonceSize], rawBytes[nonceSize:]
-		decrypted, decryptErr := gcm.Open(nil, nonce, ciphertext, nil)
-		if decryptErr != nil {
-			return fmt.Errorf("incorrect backup password or corrupted data")
-		}
-		data = decrypted
-	} else {
-		// Legacy / Plain Base64 payload
-		data, err = base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return fmt.Errorf("invalid backup payload encoding: %w", err)
-		}
-	}
-
-	var backup struct {
-		Profiles []config.Profile `json:"profiles"`
-		Settings config.Settings  `json:"settings"`
-	}
-	if err := json.Unmarshal(data, &backup); err != nil {
-		return fmt.Errorf("invalid backup data structure: %w", err)
-	}
-
-	if len(backup.Profiles) > 0 {
-		existingMap := make(map[string]bool)
-		for _, ep := range a.store.GetProfiles() {
-			if ep.ID != "" {
-				existingMap[ep.ID] = true
-			}
-			if ep.RawURI != "" {
-				existingMap[ep.RawURI] = true
-			}
-		}
-		var newProfiles []config.Profile
-		for _, p := range backup.Profiles {
-			if p.ID != "" && existingMap[p.ID] {
-				continue
-			}
-			if p.RawURI != "" && existingMap[p.RawURI] {
-				continue
-			}
-			newProfiles = append(newProfiles, p)
-		}
-		if len(newProfiles) > 0 {
-			_, _ = a.store.AddProfileBatch(newProfiles)
-		}
-	}
-	return a.store.SaveSettings(backup.Settings)
-}
-

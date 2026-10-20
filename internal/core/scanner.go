@@ -84,7 +84,7 @@ func (s *CleanIPScanner) Start(customSubnets []string, customPorts []int, onProg
 			subnets = customSubnets
 		}
 
-		ports := []int{2408, 500, 1701, 4500, 443, 854, 894, 908}
+		ports := defaultPorts
 		if len(customPorts) > 0 {
 			ports = customPorts
 		}

@@ -46,12 +46,22 @@ func PrepareHiddenCmd(cmd *exec.Cmd) *exec.Cmd {
 	return cmd
 }
 
-// KillProcessTree terminates a process tree without popping any CMD window
-func KillProcessTree(pid int) {
-	sysproc.KillProcessTree(pid)
+// KillProcessTree terminates a process tree without popping any CMD window.
+//
+// It returns an error when the process survives, so a caller that is about to
+// report "stopped" can check instead of assuming. Callers that only want the
+// best-effort kill may ignore the result.
+func KillProcessTree(pid int) error {
+	return sysproc.KillProcessTree(pid)
 }
 
+// findBinary is an internal alias for FindBinary
 func findBinary(name string) (string, error) {
+	return FindBinary(name)
+}
+
+// FindBinary locates the path to a binary across standard application search folders
+func FindBinary(name string) (string, error) {
 	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
 		name = name + ".exe"
 	}
@@ -61,13 +71,14 @@ func findBinary(name string) (string, error) {
 	cwd, _ := os.Getwd()
 
 	searchFolders := []string{
+		filepath.Join(cwd, "build", "bin", "bin"),
+		filepath.Join(execFolder, "bin", "bin"),
 		filepath.Join(execFolder, "bin"),
+		filepath.Join(cwd, "build", "bin"),
+		filepath.Join(cwd, "bin"),
 		filepath.Join(execFolder, "..", "bin"),
 		filepath.Join(execFolder, "..", "..", "bin"),
 		execFolder,
-		filepath.Join(cwd, "bin"),
-		filepath.Join(cwd, "build", "bin"),
-		filepath.Join(cwd, "build", "bin", "bin"),
 		cwd,
 		`C:\Program Files\OpenVPN\bin`,
 		`C:\Program Files (x86)\OpenVPN\bin`,
@@ -99,7 +110,7 @@ func hasNetCap(binPath string) bool {
 	if runtime.GOOS != "linux" {
 		return false
 	}
-	
+
 	getcapBin, err := exec.LookPath("getcap")
 	if err != nil {
 		if _, errSbin := os.Stat("/sbin/getcap"); errSbin == nil {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Copy, Scissors, ClipboardPaste, CheckSquare, RefreshCw } from 'lucide-react'
-import { getLanguage } from '../lib/i18n'
+import { t } from '../lib/i18n'
 
 interface Position {
   x: number
@@ -13,7 +13,6 @@ export default function GlobalContextMenu() {
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
   const [isInput, setIsInput] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const isFa = getLanguage() === 'fa'
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
@@ -131,7 +130,7 @@ export default function GlobalContextMenu() {
     <div
       ref={menuRef}
       style={{ top: `${position.y}px`, left: `${position.x}px` }}
-      className="fixed z-[9999] w-48 rounded-2xl bg-slate-900/95 backdrop-blur-2xl border border-cyan-500/30 shadow-2xl shadow-black/90 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none text-xs font-sans"
+      className="fixed z-[9999] w-48 rounded-2xl bg-card/95 backdrop-blur-2xl border border-border shadow-2xl shadow-black/90 p-1.5 animate-in fade-in zoom-in-95 duration-100 select-none text-xs font-sans"
     >
       <div className="space-y-0.5">
         {/* Cut */}
@@ -139,13 +138,13 @@ export default function GlobalContextMenu() {
           <button
             type="button"
             onClick={handleCut}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-200 hover:text-white hover:bg-cyan-500/15 transition-all text-left rtl:text-right"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-foreground hover:text-primary hover:bg-primary/15 transition-all text-start"
           >
             <div className="flex items-center gap-2.5">
-              <Scissors size={14} className="text-cyan-400" />
-              <span>{isFa ? 'برش' : 'Cut'}</span>
+              <Scissors size={14} className="text-primary" />
+              <span>{t('context_cut')}</span>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono">Ctrl+X</span>
+            <span className="text-[10px] text-muted-foreground font-mono">Ctrl+X</span>
           </button>
         )}
 
@@ -153,42 +152,42 @@ export default function GlobalContextMenu() {
         <button
           type="button"
           onClick={handleCopy}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-200 hover:text-white hover:bg-cyan-500/15 transition-all text-left rtl:text-right"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-foreground hover:text-primary hover:bg-primary/15 transition-all text-start"
         >
           <div className="flex items-center gap-2.5">
-            <Copy size={14} className="text-emerald-400" />
-            <span>{isFa ? 'کپی' : 'Copy'}</span>
+            <Copy size={14} className="text-success" />
+            <span>{t('context_copy')}</span>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">Ctrl+C</span>
+          <span className="text-[10px] text-muted-foreground font-mono">Ctrl+C</span>
         </button>
 
         {/* Paste */}
         <button
           type="button"
           onClick={handlePaste}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-200 hover:text-white hover:bg-cyan-500/15 transition-all text-left rtl:text-right"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-foreground hover:text-primary hover:bg-primary/15 transition-all text-start"
         >
           <div className="flex items-center gap-2.5">
-            <ClipboardPaste size={14} className="text-amber-400" />
-            <span>{isFa ? 'چسباندن' : 'Paste'}</span>
+            <ClipboardPaste size={14} className="text-warning" />
+            <span>{t('context_paste')}</span>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">Ctrl+V</span>
+          <span className="text-[10px] text-muted-foreground font-mono">Ctrl+V</span>
         </button>
 
         {/* Select All */}
         <button
           type="button"
           onClick={handleSelectAll}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-200 hover:text-white hover:bg-cyan-500/15 transition-all text-left rtl:text-right"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-foreground hover:text-primary hover:bg-primary/15 transition-all text-start"
         >
           <div className="flex items-center gap-2.5">
-            <CheckSquare size={14} className="text-purple-400" />
-            <span>{isFa ? 'انتخاب همه' : 'Select All'}</span>
+            <CheckSquare size={14} className="text-primary" />
+            <span>{t('context_select_all')}</span>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">Ctrl+A</span>
+          <span className="text-[10px] text-muted-foreground font-mono">Ctrl+A</span>
         </button>
 
-        <div className="border-t border-white/5 my-1" />
+        <div className="border-t border-border my-1" />
 
         {/* Reload */}
         <button
@@ -197,13 +196,13 @@ export default function GlobalContextMenu() {
             setVisible(false)
             window.location.reload()
           }}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-all text-left rtl:text-right"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-card transition-all text-start"
         >
           <div className="flex items-center gap-2.5">
-            <RefreshCw size={13} className="text-slate-400" />
-            <span>{isFa ? 'بارگذاری مجدد' : 'Reload'}</span>
+            <RefreshCw size={13} className="text-muted-foreground" />
+            <span>{t('context_reload')}</span>
           </div>
-          <span className="text-[10px] text-slate-500 font-mono">F5</span>
+          <span className="text-[10px] text-muted-foreground font-mono">F5</span>
         </button>
       </div>
     </div>
