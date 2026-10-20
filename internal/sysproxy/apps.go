@@ -74,7 +74,9 @@ func GetDetectedApplications() []InstalledApp {
 			for _, line := range lines {
 				parts := strings.Split(line, ",")
 				if len(parts) > 0 {
-					exe := strings.Trim(parts[0], `" \r\n`)
+					// A real (interpreted) cutset: in a raw string `\r\n` would
+					// be backslash-r-backslash-n, not CR and LF.
+					exe := strings.Trim(parts[0], "\" \r\n")
 					if exe != "" {
 						runningMap[strings.ToLower(exe)] = true
 					}

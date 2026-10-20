@@ -50,16 +50,15 @@ const (
 
 // PsiphonAdapter manages execution of the Psiphon circumvention tunnel
 type PsiphonAdapter struct {
-	mu          sync.RWMutex
-	cmd         *exec.Cmd
-	running     bool
-	bytesRx     int64
-	bytesTx     int64
-	logger      LoggerFunc
-	onExit      OnExitFunc
-	statsCancel context.CancelFunc
-	configPath  string
-	dataDir     string
+	mu         sync.RWMutex
+	cmd        *exec.Cmd
+	running    bool
+	bytesRx    int64
+	bytesTx    int64
+	logger     LoggerFunc
+	onExit     OnExitFunc
+	configPath string
+	dataDir    string
 }
 
 // NewPsiphonAdapter initializes a new Psiphon protocol adapter
@@ -380,7 +379,7 @@ func (p *PsiphonAdapter) Stop() error {
 	p.mu.Unlock()
 
 	if cmd.Process != nil {
-		sysproc.KillProcessTree(cmd.Process.Pid)
+		_ = sysproc.KillProcessTree(cmd.Process.Pid)
 		_ = cmd.Process.Kill()
 	}
 	if configPath != "" {

@@ -20,7 +20,6 @@ import (
 func (e *Engine) RevalidateTunnel(reason string) {
 	e.mu.RLock()
 	state := e.status.State
-	adapter := e.activeAdapter
 	profile := e.activeProfile
 	e.mu.RUnlock()
 
@@ -40,7 +39,7 @@ func (e *Engine) RevalidateTunnel(reason string) {
 	// they just ended.
 	e.mu.RLock()
 	state = e.status.State
-	adapter = e.activeAdapter
+	adapter := e.activeAdapter
 	profile = e.activeProfile
 	e.mu.RUnlock()
 

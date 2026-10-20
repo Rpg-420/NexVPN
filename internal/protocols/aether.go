@@ -38,7 +38,6 @@ type AetherAdapter struct {
 	logger      LoggerFunc
 	onExit      OnExitFunc
 	statsCancel context.CancelFunc
-	lastError   string
 	sbTmpFile   string
 }
 
@@ -236,7 +235,7 @@ func (a *AetherAdapter) Start(ctx context.Context, configContent string) error {
 
 		if sbCmd != nil && sbCmd.Process != nil {
 			_ = sbCmd.Process.Kill()
-			sysproc.KillProcessTree(sbCmd.Process.Pid)
+			_ = sysproc.KillProcessTree(sbCmd.Process.Pid)
 		}
 		if sbTmpFile != "" {
 			_ = os.Remove(sbTmpFile)
@@ -269,13 +268,13 @@ func (a *AetherAdapter) Stop() error {
 	if cmd != nil && cmd.Process != nil {
 		a.log("info", "Terminating Aether process...")
 		_ = cmd.Process.Kill()
-		sysproc.KillProcessTree(cmd.Process.Pid)
+		_ = sysproc.KillProcessTree(cmd.Process.Pid)
 	}
 
 	if sbCmd != nil && sbCmd.Process != nil {
 		a.log("info", "Terminating Sing-box TUN router helper...")
 		_ = sbCmd.Process.Kill()
-		sysproc.KillProcessTree(sbCmd.Process.Pid)
+		_ = sysproc.KillProcessTree(sbCmd.Process.Pid)
 	}
 
 	if sbTmpFile != "" {

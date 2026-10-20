@@ -70,7 +70,7 @@ func QueryTunnelAdapterBytes() (rx int64, tx int64, found bool) {
 	if ret != 0 || pTable == nil {
 		return 0, 0, false
 	}
-	defer freeMibTableProc.Call(uintptr(unsafe.Pointer(pTable)))
+	defer func() { _, _, _ = freeMibTableProc.Call(uintptr(unsafe.Pointer(pTable))) }()
 
 	count := int(pTable.NumEntries)
 	if count <= 0 {

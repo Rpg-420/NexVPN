@@ -96,7 +96,7 @@ func processImageName(pid int) string {
 	if err != nil {
 		return ""
 	}
-	defer windows.CloseHandle(h)
+	defer func() { _ = windows.CloseHandle(h) }()
 
 	buf := make([]uint16, windows.MAX_PATH)
 	size := uint32(len(buf))

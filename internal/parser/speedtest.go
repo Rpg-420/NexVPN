@@ -229,8 +229,8 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 		upReq.Header.Set("Content-Type", "application/octet-stream")
 		upResp, err := client.Do(upReq)
 		if err == nil {
-			io.Copy(io.Discard, upResp.Body)
-			upResp.Body.Close()
+			_, _ = io.Copy(io.Discard, upResp.Body)
+			_ = upResp.Body.Close()
 			upElapsed := time.Since(upStart).Seconds()
 			if upElapsed > 0 {
 				upMbps := (float64(len(uploadPayload)) * 8.0) / (upElapsed * 1000000.0)

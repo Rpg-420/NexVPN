@@ -582,7 +582,7 @@ func (a *App) LookupExternalIP() (*parser.IPInfo, error) {
 }
 
 func (a *App) ClearStaleProxy() {
-	sysproxy.ClearSystemProxy()
+	_ = sysproxy.ClearSystemProxy()
 }
 
 func (a *App) GetGroups() []string {

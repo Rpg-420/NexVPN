@@ -33,7 +33,6 @@ var (
 	trackPopupMenuEx         = user32.NewProc("TrackPopupMenuEx")
 	destroyMenu              = user32.NewProc("DestroyMenu")
 	getCursorPos             = user32.NewProc("GetCursorPos")
-	postQuitMessage          = user32.NewProc("PostQuitMessage")
 	defWindowProcW           = user32.NewProc("DefWindowProcW")
 	registerClassExW         = user32.NewProc("RegisterClassExW")
 	createWindowExW          = user32.NewProc("CreateWindowExW")
@@ -313,7 +312,7 @@ func getBestHIcon(width, height int32) uintptr {
 	var hIconLarge, hIconSmall uintptr
 	if exePathStr, err := os.Executable(); err == nil {
 		if exePath, err := syscall.UTF16PtrFromString(exePathStr); err == nil {
-			extractIconExW.Call(
+			_, _, _ = extractIconExW.Call(
 				uintptr(unsafe.Pointer(exePath)),
 				0,
 				uintptr(unsafe.Pointer(&hIconLarge)),
@@ -356,7 +355,7 @@ func showContextMenu(hWnd uintptr) {
 	if hMenu == 0 {
 		return
 	}
-	defer destroyMenu.Call(hMenu)
+	defer func() { _, _, _ = destroyMenu.Call(hMenu) }()
 
 	trayMu.RLock()
 	conn := isConnected
@@ -429,12 +428,12 @@ func showContextMenu(hWnd uintptr) {
 	ptrExit, _ := syscall.UTF16PtrFromString(sExit)
 
 	// Status Header (Disabled item)
-	appendMenuW.Call(hMenu, uintptr(MF_STRING|MF_GRAYED|MF_DISABLED), uintptr(CMD_STATUS), uintptr(unsafe.Pointer(ptrStatus)))
-	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING|MF_GRAYED|MF_DISABLED), uintptr(CMD_STATUS), uintptr(unsafe.Pointer(ptrStatus)))
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
 	// Primary Action (Connect / Disconnect)
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_CONNECT), uintptr(unsafe.Pointer(ptrAction)))
-	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_CONNECT), uintptr(unsafe.Pointer(ptrAction)))
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
 	// Servers submenu.
 	//
@@ -464,7 +463,7 @@ func showContextMenu(hWnd uintptr) {
 						continue
 					}
 					id := uintptr(CMD_SERVER_BASE + i)
-					appendMenuW.Call(hSub, uintptr(MF_STRING), id, uintptr(unsafe.Pointer(ptr)))
+					_, _, _ = appendMenuW.Call(hSub, uintptr(MF_STRING), id, uintptr(unsafe.Pointer(ptr)))
 					serverSelection[id] = server.ID
 				}
 
@@ -473,17 +472,17 @@ func showContextMenu(hWnd uintptr) {
 					sServers = "🖥️ سرورها"
 				}
 				ptrServers, _ := syscall.UTF16PtrFromString(sServers)
-				appendMenuW.Call(hMenu, uintptr(MF_POPUP|MF_STRING), hSub, uintptr(unsafe.Pointer(ptrServers)))
-				appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
+				_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_POPUP|MF_STRING), hSub, uintptr(unsafe.Pointer(ptrServers)))
+				_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 			}
 		}
 	}
 
 	// Show Window
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_SHOW), uintptr(unsafe.Pointer(ptrShow)))
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_SHOW), uintptr(unsafe.Pointer(ptrShow)))
 
 	// Panic Wipe
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_PANIC_WIPE), uintptr(unsafe.Pointer(ptrPanic)))
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_PANIC_WIPE), uintptr(unsafe.Pointer(ptrPanic)))
 
 	// Diagnostics. Both are only listed when the app registered a handler: a menu
 	// row that does nothing is worse than no row, and this menu is the only
@@ -491,24 +490,24 @@ func showContextMenu(hWnd uintptr) {
 	if openReport != nil {
 		ptrReport, err := syscall.UTF16PtrFromString(sReport)
 		if err == nil {
-			appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_OPEN_REPORT), uintptr(unsafe.Pointer(ptrReport)))
+			_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_OPEN_REPORT), uintptr(unsafe.Pointer(ptrReport)))
 		}
 	}
 	if gpuToggle != nil {
 		ptrGPU, err := syscall.UTF16PtrFromString(sGPU)
 		if err == nil {
-			appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_GPU), uintptr(unsafe.Pointer(ptrGPU)))
+			_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_TOGGLE_GPU), uintptr(unsafe.Pointer(ptrGPU)))
 		}
 	}
-	appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
 	// Exit
-	appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_EXIT), uintptr(unsafe.Pointer(ptrExit)))
+	_, _, _ = appendMenuW.Call(hMenu, uintptr(MF_STRING), uintptr(CMD_EXIT), uintptr(unsafe.Pointer(ptrExit)))
 
 	var pt POINT
-	getCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	_, _, _ = getCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 
-	setForegroundWin.Call(hWnd)
+	_, _, _ = setForegroundWin.Call(hWnd)
 	cmd, _, _ := trackPopupMenuEx.Call(
 		hMenu,
 		uintptr(TPM_RETURNCMD|TPM_RIGHTBUTTON),
@@ -613,15 +612,15 @@ func ApplyMainWindowIcon() {
 				idxBig := int32(-14)
 				idxSmall := int32(-34)
 				if hBig != 0 {
-					sendMessageW.Call(hWnd, uintptr(WM_SETICON), uintptr(ICON_BIG), hBig)
+					_, _, _ = sendMessageW.Call(hWnd, uintptr(WM_SETICON), uintptr(ICON_BIG), hBig)
 					if setClassLongPtrW.Find() == nil {
-						setClassLongPtrW.Call(hWnd, uintptr(uint32(idxBig)), hBig)
+						_, _, _ = setClassLongPtrW.Call(hWnd, uintptr(uint32(idxBig)), hBig)
 					}
 				}
 				if hSmall != 0 {
-					sendMessageW.Call(hWnd, uintptr(WM_SETICON), uintptr(ICON_SMALL), hSmall)
+					_, _, _ = sendMessageW.Call(hWnd, uintptr(WM_SETICON), uintptr(ICON_SMALL), hSmall)
 					if setClassLongPtrW.Find() == nil {
-						setClassLongPtrW.Call(hWnd, uintptr(uint32(idxSmall)), hSmall)
+						_, _, _ = setClassLongPtrW.Call(hWnd, uintptr(uint32(idxSmall)), hSmall)
 					}
 				}
 				break
@@ -656,7 +655,7 @@ func InitSystemTray(tooltip string) {
 		wcx.HIcon = hIcon
 		wcx.HIconSm = hIcon
 
-		registerClassExW.Call(uintptr(unsafe.Pointer(&wcx)))
+		_, _, _ = registerClassExW.Call(uintptr(unsafe.Pointer(&wcx)))
 
 		wndTitle, _ := syscall.UTF16PtrFromString("NexVPNTrayMsgWindow")
 		hWnd, _, _ := createWindowExW.Call(
@@ -696,8 +695,8 @@ func InitSystemTray(tooltip string) {
 			if r == 0 || r == uintptr(^uintptr(0)) {
 				break
 			}
-			translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
-			dispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
+			_, _, _ = translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
+			_, _, _ = dispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
 		}
 	}()
 }
@@ -715,9 +714,9 @@ func ShowMainWindow() {
 	wndTitle, _ := syscall.UTF16PtrFromString("NexVPN")
 	hWnd, _, _ := findWindowW.Call(0, uintptr(unsafe.Pointer(wndTitle)))
 	if hWnd != 0 {
-		showWindow.Call(hWnd, uintptr(SW_RESTORE))
-		showWindow.Call(hWnd, uintptr(SW_SHOW))
-		setForegroundWin.Call(hWnd)
+		_, _, _ = showWindow.Call(hWnd, uintptr(SW_RESTORE))
+		_, _, _ = showWindow.Call(hWnd, uintptr(SW_SHOW))
+		_, _, _ = setForegroundWin.Call(hWnd)
 	}
 }
 
@@ -731,10 +730,10 @@ func RemoveSystemTray() {
 	trayMu.Unlock()
 
 	if nid != nil {
-		shellNotifyIconW.Call(uintptr(NIM_DELETE), uintptr(unsafe.Pointer(nid)))
+		_, _, _ = shellNotifyIconW.Call(uintptr(NIM_DELETE), uintptr(unsafe.Pointer(nid)))
 	}
 	if hWnd != 0 {
-		destroyWindow.Call(hWnd)
+		_, _, _ = destroyWindow.Call(hWnd)
 	}
 }
 
@@ -745,6 +744,6 @@ func UpdateTooltip(tooltip string) {
 	if activeNID != nil {
 		tip16, _ := syscall.UTF16FromString(tooltip)
 		copy(activeNID.SzTip[:], tip16)
-		shellNotifyIconW.Call(uintptr(NIM_MODIFY), uintptr(unsafe.Pointer(activeNID)))
+		_, _, _ = shellNotifyIconW.Call(uintptr(NIM_MODIFY), uintptr(unsafe.Pointer(activeNID)))
 	}
 }

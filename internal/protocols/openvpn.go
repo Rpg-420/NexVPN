@@ -665,7 +665,11 @@ func (a *OpenVPNAdapter) stopInternal(removeTempFiles bool) error {
 			_ = os.Remove(lockFile)
 			time.Sleep(200 * time.Millisecond) // Give the script time to catch the deleted lockfile and kill the process gracefully
 		}
-		KillProcessTree(pid)
+		if err := KillProcessTree(pid); err != nil {
+			// A live OpenVPN wrapper still holds the config and the tun
+			// device, so the caller must not be told the stop succeeded.
+			a.log("error", fmt.Sprintf("OpenVPN process (PID: %d) did not stop: %v", pid, err))
+		}
 	}
 	if removeTempFiles {
 		if tmpConfig != "" {

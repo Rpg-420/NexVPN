@@ -94,7 +94,8 @@ func ConvertNodesToSingBoxJSON(nodes []ParsedNode) (string, error) {
 
 	var outbounds []map[string]interface{}
 	for _, n := range nodes {
-		if n.Outbound != nil && len(n.Outbound) > 0 {
+		// len() on a nil map is 0, so the nil case needs no separate branch.
+		if len(n.Outbound) > 0 {
 			outbounds = append(outbounds, n.Outbound)
 		}
 	}

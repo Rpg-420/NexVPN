@@ -52,7 +52,7 @@ func (k *KillSwitchManager) Enable(serverIP string) error {
 	// every attempt, and that first call is the one that pays for this.
 	if !k.swept {
 		k.swept = true
-		k.disableUnlocked()
+		_ = k.disableUnlocked()
 	}
 
 	// Resolve the VPN server *before* the block policy is installed.
@@ -179,7 +179,7 @@ func (k *KillSwitchManager) Enable(serverIP string) error {
 	}
 
 	if firstErr != nil {
-		k.disableUnlocked()
+		_ = k.disableUnlocked()
 		return fmt.Errorf("failed to configure kill switch: %w", firstErr)
 	}
 
@@ -190,7 +190,7 @@ func (k *KillSwitchManager) Enable(serverIP string) error {
 	// A server given as a literal IP always resolves, so this only fires for a
 	// hostname that the system resolver could not answer.
 	if serverIP != "" && len(serverIPs) == 0 {
-		k.disableUnlocked()
+		_ = k.disableUnlocked()
 		return fmt.Errorf(
 			"kill switch aborted: could not resolve the VPN server address %q, so its allow rule could not be created",
 			serverIP)

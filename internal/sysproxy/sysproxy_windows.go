@@ -238,6 +238,6 @@ func IsSystemProxyEnabled() bool {
 }
 
 func notifyWinInet() {
-	procInternetSetOption.Call(0, uintptr(INTERNET_OPTION_SETTINGS_CHANGED), 0, 0)
-	procInternetSetOption.Call(0, uintptr(INTERNET_OPTION_REFRESH), 0, 0)
+	_, _, _ = procInternetSetOption.Call(0, uintptr(INTERNET_OPTION_SETTINGS_CHANGED), 0, 0)
+	_, _, _ = procInternetSetOption.Call(0, uintptr(INTERNET_OPTION_REFRESH), 0, 0)
 }

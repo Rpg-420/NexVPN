@@ -955,13 +955,9 @@ func parseVlessOutbound(raw string) (map[string]interface{}, error) {
 		if sni == "" && !isIPAddress(host) {
 			sni = host
 		}
-		if hostHeader == "" {
-			if sni != "" && !isIPAddress(sni) {
-				hostHeader = sni
-			} else if !isIPAddress(host) {
-				hostHeader = host
-			}
-		}
+		// No host fallback here: the block below derives the Host header from
+		// the resolved sni, so duplicating it would just be a second guess at
+		// the same value.
 	}
 	fp := q.Get("fp")
 	if fp == "" {
@@ -1173,13 +1169,8 @@ func parseTrojanOutbound(raw string) (map[string]interface{}, error) {
 		if sni == "" && !isIPAddress(host) {
 			sni = host
 		}
-		if hostHeader == "" {
-			if sni != "" && !isIPAddress(sni) {
-				hostHeader = sni
-			} else if !isIPAddress(host) {
-				hostHeader = host
-			}
-		}
+		// No host fallback here either — see the vless branch above; the
+		// Host header is derived once, further down.
 	}
 
 	outbound := map[string]interface{}{
@@ -3437,14 +3428,9 @@ func BuildXrayConfigFromURI(rawURI string, httpPort int, socksPort int, routingM
 	}
 
 	if settings.FragmentEnabled {
-		fragLength := settings.FragmentSize
-		if fragLength == "" {
-			fragLength = "100-200"
-		}
-		fragInterval := settings.FragmentSleep
-		if fragInterval == "" {
-			fragInterval = "10-20"
-		}
+		// The length/interval pair belongs to the extra "fragment" outbound
+		// appended below; here the main outbound only has to be pointed at it.
+		// (An earlier copy of the pair at this spot was never read.)
 		if streamSettings, ok := outbound["streamSettings"].(map[string]interface{}); ok {
 			streamSettings["sockopt"] = map[string]interface{}{
 				"dialerProxy": "fragment",
@@ -3520,14 +3506,10 @@ func BuildXrayConfigFromURI(rawURI string, httpPort int, socksPort int, routingM
 		}
 	}
 
-	if settings.AppRoutingMode == "bypass_selected" && len(settings.SelectedApps) > 0 {
-		// Note: Xray does not support process-based routing. This rule has no effect.
-		// App split tunneling is only available in Sing-box TUN mode.
-		// Silently skip — a warning will be logged by the caller.
-	} else if settings.AppRoutingMode == "proxy_selected" && len(settings.SelectedApps) > 0 {
-		// Note: Xray does not support process-based routing.
-		// App split tunneling is only available in Sing-box TUN mode.
-	}
+	// App split tunneling cannot be expressed in Xray at all: it has no
+	// process-based routing, and the feature exists only in Sing-box TUN mode.
+	// Both routing modes therefore add no rule here. The warning is the
+	// caller's job — silently skipping is what made this look like a bug.
 
 	if routingMode == "direct_iran_block_ads" {
 		rules = append(rules, map[string]interface{}{

@@ -196,15 +196,11 @@ func ScanCleanIPs(ctx context.Context, subnets []string, customPorts []int, maxR
 	}
 
 	// 1. Add Default Pre-Tested Pool First
-	for _, c := range defaultCandidatePool {
-		targets = append(targets, c)
-	}
+	targets = append(targets, defaultCandidatePool...)
 
 	// 2. Fetch live remote candidates
 	remoteCandidates := fetchRemoteCleanCandidates(ctx)
-	for _, c := range remoteCandidates {
-		targets = append(targets, c)
-	}
+	targets = append(targets, remoteCandidates...)
 
 	// 3. Generate systematic Anycast candidates
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))

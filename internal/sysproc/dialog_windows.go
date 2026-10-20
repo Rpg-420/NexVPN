@@ -39,7 +39,7 @@ func showMessageBox(title, message string, flags uintptr) {
 	if err != nil {
 		return
 	}
-	procMessageBox.Call(0, uintptr(unsafe.Pointer(pMessage)), uintptr(unsafe.Pointer(pTitle)), flags)
+	_, _, _ = procMessageBox.Call(0, uintptr(unsafe.Pointer(pMessage)), uintptr(unsafe.Pointer(pTitle)), flags)
 }
 
 // ShowFatalDialog reports a failure that stopped the application, outside the

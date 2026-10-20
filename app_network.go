@@ -330,7 +330,7 @@ func (a *App) RunEmergencyNetworkRepair() (*EmergencyRepairReport, error) {
 	}
 
 	// Overall status is derived from what actually happened — never hard-coded.
-	overall := "success"
+	var overall string
 	switch {
 	case failures == 0:
 		overall = "success"

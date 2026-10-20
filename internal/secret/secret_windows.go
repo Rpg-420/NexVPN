@@ -70,7 +70,7 @@ func Seal(plain string) (string, error) {
 	if ret == 0 {
 		return "", fmt.Errorf("CryptProtectData failed: %w", err)
 	}
-	defer procLocalFree.Call(uintptr(unsafe.Pointer(out.pbData)))
+	defer func() { _, _, _ = procLocalFree.Call(uintptr(unsafe.Pointer(out.pbData))) }()
 
 	return base64.StdEncoding.EncodeToString(out.bytes()), nil
 }
@@ -104,7 +104,7 @@ func Open(sealed string) (string, error) {
 		// sends people looking for a bug in the wrong place.
 		return "", fmt.Errorf("CryptUnprotectData failed (the value was sealed by a different Windows user or machine): %w", callErr)
 	}
-	defer procLocalFree.Call(uintptr(unsafe.Pointer(out.pbData)))
+	defer func() { _, _, _ = procLocalFree.Call(uintptr(unsafe.Pointer(out.pbData))) }()
 
 	return string(out.bytes()), nil
 }

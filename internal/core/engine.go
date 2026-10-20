@@ -56,7 +56,7 @@ func CleanupStaleCores() {
 			}
 			diary.Log("connect", "stale-pid-killed", "pid", strconv.Itoa(pid), "image", image)
 		}
-		sysproc.KillProcessTree(pid)
+		_ = sysproc.KillProcessTree(pid)
 	}
 	sysproc.ClearPIDs()
 }
@@ -1314,7 +1314,7 @@ func releaseProxyPort(port int, wait time.Duration) bool {
 			"port", strconv.Itoa(port),
 			"pid", strconv.Itoa(pid),
 			"image", image)
-		sysproc.KillProcessTree(pid)
+		_ = sysproc.KillProcessTree(pid)
 		if waitForPortFree(port, 6*time.Second) {
 			return true
 		}

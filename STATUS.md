@@ -11,8 +11,9 @@
 
 ## ۰) بازبینی چهارم (۱۴۰۵/۰۷/۲۹) — گزارش کامل در گفتگو و `CHANGELOG_DEV.md`
 
-- **سلامت فنی:** `go build`, `go vet`, `go test ./internal/...`, `tsc --noEmit`, `vitest run` همه سبز.
-  تنها نکته: `TestSingBoxWireGuardEngineStartsWithoutDNSFatal` یک‌بار در اجرای کل پکیج شکست؛
+- **سلامت فنی:** `go build`, `go vet`, `go test ./internal/...`, `tsc --noEmit`, `vitest run` همه سبز،
+  و پس از پاس پاک‌سازی `golangci-lint` هم **صفر ایراد** دارد (بخش ۵). تنها نکتهٔ تاریخی:
+  `TestSingBoxWireGuardEngineStartsWithoutDNSFatal` یک‌بار در اجرای کل پکیج شکست؛
   ریشه محدودیت bind یو‌دی‌پیWireGuard در محیط sandbox بود (تست کنترل و اجرای مجدد پاس شد) —
   باگ کد نبود.
 - **رفع‌شده در این پاس:** پین SHA-256 باینری‌های هسته (قبلاً خالی بود)، پارس sidecar فرمت
@@ -148,3 +149,35 @@ struct literal، و `if`های بسته‌نشده). همه ترمیم شدند.
   `explicit-exit-notify` روی TCP، توازن کوتیشن)، و `internal/sysproxy/sysproxy_windows_test.go`
   (ساختار بایت‌به‌بایت بلاب `DefaultConnectionSettings`).
 - **پاک‌سازی:** فایل زائد `frontend/src/pages/Dashboard.tsx.bak_before_dedup` حذف شد.
+
+## ۵) پاک‌سازی کامل `golangci-lint` (جلسهٔ تکمیلی)
+
+CI گام `lint` (golangci-lint با `only-new-issues`) سرخ بود. پایلاین گزارش را به‌خاطر
+`max-same-issues` پیش‌فرض **فهرست ناقص** می‌داد (هر پیام حداکثر ۳ بار)، پس ابتدا با
+`--max-same-issues 0 --max-issues-per-linter 0` فهرست کامل گرفته شد و بعد همه رفع شدند.
+نتیجهٔ نهایی: `golangci-lint run ./...` → **صفر ایراد** (قبلاً ۵۴ مورد گزارش‌شده).
+
+- **errcheck (۴۲ مورد):** فراخوانی‌های بی‌نتیجهٔ `syscall.Call`/`windows.CloseHandle`/`FreeSid`/
+  `dll.Release`/`procLocalFree`/`io.Copy`/`KillProcessTree`. قرارداد پذیرفته‌شده در پروژه:
+  `_, _, _ = proc.Call(...)` برای فراخوانی عادی و `defer func() { _, _, _ = proc.Call(x) }()`
+  برای defer (تا ارگومان‌ها همان لحظهٔ ورود به تابع ارزیابی شوند، نه زمان اجرای واقعی).
+  در `openvpn.go`/`xray.go` به‌جای بلع خطا، همان الگوی `singbox.go` اعمال شد: خطا لاگ می‌شود،
+  چون معنايش این است که پراسس زنده مانده و پورت را نگه داشته.
+- **unused (۳ مورد):** حذف فیلد `lastError` از `AetherAdapter` (هیچ‌جا خوانده/نوشته نمی‌شد)،
+  فیلد `statsCancel` از `PsiphonAdapter` (مشابه؛ در `singbox.go` و `xray.go` واقعاً استفاده
+  می‌شود، پس فقط این دو مورد مرده بودند) و پراسیدهای بی‌استفادهٔ `postQuitMessage` در ترای.
+- **gosimple/staticcheck (۳ مورد):**
+  - `converter.go`: حذف nil-check اضافی روی `n.Outbound` (`len()` روی map نیل هم صفر است).
+  - `scanner.go`: دو حلقهٔ کپی‌کردنی به `append(targets, slice...)` تبدیل شد.
+  - `apps.go`: cutset سرویس `"\" \r\n"` — قبل از رفع داخل بک‌تیک بود، پس `\r\n` دو کاراکتر
+    بک‌اسلش و حرف بود و نه CR/LF؛ یعنی trimming درست کار نمی‌کرد.
+- **ineffassign (۵ مورد) و SA9003 (۱ مورد) در `parser.go`:** کد مردهٔ واقعی پیدا و حذف شد:
+  - دو بلوک سایهٔ `hostHeader` (در مسیر VLESS و Trojan) که مقدارشان هیچ‌وقت خوانده نمی‌شد و
+    بعداً در همان تابع دوباره از `q.Get("host")` محاسبه می‌شد.
+  - یک جفت `fragLength`/`fragInterval` تکراری در بلوک اول FragmentEnabled که هیچ اثری نداشت
+    (جفت مؤثر همان یکی پایین‌تر است).
+  - شرط `AppRoutingMode` دو شاخهٔ خالی در تولید کانفیگ Xray؛ هر دو شاخه فقط کامنت داشتند و
+    Xray هیچ روتینگ بر پایهٔ پروسه ندارد — به یک کامنت توضیحی تبدیل شد.
+
+نکتهٔ فرآیند: چون `.gitattributes` سورس‌های Go را به LF پین می‌کند و کپی کار کر‌اف‌دار است،
+اعتبارسنجی gofmt روی نسخهٔ LF‌نرمال‌شده در یک دایرکتوری موقت انجام شد، نه روی فایل اصلی.

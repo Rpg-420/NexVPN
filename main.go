@@ -52,7 +52,7 @@ func main() {
 		if app.engine != nil {
 			_ = app.engine.Disconnect()
 		}
-		sysproxy.ClearSystemProxy()
+		_ = sysproxy.ClearSystemProxy()
 		_ = core.GetKillSwitch().ForceCleanup()
 		core.CleanupStaleCores()
 		diary.Close()
@@ -110,7 +110,7 @@ func main() {
 	if app.engine != nil {
 		_ = app.engine.Disconnect()
 	}
-	sysproxy.ClearSystemProxy()
+	_ = sysproxy.ClearSystemProxy()
 	_ = core.GetKillSwitch().ForceCleanup()
 	core.CleanupStaleCores()
 

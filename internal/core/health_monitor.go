@@ -75,8 +75,7 @@ func (hm *HealthMonitor) Start(ctx context.Context) {
 	// Initial probe after a short delay. The timer is tracked so it can be
 	// cancelled when the connection ends — otherwise a stale probe fires
 	// against a torn-down proxy port.
-	var initialTimer *time.Timer
-	initialTimer = time.AfterFunc(2*time.Second, func() {
+	initialTimer := time.AfterFunc(2*time.Second, func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -165,19 +164,16 @@ func (hm *HealthMonitor) probe() {
 		hm.history = append(hm.history, latency)
 
 		// Calculate Quality Score (0-100)
+		// score starts at 100 (excellent); the ladder below only lowers it.
 		score := 100
-		if latency < 80 {
-			score = 100
-		} else if latency < 150 {
-			score = 90
-		} else if latency < 250 {
-			score = 80
-		} else if latency < 400 {
-			score = 65
-		} else if latency < 700 {
-			score = 45
-		} else {
+		if latency >= 700 {
 			score = 25
+		} else if latency >= 400 {
+			score = 45
+		} else if latency >= 250 {
+			score = 80
+		} else if latency >= 150 {
+			score = 90
 		}
 
 		// Penalize jitter

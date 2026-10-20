@@ -45,7 +45,7 @@ func EnsureWintunAdapter(binDir string, adapterName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load wintun.dll: %w", err)
 	}
-	defer dll.Release()
+	defer func() { _ = dll.Release() }()
 
 	procOpenAdapter, err := dll.FindProc("WintunOpenAdapter")
 	if err != nil {
@@ -69,10 +69,13 @@ func EnsureWintunAdapter(binDir string, adapterName string) error {
 		return err
 	}
 
-	// Try opening existing adapter
+	// Opening an adapter the process just created (or one sing-box already
+	// holds) is safe: Wintun allows concurrent opens, and this handshake handle
+	// is closed immediately. Failure to close is not actionable here — the
+	// adapter itself is already in the state we wanted.
 	handle, _, _ := procOpenAdapter.Call(uintptr(unsafe.Pointer(namePtr)))
 	if handle != 0 {
-		procCloseAdapter.Call(handle)
+		_, _, _ = procCloseAdapter.Call(handle)
 		return nil
 	}
 
@@ -86,7 +89,7 @@ func EnsureWintunAdapter(binDir string, adapterName string) error {
 		return fmt.Errorf("failed to create wintun adapter %s: %v", adapterName, createErr)
 	}
 
-	procCloseAdapter.Call(handle)
+	_, _, _ = procCloseAdapter.Call(handle)
 	return nil
 }
 
@@ -122,7 +125,7 @@ func WintunAdapterReady(binDir, adapterName string) bool {
 	if err != nil {
 		return false
 	}
-	defer dll.Release()
+	defer func() { _ = dll.Release() }()
 
 	procOpenAdapter, err := dll.FindProc("WintunOpenAdapter")
 	if err != nil {
@@ -142,7 +145,7 @@ func WintunAdapterReady(binDir, adapterName string) bool {
 	if handle == 0 {
 		return false
 	}
-	procCloseAdapter.Call(handle)
+	_, _, _ = procCloseAdapter.Call(handle)
 	return true
 }
 

@@ -144,13 +144,12 @@ func probeProfileTCP(prof config.Profile, timeout time.Duration) (string, int, i
 // button, where trying something is better than refusing outright. Callers that
 // must not act on an unreachable server (auto-failover) use
 // ProbeReachableProfiles instead.
-func FindFastestProfile(ctx context.Context, profiles []config.Profile, testURL string) (*config.Profile, int, error) {
+// FindFastestProfile returns the lowest-latency profile measured with a
+// direct TCP probe. testURL is accepted for API symmetry with the HTTP-based
+// testers but is not consulted: a TCP round trip is what this path measures.
+func FindFastestProfile(ctx context.Context, profiles []config.Profile, _ string) (*config.Profile, int, error) {
 	if len(profiles) == 0 {
 		return nil, -1, fmt.Errorf("no profiles available for auto-selection")
-	}
-
-	if testURL == "" {
-		testURL = "http://cp.cloudflare.com/generate_204"
 	}
 
 	type pingRes struct {

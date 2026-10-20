@@ -911,7 +911,7 @@ func extractTarGz(data []byte, targetDir, coreKey string) error {
 		if extractedFiles >= maxArchiveFiles || header.Size < 0 || header.Size > maxExtractedBytes || extractedBytes+header.Size > maxExtractedBytes {
 			return fmt.Errorf("archive exceeds extraction safety limits")
 		}
-		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+		if header.Typeflag != tar.TypeReg {
 			continue
 		}
 		baseName := filepath.Base(header.Name)

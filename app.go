@@ -274,7 +274,7 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.engine != nil {
 		_ = a.engine.Disconnect()
 	}
-	sysproxy.ClearSystemProxy()
+	_ = sysproxy.ClearSystemProxy()
 	_ = core.GetKillSwitch().ForceCleanup()
 	core.CleanupStaleCores()
 

@@ -87,7 +87,7 @@ func WaitForProcessExit(pid int, timeout time.Duration) bool {
 	if err != nil {
 		return true // no such process: nothing left to wait for
 	}
-	defer windows.CloseHandle(h)
+	defer func() { _ = windows.CloseHandle(h) }()
 
 	ms := uint32(timeout / time.Millisecond)
 	if ms == 0 {
@@ -106,7 +106,7 @@ func terminateProcess(pid int) error {
 	if err != nil {
 		return err
 	}
-	defer windows.CloseHandle(h)
+	defer func() { _ = windows.CloseHandle(h) }()
 	return windows.TerminateProcess(h, 1)
 }
 
@@ -168,7 +168,7 @@ func IsAdmin() bool {
 	if err != nil {
 		return false
 	}
-	defer windows.FreeSid(sid)
+	defer func() { _ = windows.FreeSid(sid) }()
 	token := windows.Token(0)
 	member, err := token.IsMember(sid)
 	return err == nil && member

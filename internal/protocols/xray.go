@@ -387,7 +387,12 @@ func (a *XrayAdapter) Stop() error {
 	if cmd != nil && cmd.Process != nil {
 		pid := cmd.Process.Pid
 		a.log("info", fmt.Sprintf("Stopping Xray core (PID: %d)...", pid))
-		KillProcessTree(pid)
+		if err := KillProcessTree(pid); err != nil {
+			// Same reasoning as sing-box: a core that survived the kill still
+			// holds its listener and its config file, so the failure has to
+			// reach the log rather than be swallowed here.
+			a.log("error", fmt.Sprintf("Xray core (PID: %d) did not stop: %v", pid, err))
+		}
 		a.flushCoreLog()
 		// Only a core that was actually running gets a "stopped" line: several
 		// paths stop the same process (TUN timeout, engine fallback, disconnect,
