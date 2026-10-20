@@ -1,0 +1,9 @@
+# Line-ending policy.
+#
+# Go sources are stored and checked out with LF on every platform. Without this,
+# a developer with `core.autocrlf=true` (the default on Windows Git) gets CRLF in
+# the working tree, and `gofmt -l` then reports 22 otherwise-correctly-formatted
+# files as unformatted — emitting a full-file diff for each one. Normalising here
+# makes the CI `gofmt` check mean the same thing on every machine.
+* text=auto
+*.go text eol=lf

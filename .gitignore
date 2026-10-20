@@ -1,16 +1,15 @@
 # Binaries & Builds
 build/bin/
+build/ui-review/
 *.exe
 *.dll
 *.syso
 *.so
 *.dylib
 
-# Allow required core engine runtimes
-!bin/*.exe
-!bin/*.dll
-!bin/*.dat
-bin/psiphon.exe
+# Core engines are downloaded at build/runtime, not committed (keep repo lean)
+# bin/* is fully ignored - use `go run` or installer to populate
+bin/
 
 # Node / Frontend
 node_modules/
@@ -36,3 +35,25 @@ tmp/
 *.zip
 *.mjs
 *.timestamp-*
+
+# Editor / merge / tooling artifacts (L9)
+*.bak
+*.bak_*
+*.orig
+*.rej
+.freebuff/
+.opencode/
+.cursor/
+
+# Personal AI-agent / editor tooling — never publish
+.agents/
+.claude/
+.skills.json
+skills-lock.json
+.workbuddy-ai/
+
+# Archived UI-design prototype — local reference only, not part of the app
+design/
+
+# Build artifact fingerprints
+*.md5
