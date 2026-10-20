@@ -385,6 +385,7 @@ func (p *phaseTimer) mark(step string) {
 //  7. Enforce Kill Switch leak prevention firewall rules if enabled.
 //  8. Start background real-time bandwidth sampling and connection health heartbeat monitor.
 //  9. Transition state to StateConnected and emit native OS toast notifications.
+//
 // prepareConnectionMode runs everything between "kill switch is off" and "core
 // is selected": announce the connecting state, clear our own TUN adapter (so a
 // ghost cannot satisfy the readiness probe), enforce the TUN elevation guard,

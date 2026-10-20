@@ -29,15 +29,15 @@ const deviceNotifyCallback = 2
 
 // PBT_* power-broadcast codes delivered to the callback.
 const (
-	pbtApmsuspend          = 0x0004
-	pbtApmresumecritical   = 0x0006
-	pbtApmresumesuspend    = 0x0007
-	pbtApmresumeautomatic  = 0x0012
-	pbtPowerSettingChange  = 0x8013
-	acLineStatusOffline    = 0
-	acLineStatusOnline     = 1
-	acLineStatusUnknown    = 255
-	powerPollInterval      = 20 * time.Second
+	pbtApmsuspend         = 0x0004
+	pbtApmresumecritical  = 0x0006
+	pbtApmresumesuspend   = 0x0007
+	pbtApmresumeautomatic = 0x0012
+	pbtPowerSettingChange = 0x8013
+	acLineStatusOffline   = 0
+	acLineStatusOnline    = 1
+	acLineStatusUnknown   = 255
+	powerPollInterval     = 20 * time.Second
 )
 
 // deviceNotifySubscribeParameters mirrors

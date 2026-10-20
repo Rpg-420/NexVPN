@@ -181,11 +181,11 @@ func (a *App) GetConnectionStatistics() ConnectionStatistics {
 
 // IPv6LeakResult reports whether IPv6 traffic is escaping the tunnel.
 type IPv6LeakResult struct {
-	TunnelActive bool   `json:"tunnel_active"`
-	IPv6Reachable bool  `json:"ipv6_reachable"`
-	Leaking      bool   `json:"leaking"`
-	ObservedIP   string `json:"observed_ip"`
-	Detail       string `json:"detail"`
+	TunnelActive  bool   `json:"tunnel_active"`
+	IPv6Reachable bool   `json:"ipv6_reachable"`
+	Leaking       bool   `json:"leaking"`
+	ObservedIP    string `json:"observed_ip"`
+	Detail        string `json:"detail"`
 }
 
 // ipv6ProbeURL is an IPv6-only endpoint. It is used rather than a dual-stack
