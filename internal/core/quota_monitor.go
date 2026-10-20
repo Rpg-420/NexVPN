@@ -99,7 +99,7 @@ func (qm *QuotaMonitor) CheckSubscriptionQuota(subURL string) (*QuotaAlertInfo, 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	userInfo := resp.Header.Get("Subscription-Userinfo")
 	if userInfo == "" {
@@ -201,7 +201,7 @@ func (qm *QuotaMonitor) DispatchWebhookAlert(webhookURL string, alert QuotaAlert
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return nil
 }

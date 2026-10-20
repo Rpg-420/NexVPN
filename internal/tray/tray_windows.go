@@ -559,18 +559,6 @@ func showContextMenu(hWnd uintptr) {
 		if gFn != nil {
 			go gFn()
 		}
-	default:
-		// Server submenu selection. The command id is an index into the map
-		// built while the menu was assembled, so an id that is not in it can
-		// only mean a stale menu — ignore it rather than guessing.
-		if profileID, ok := serverSelection[cmd]; ok && profileID != "" {
-			trayMu.RLock()
-			selFn := serverSelectFunc
-			trayMu.RUnlock()
-			if selFn != nil {
-				go selFn(profileID)
-			}
-		}
 	case CMD_EXIT:
 		trayMu.RLock()
 		eFn := exitFunc
@@ -593,6 +581,18 @@ func showContextMenu(hWnd uintptr) {
 			time.Sleep(15 * time.Second)
 			os.Exit(0)
 		}()
+	default:
+		// Server submenu selection. The command id is an index into the map
+		// built while the menu was assembled, so an id that is not in it can
+		// only mean a stale menu — ignore it rather than guessing.
+		if profileID, ok := serverSelection[cmd]; ok && profileID != "" {
+			trayMu.RLock()
+			selFn := serverSelectFunc
+			trayMu.RUnlock()
+			if selFn != nil {
+				go selFn(profileID)
+			}
+		}
 	}
 }
 

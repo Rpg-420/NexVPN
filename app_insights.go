@@ -247,7 +247,7 @@ func (a *App) TestIPv6Leak() IPv6LeakResult {
 		}
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 128))
 	address := strings.TrimSpace(string(body))
@@ -326,7 +326,7 @@ func (a *App) CheckAppUpdate() UpdateInfo {
 		info.Detail = "Could not reach the release server: " + err.Error()
 		return info
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		info.Detail = fmt.Sprintf("The release server answered HTTP %d", resp.StatusCode)
@@ -534,7 +534,7 @@ func (a *App) ExportDiagnosticsBundle() (string, error) {
 		if err != nil {
 			return err
 		}
-		defer source.Close()
+		defer func() { _ = source.Close() }()
 		_, err = io.Copy(w, io.LimitReader(source, 4<<20))
 		return err
 	})

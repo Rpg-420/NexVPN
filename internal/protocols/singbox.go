@@ -90,14 +90,14 @@ func getFreeLocalPort() int {
 	if err != nil {
 		return 19090
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port
 }
 
 func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error {
 	sbBin, err := findBinary("sing-box")
 	if err != nil {
-		return fmt.Errorf("Sing-box core binary not found. Please ensure 'sing-box' binary is in bin folder")
+		return fmt.Errorf("sing-box core binary not found, please ensure the 'sing-box' binary is in the bin folder")
 	}
 
 	// Dynamically allocate a free local port for clash_api
@@ -118,11 +118,11 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(configContent); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	binDir := filepath.Dir(sbBin)
 	cmdArgs := []string{"run", "-c", tmpPath, "-D", binDir}
@@ -137,7 +137,7 @@ func (a *SingBoxAdapter) Start(ctx context.Context, configContent string) error 
 			lockFile, err := os.CreateTemp(ensureNexVPNTempDir(), "singbox-lock-*.lock")
 			if err == nil {
 				lockFilePath = lockFile.Name()
-				lockFile.Close()
+				_ = lockFile.Close()
 				script := `
 					"$1" run -c "$2" -D "$3" &
 					pid=$!
@@ -569,7 +569,7 @@ func (a *SingBoxAdapter) pollClashStats(ctx context.Context) {
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				return
 			default:
 			}
@@ -586,7 +586,7 @@ func (a *SingBoxAdapter) pollClashStats(ctx context.Context) {
 				a.mu.Unlock()
 			}
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		time.Sleep(1 * time.Second)
 	}
 }

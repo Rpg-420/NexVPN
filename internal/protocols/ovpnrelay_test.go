@@ -96,13 +96,13 @@ func TestSplitRelaySplitsTheHandshakeAndKeepsItIntact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("relay did not start: %v", err)
 	}
-	defer relay.Close()
+	defer func() { _ = relay.Close() }()
 
 	client, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 3*time.Second)
 	if err != nil {
 		t.Fatalf("could not reach the relay: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	reset := resetRecord([]byte("hello-opcode"))
 	// Comfortably more than relaySplitBytes, so the test exercises both the
@@ -190,13 +190,13 @@ func TestSplitRelayKeepsTheLengthPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("relay did not start: %v", err)
 	}
-	defer relay.Close()
+	defer func() { _ = relay.Close() }()
 
 	client, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 3*time.Second)
 	if err != nil {
 		t.Fatalf("could not reach the relay: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Nothing after the record, so only the first phase runs.
 	want := resetRecord([]byte("hello-opcode"))
@@ -223,7 +223,7 @@ func TestSplitRelayKeepsTheLengthPrefix(t *testing.T) {
 func TestSplitRelayWithoutHostsRefusesToStart(t *testing.T) {
 	relay := NewSplitRelay(nil, 7011, nil)
 	if _, err := relay.Start(); err == nil {
-		relay.Close()
+		_ = relay.Close()
 		t.Fatal("a relay with no addresses should not start")
 	}
 }
@@ -238,7 +238,7 @@ func TestSplitRelayDropsTheClientWhenTheUpstreamResets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not start the dead listener: %v", err)
 	}
-	defer dead.Close()
+	defer func() { _ = dead.Close() }()
 	go func() {
 		for {
 			conn, acceptErr := dead.Accept()
@@ -312,7 +312,7 @@ func TestSplitRelayCloseReleasesTheListener(t *testing.T) {
 func TestReadExactlyHandlesShortReads(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 
 	go func() {
 		// Deliberately dribbled out one byte at a time.
@@ -334,7 +334,7 @@ func TestReadExactlyHandlesShortReads(t *testing.T) {
 func TestReadExactlyRejectsNonsense(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 
 	if _, err := readExactly(client, 0); err == nil {
 		t.Error("a zero-length read should be rejected")

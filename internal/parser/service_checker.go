@@ -212,7 +212,7 @@ func CheckServicesUnblock(ctx context.Context, proxyPort int) ([]ServiceUnblockR
 				}
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			status := "unlocked"
 			msg := "Available & Fast"

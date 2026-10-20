@@ -135,10 +135,31 @@ jobs:
           check-latest: true
           cache: true
 
+      # main.go embeds frontend/dist, and dist/ is gitignored, so a Go job that
+      # does not build the frontend cannot even type-check: `invalid go:embed:
+      # build system did not supply embed configuration`. That single error is
+      # what made this job fail for weeks while the real backlog was elsewhere.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & Build Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # Pinned, not `latest`: the gate used to drift every time upstream
+          # shipped a release, and the default linter set changed with it.
+          # .golangci.yml carries the version-2 config the project is clean
+          # against; bump both together.
+          version: v2.6.2
           # Report issues without failing the pipeline until the existing
           # backlog is cleared; flip to false to make lint blocking.
           only-new-issues: true

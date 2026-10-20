@@ -110,7 +110,7 @@ func RunNetworkDoctor(ctx context.Context) DoctorReport {
 		conn, err := net.DialTimeout("tcp", "1.1.1.1:53", 1000*time.Millisecond)
 		dur := int(time.Since(start).Milliseconds())
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			item.Status = "ok"
 			item.LatencyMs = dur
 			item.Detail = fmt.Sprintf("Cloudflare DNS responding in %d ms", dur)
@@ -118,7 +118,7 @@ func RunNetworkDoctor(ctx context.Context) DoctorReport {
 			// Fallback check 8.8.8.8
 			conn2, err2 := net.DialTimeout("tcp", "8.8.8.8:53", 1000*time.Millisecond)
 			if err2 == nil {
-				conn2.Close()
+				_ = conn2.Close()
 				item.Status = "ok"
 				item.Detail = "Google DNS is reachable"
 			} else {
@@ -143,7 +143,7 @@ func RunNetworkDoctor(ctx context.Context) DoctorReport {
 		conn, err := net.DialTimeout("tcp", "162.159.192.1:443", 1000*time.Millisecond)
 		dur := int(time.Since(start).Milliseconds())
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			item.Status = "ok"
 			item.LatencyMs = dur
 			item.Detail = fmt.Sprintf("Anycast edge reachable with %d ms latency", dur)
@@ -340,7 +340,7 @@ func RepairNetworkIssues() RepairResult {
 func checkPort(host string, port int, timeout time.Duration) bool {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), timeout)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		return true
 	}
 	return false

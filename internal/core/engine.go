@@ -934,7 +934,7 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 					// off" indistinguishable.
 					why := "disabled in settings"
 					switch {
-					case !(settings.AutoFailover || settings.AutoFailoverEnabled):
+					case !settings.AutoFailover && !settings.AutoFailoverEnabled:
 						why = "disabled in settings"
 					case !failoverArmed:
 						why = "no failover handler is registered"
@@ -1072,7 +1072,7 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 					return
 				}
 
-				if !(settings.AutoFailover || settings.AutoFailoverEnabled) {
+				if !settings.AutoFailover && !settings.AutoFailoverEnabled {
 					return
 				}
 
@@ -1336,7 +1336,7 @@ func probeProxy(port int, timeout time.Duration) bool {
 		// Probe primary target port on 127.0.0.1
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 350*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return true
 		}
 
@@ -1344,7 +1344,7 @@ func probeProxy(port int, timeout time.Duration) bool {
 		if port == 10808 {
 			connHttp, errHttp := net.DialTimeout("tcp", "127.0.0.1:10809", 350*time.Millisecond)
 			if errHttp == nil {
-				connHttp.Close()
+				_ = connHttp.Close()
 				return true
 			}
 		}

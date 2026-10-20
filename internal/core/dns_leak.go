@@ -77,7 +77,7 @@ func RunDNSLeakTest(ctx context.Context, proxyPort int) (*DNSLeakReport, error) 
 	// Test Cloudflare trace for resolver
 	req, _ := http.NewRequestWithContext(ctx, "GET", "https://1.1.1.1/cdn-cgi/trace", nil)
 	if resp, err := client.Do(req); err == nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		var body [1024]byte
 		n, _ := resp.Body.Read(body[:])
 		lines := strings.Split(string(body[:n]), "\n")
@@ -95,7 +95,7 @@ func RunDNSLeakTest(ctx context.Context, proxyPort int) (*DNSLeakReport, error) 
 	// 3. Query edns.ip-api.com to find the exact DNS resolver IP
 	reqDNS, _ := http.NewRequestWithContext(ctx, "GET", "http://edns.ip-api.com/json", nil)
 	if resp, err := client.Do(reqDNS); err == nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		var ednsData struct {
 			DNS struct {
 				IP  string `json:"ip"`

@@ -122,7 +122,7 @@ func (hm *HealthMonitor) probe() {
 	resp, err := client.Get(hm.probeURL)
 	latency := int(time.Since(start).Milliseconds())
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 	}
 
 	hm.mu.Lock()

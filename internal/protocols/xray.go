@@ -80,7 +80,7 @@ func (a *XrayAdapter) log(level, msg string) {
 func (a *XrayAdapter) Start(ctx context.Context, configContent string) error {
 	xrayBin, err := findBinary("xray")
 	if err != nil {
-		return fmt.Errorf("Xray core binary not found. Please ensure 'xray' binary is in bin folder")
+		return fmt.Errorf("xray core binary not found, please ensure the 'xray' binary is in the bin folder")
 	}
 
 	// Reset the exit signal so a previous run's termination cannot be mistaken
@@ -99,11 +99,11 @@ func (a *XrayAdapter) Start(ctx context.Context, configContent string) error {
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(configContent); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	binDir := filepath.Dir(xrayBin)
 	cmd := exec.CommandContext(ctx, xrayBin, "run", "-config", tmpPath)
@@ -279,7 +279,7 @@ func (a *XrayAdapter) Start(ctx context.Context, configContent string) error {
 			time.Sleep(300 * time.Millisecond)
 			conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 500*time.Millisecond)
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 				break
 			}
 		}

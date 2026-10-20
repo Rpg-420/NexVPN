@@ -239,7 +239,7 @@ func FetchOpenVPNServers(ctx context.Context, sourceID string, overrideURL strin
 	if err != nil {
 		return nil, describeCatalogueFailure(src, err, ctx, time.Since(start))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s list returned HTTP %d", src.Name, resp.StatusCode)

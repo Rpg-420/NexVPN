@@ -56,7 +56,7 @@ func DetectCurrentISP(ctx context.Context) (*ISPRecommendation, error) {
 		_ = resp.Body.Close()
 		return undetectedRecommendation(fmt.Sprintf("ISP detection service returned HTTP %d", resp.StatusCode)), nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// A JSON object with five short fields. The cap is generous for the real
 	// response and small enough that a hostile endpoint cannot make this

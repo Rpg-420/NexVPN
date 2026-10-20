@@ -73,7 +73,7 @@ func (a *AetherAdapter) log(level, msg string) {
 func (a *AetherAdapter) Start(ctx context.Context, configContent string) error {
 	aetherBin, err := findBinary("aether")
 	if err != nil {
-		return fmt.Errorf("Aether core binary not found. Please ensure 'aether' binary is installed")
+		return fmt.Errorf("aether core binary not found, please ensure the 'aether' binary is installed")
 	}
 
 	// Unmarshal wrapper
@@ -171,7 +171,7 @@ func (a *AetherAdapter) Start(ctx context.Context, configContent string) error {
 				tmpFile, err := os.CreateTemp(tmpDir, "singbox-aether-*.json")
 				if err == nil {
 					_, _ = tmpFile.WriteString(sbJSON)
-					tmpFile.Close()
+					_ = tmpFile.Close()
 					a.mu.Lock()
 					a.sbTmpFile = tmpFile.Name()
 					a.mu.Unlock()

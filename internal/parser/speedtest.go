@@ -34,7 +34,7 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 	if proxyPort > 0 {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort), 400*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			isProxyAvailable = true
 		} else {
 			// Try fallback HTTP proxy port 10809 or SOCKS5 10808 if specified port didn't respond
@@ -43,7 +43,7 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 					continue
 				}
 				if connFallback, errFB := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", fallbackPort), 200*time.Millisecond); errFB == nil {
-					connFallback.Close()
+					_ = connFallback.Close()
 					proxyPort = fallbackPort
 					isProxyAvailable = true
 					break
@@ -111,7 +111,7 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 		if err == nil {
 			ms := int(time.Since(start).Milliseconds())
 			pings = append(pings, ms)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
@@ -154,7 +154,7 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 		resp, err := client.Do(req)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 			continue
 		}
@@ -202,7 +202,7 @@ func RunSpeedTest(ctx context.Context, proxyPort int, onProgress func(SpeedTestP
 
 		close(doneChan)
 		ticker.Stop()
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		elapsed := time.Since(startTime).Seconds()
 		if elapsed > 0 && downloadedBytes > 0 {

@@ -37,7 +37,7 @@ func SetAutoStart(enable bool) error {
 		if err != nil {
 			return err
 		}
-		defer k.Close()
+		defer func() { _ = k.Close() }()
 		return k.SetStringValue(appValueName, `"`+execPath+`" --minimized`)
 	} else {
 		// Remove Task Scheduler task
@@ -55,6 +55,6 @@ func cleanRegistryRun() {
 	k, err := registry.OpenKey(registry.CURRENT_USER, runRegistryKey, registry.SET_VALUE)
 	if err == nil {
 		_ = k.DeleteValue(appValueName)
-		k.Close()
+		_ = k.Close()
 	}
 }

@@ -157,12 +157,12 @@ func FetchTelegramProxies(ctx context.Context, customSources []string) ([]Telegr
 					continue
 				}
 				if resp.StatusCode != http.StatusOK {
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					reqCancel()
 					continue
 				}
 				data, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20+1))
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				reqCancel()
 				if readErr == nil && len(data) > 0 && len(data) <= 2<<20 {
 					bodyBytes = data
@@ -412,7 +412,7 @@ func TestSingleTelegramProxy(ctx context.Context, p TelegramProxy, timeout time.
 	if err != nil {
 		return 0, false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	elapsed := int(time.Since(start).Milliseconds())
 	if elapsed <= 0 {

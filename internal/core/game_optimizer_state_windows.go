@@ -24,7 +24,7 @@ func readGamingOptimizationState() GamingOptimizationStatus {
 		if v, _, vErr := k.GetIntegerValue("SystemResponsiveness"); vErr == nil && v == 0 {
 			status.SystemResponsiveness = true
 		}
-		k.Close()
+		_ = k.Close()
 	}
 
 	// 2. Per-interface TCP tweaks
@@ -33,7 +33,7 @@ func readGamingOptimizationState() GamingOptimizationStatus {
 	noDelayApplied := false
 	if ik, err := registry.OpenKey(registry.LOCAL_MACHINE, interfacesKey, registry.ENUMERATE_SUB_KEYS); err == nil {
 		subkeys, enumErr := ik.ReadSubKeyNames(-1)
-		ik.Close()
+		_ = ik.Close()
 		if enumErr == nil {
 			for _, sub := range subkeys {
 				subPath := interfacesKey + `\` + sub
@@ -49,7 +49,7 @@ func readGamingOptimizationState() GamingOptimizationStatus {
 				if v, _, vErr := sk.GetIntegerValue("TCPNoDelay"); vErr == nil && v == 1 {
 					noDelay = true
 				}
-				sk.Close()
+				_ = sk.Close()
 
 				if ack || noDelay {
 					status.OptimizedInterfaces = append(status.OptimizedInterfaces, sub)

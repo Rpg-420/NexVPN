@@ -153,7 +153,7 @@ func decompressPayload(data []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer zr.Close()
+		defer func() { _ = zr.Close() }()
 		return io.ReadAll(zr)
 	}
 	return data, nil
@@ -200,7 +200,7 @@ func BroadcastProfilesToLAN(profiles []config.Profile, deviceName string, pin st
 	if err != nil {
 		return 0, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	msg := []byte(SyncMagicHeader + encPayload)
 	for i := 0; i < 3; i++ {
 		if _, err := conn.Write(msg); err != nil {
@@ -229,7 +229,7 @@ func ListenForNearbyProfiles(ctx context.Context, timeout time.Duration, pin str
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 65535)
 	for {

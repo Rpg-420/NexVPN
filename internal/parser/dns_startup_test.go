@@ -187,7 +187,7 @@ func startGeneratedConfig(t *testing.T, cfg map[string]interface{}) (string, boo
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		t.Fatalf("write: %v", err)

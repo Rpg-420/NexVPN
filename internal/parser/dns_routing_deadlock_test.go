@@ -228,12 +228,12 @@ func TestSingBoxDNSConfigPassesCoreCheck(t *testing.T) {
 			if err != nil {
 				t.Fatalf("CreateTemp failed: %v", err)
 			}
-			defer os.Remove(tmp.Name())
+			defer func() { _ = os.Remove(tmp.Name()) }()
 			if _, err := tmp.WriteString(cfgStr); err != nil {
-				tmp.Close()
+				_ = tmp.Close()
 				t.Fatalf("writing temp config failed: %v", err)
 			}
-			tmp.Close()
+			_ = tmp.Close()
 
 			binDir, _ := filepath.Abs(filepath.Dir(sbBin))
 			cmd := exec.Command(sbBin, "check", "-c", tmp.Name(), "-D", binDir)
@@ -257,7 +257,7 @@ func freeTCPPort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("free port probe failed: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port
 }
 
@@ -312,9 +312,9 @@ func TestSingBoxWireGuardEngineStartsWithoutDNSFatal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.Write(safeCfg); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		t.Fatalf("writing temp config failed: %v", err)
 	}
 	tmp.Close()

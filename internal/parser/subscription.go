@@ -59,7 +59,7 @@ func FetchSubscriptionWithUserInfo(ctx context.Context, urlStr string) (*Subscri
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch subscription: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("server returned HTTP %d", resp.StatusCode)

@@ -113,12 +113,12 @@ func FetchFreeConfigs(ctx context.Context, customSources []string) ([]FreeConfig
 					continue
 				}
 				if resp.StatusCode != http.StatusOK {
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					reqCancel()
 					continue
 				}
 				data, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20+1))
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				reqCancel()
 				if readErr == nil && len(data) > 0 && len(data) <= 4<<20 {
 					bodyBytes = data
@@ -317,7 +317,7 @@ func TestSingleFreeConfig(item FreeConfigItem, timeout time.Duration) (int, bool
 	if err != nil {
 		return 0, false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	elapsed := int(time.Since(start).Milliseconds())
 	if elapsed == 0 {

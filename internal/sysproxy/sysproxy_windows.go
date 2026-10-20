@@ -36,7 +36,7 @@ func setSystemProxyPlatform(host string, port int) error {
 		if err != nil {
 			return fmt.Errorf("open internet settings registry key: %w", err)
 		}
-		defer k.Close()
+		defer func() { _ = k.Close() }()
 		if err := writeProxySettings(k, 1, proxyAddr, defaultBypass); err != nil {
 			return err
 		}
@@ -78,13 +78,13 @@ func setFullSystemProxyPlatform(httpPort int, socksPort int) error {
 		return fmt.Errorf("open internet settings registry key: %w", err)
 	}
 	if err := writeProxySettings(k, 1, proxyAddr, defaultBypass); err != nil {
-		k.Close()
+		_ = k.Close()
 		return err
 	}
 	// Removing AutoConfigURL is best-effort: the value often does not exist, and
 	// that is not a failure. Any other error still surfaces via SetXxxValue above.
 	_ = k.DeleteValue("AutoConfigURL")
-	k.Close()
+	_ = k.Close()
 
 	// 2. Update Connections binary blob (DefaultConnectionSettings & SavedLegacySettings)
 	ck, err := registry.OpenKey(registry.CURRENT_USER, connectionsKey, registry.QUERY_VALUE|registry.SET_VALUE)
@@ -93,14 +93,14 @@ func setFullSystemProxyPlatform(httpPort int, socksPort int) error {
 	}
 	blob := buildConnectionBlob(true, proxyAddr, defaultBypass)
 	if err := ck.SetBinaryValue("DefaultConnectionSettings", blob); err != nil {
-		ck.Close()
+		_ = ck.Close()
 		return fmt.Errorf("set DefaultConnectionSettings: %w", err)
 	}
 	if err := ck.SetBinaryValue("SavedLegacySettings", blob); err != nil {
-		ck.Close()
+		_ = ck.Close()
 		return fmt.Errorf("set SavedLegacySettings: %w", err)
 	}
-	ck.Close()
+	_ = ck.Close()
 
 	// 3. Set environment variables for shell tools and CLI processes.
 	// Setenv only fails on an invalid name/value (a compile-time constant here),
@@ -143,7 +143,7 @@ func clearSystemProxyPlatform() error {
 		record(k.SetStringValue("ProxyServer", ""))
 		// Deleting an absent value is a no-op success; ignore it deliberately.
 		_ = k.DeleteValue("AutoConfigURL")
-		k.Close()
+		_ = k.Close()
 	}
 
 	// 2. Update Connections binary blob to clear proxy flag
@@ -154,7 +154,7 @@ func clearSystemProxyPlatform() error {
 		blob := buildConnectionBlob(false, "", "")
 		record(ck.SetBinaryValue("DefaultConnectionSettings", blob))
 		record(ck.SetBinaryValue("SavedLegacySettings", blob))
-		ck.Close()
+		_ = ck.Close()
 	}
 
 	// 3. Clear environment variables (Unsetenv only fails on an invalid name).
@@ -209,7 +209,7 @@ func isStaleNexVPNProxy() bool {
 	if err != nil {
 		return false
 	}
-	defer k.Close()
+	defer func() { _ = k.Close() }()
 
 	enabled, _, err := k.GetIntegerValue("ProxyEnable")
 	if err != nil || enabled == 0 {
@@ -231,7 +231,7 @@ func IsSystemProxyEnabled() bool {
 	if err != nil {
 		return false
 	}
-	defer k.Close()
+	defer func() { _ = k.Close() }()
 
 	enabled, _, err := k.GetIntegerValue("ProxyEnable")
 	return err == nil && enabled != 0

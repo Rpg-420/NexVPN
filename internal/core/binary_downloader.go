@@ -307,10 +307,10 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 	urlStr := GetCoreDownloadURL(coreKey)
 	if urlStr == "" {
 		if coreKey == "psiphon" && runtime.GOOS == "windows" {
-			return "", fmt.Errorf("Psiphon is pre-installed on Windows and does not require separate download")
+			return "", fmt.Errorf("psiphon is pre-installed on Windows and does not require separate download")
 		}
 		if coreKey == "openvpn" && runtime.GOOS != "windows" {
-			return "", fmt.Errorf("OpenVPN is only supported on Windows")
+			return "", fmt.Errorf("openvpn is only supported on Windows")
 		}
 		return "", fmt.Errorf("download URL for %s is not available on this platform", coreKey)
 	}
@@ -353,7 +353,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 				// Suspiciously small for archive - likely error page
 				bodyPeek := make([]byte, 512)
 				n, _ := resp.Body.Read(bodyPeek)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				peekStr := strings.ToLower(string(bodyPeek[:n]))
 				if strings.Contains(peekStr, "<html") || strings.Contains(peekStr, "not found") {
 					lastErr = "server returned 404 (file not found)"
@@ -363,7 +363,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 				resp, err = client.Do(req)
 				if err != nil || resp.StatusCode != http.StatusOK {
 					if resp != nil {
-						resp.Body.Close()
+						_ = resp.Body.Close()
 					}
 					lastErr = "downloaded file is invalid"
 					continue
@@ -376,7 +376,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 			lastErr = err.Error()
 		} else if resp != nil {
 			lastErr = fmt.Sprintf("server returned %d", resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 
@@ -389,7 +389,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 		}
 		return "", fmt.Errorf("download of %s failed: %s", coreKey, lastErr)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	totalBytes := resp.ContentLength
 	var downloaded int64
@@ -621,7 +621,7 @@ func fetchSidecarSHA256(baseURL string) (string, bool) {
 			continue
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK || readErr != nil {
 			continue
 		}
@@ -638,7 +638,7 @@ func fetchSidecarSHA256(baseURL string) (string, bool) {
 // isHexString reports whether s consists solely of hexadecimal characters.
 func isHexString(s string) bool {
 	for _, r := range s {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+		if !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'f') {
 			return false
 		}
 	}
@@ -669,7 +669,7 @@ func verifyDownloadedArchive(data []byte, canonicalURL string) error {
 	if canonicalURL != "" {
 		if expected, ok := fetchSidecarSHA256(canonicalURL); ok {
 			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("SHA256 mismatch against upstream-published digest: expected %s..., got %s...", expected[:12], actual[:12])
+				return fmt.Errorf("SHA256 mismatch against upstream-published digest: expected %s, got %s (first 12 hex shown)", expected[:12], actual[:12])
 			}
 			return nil
 		}
@@ -678,7 +678,7 @@ func verifyDownloadedArchive(data []byte, canonicalURL string) error {
 	// 2. Pinned digest (authoritative, offline).
 	if pinned, ok := pinnedCoreHashes[canonicalURL]; ok && strings.TrimSpace(pinned) != "" {
 		if !strings.EqualFold(strings.TrimSpace(pinned), actual) {
-			return fmt.Errorf("SHA256 mismatch against pinned digest: expected %s..., got %s...", pinned[:12], actual[:12])
+			return fmt.Errorf("SHA256 mismatch against pinned digest: expected %s, got %s (first 12 hex shown)", pinned[:12], actual[:12])
 		}
 		return nil
 	}
@@ -712,19 +712,19 @@ func UpdateGeoData() (string, error) {
 				continue
 			}
 			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				continue
 			}
 			targetPath := filepath.Join(binDir, filename)
 			tmpPath := targetPath + ".download"
 			out, err := os.Create(tmpPath)
 			if err != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				continue
 			}
 			_, copyErr := io.Copy(out, resp.Body)
-			out.Close()
-			resp.Body.Close()
+			_ = out.Close()
+			_ = resp.Body.Close()
 			if copyErr != nil {
 				_ = os.Remove(tmpPath)
 				continue
@@ -829,23 +829,23 @@ func extractZip(data []byte, targetDir, coreKey string) error {
 		tmpPath := destPath + ".download"
 		out, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			continue
 		}
 		written, copyErr := io.CopyN(out, rc, int64(file.UncompressedSize64)+1)
-		out.Close()
+		_ = out.Close()
 		if copyErr != nil && copyErr != io.EOF {
-			rc.Close()
+			_ = rc.Close()
 			_ = os.Remove(tmpPath)
 			continue
 		}
 		if written > int64(file.UncompressedSize64) {
-			rc.Close()
+			_ = rc.Close()
 			_ = os.Remove(tmpPath)
 			return fmt.Errorf("archive entry exceeded declared size")
 		}
 		extractedBytes += written
-		rc.Close()
+		_ = rc.Close()
 		_ = os.Chmod(tmpPath, 0755)
 		if err := safeReplaceFile(tmpPath, destPath); err != nil {
 			_ = os.Remove(tmpPath)
@@ -888,7 +888,7 @@ func extractTarGz(data []byte, targetDir, coreKey string) error {
 	if err != nil {
 		return err
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	tr := tar.NewReader(gzr)
 	targetExe := exeName(coreKey)
@@ -925,7 +925,7 @@ func extractTarGz(data []byte, targetDir, coreKey string) error {
 			return err
 		}
 		written, copyErr := io.CopyN(out, tr, header.Size+1)
-		out.Close()
+		_ = out.Close()
 		if copyErr != nil && copyErr != io.EOF {
 			_ = os.Remove(tmpPath)
 			return copyErr
@@ -991,11 +991,11 @@ func fetchLatestSingBoxVersion() string {
 		resp, err := client.Do(req)
 		if err != nil || resp.StatusCode != 200 {
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		var data struct {
 			TagName string `json:"tag_name"`
 		}

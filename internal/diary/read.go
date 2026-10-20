@@ -38,7 +38,7 @@ func Read(limit int) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// A ring buffer rather than "read all then slice": the diary is capped at
 	// 512 KB, but the cap is enforced on write, so a rotated or hand-edited file

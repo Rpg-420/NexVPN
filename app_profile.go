@@ -544,10 +544,10 @@ func (a *App) RealPingActiveProfile() (int, error) {
 
 	port := 0
 	if conn, err := net.DialTimeout("tcp", "127.0.0.1:10809", 200*time.Millisecond); err == nil {
-		conn.Close()
+		_ = conn.Close()
 		port = 10809
 	} else if conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 200*time.Millisecond); err == nil {
-		conn.Close()
+		_ = conn.Close()
 		port = 10808
 	}
 
@@ -571,10 +571,10 @@ func (a *App) LookupExternalIP() (*parser.IPInfo, error) {
 	port := 0
 	if st.State == core.StateConnected {
 		if conn, err := net.DialTimeout("tcp", "127.0.0.1:10809", 200*time.Millisecond); err == nil {
-			conn.Close()
+			_ = conn.Close()
 			port = 10809
 		} else if conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 200*time.Millisecond); err == nil {
-			conn.Close()
+			_ = conn.Close()
 			port = 10808
 		}
 	}

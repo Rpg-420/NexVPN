@@ -11,7 +11,7 @@ func TestBackupExportAndImportPlain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store := NewStoreWithDir(tmpDir)
 
@@ -32,7 +32,7 @@ func TestBackupExportAndImportPlain(t *testing.T) {
 
 	// Create a new store to import into
 	tmpDir2, _ := os.MkdirTemp("", "nexvpn-backup-test2-*")
-	defer os.RemoveAll(tmpDir2)
+	defer func() { _ = os.RemoveAll(tmpDir2) }()
 	store2 := NewStoreWithDir(tmpDir2)
 
 	summary, err := ImportBackup(store2, exported, "", true)
@@ -58,7 +58,7 @@ func TestBackupExportAndImportEncrypted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store := NewStoreWithDir(tmpDir)
 

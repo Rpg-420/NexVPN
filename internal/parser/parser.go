@@ -1945,7 +1945,7 @@ func GenerateCloudflareWarp(cleanIP string, port int) (*config.Profile, error) {
 	if req != nil {
 		resp, doErr := client.Do(req)
 		if doErr == nil && resp != nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			var resData struct {
 				Config struct {
 					ClientID  string `json:"client_id"`
@@ -2305,7 +2305,7 @@ func FetchSubscription(subURL string) ([]*ParsedNode, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch subscription: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		data, err := io.ReadAll(io.LimitReader(resp.Body, maxSubscriptionBodyBytes+1))
 		if err != nil {
@@ -2546,7 +2546,7 @@ func UDPWireGuardPing(server string, port int, timeout time.Duration) int {
 		start := time.Now()
 		conn, err := net.DialTimeout("tcp", address, timeout/2)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			elapsed := int(time.Since(start).Milliseconds())
 			if elapsed < 15 {
 				elapsed = 15 + randRange(5, 20)
@@ -2561,7 +2561,7 @@ func UDPWireGuardPing(server string, port int, timeout time.Duration) int {
 	if err != nil {
 		return -1
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	probe := []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 	_ = conn.SetDeadline(time.Now().Add(timeout))
@@ -2596,7 +2596,7 @@ func TCPPing(server string, port int, timeout time.Duration) int {
 	if err != nil {
 		return -1
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if port == 443 {
 		tlsConn := tls.Client(conn, &tls.Config{
@@ -2741,7 +2741,7 @@ func RealDelayPing(proxyPort int, testURL string, timeout time.Duration) (int, e
 	if err != nil {
 		return -1, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// The status code decides, not the absence of a transport error.
 	//
@@ -2771,7 +2771,7 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	if proxyPort > 0 {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort), 300*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			proxyUrl, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
 			transport.Proxy = http.ProxyURL(proxyUrl)
 		}
@@ -2787,7 +2787,7 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	if err == nil {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, err := client.Do(req); err == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			var data struct {
 				Status      string `json:"status"`
 				Country     string `json:"country"`
@@ -2813,7 +2813,7 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	if err == nil {
 		req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, err := client.Do(req2); err == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			var data struct {
 				Success     bool   `json:"success"`
 				IP          string `json:"ip"`
@@ -2841,7 +2841,7 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	if err == nil {
 		req3.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, err := client.Do(req3); err == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			var data struct {
 				IP      string `json:"ip"`
 				Country string `json:"country"`
@@ -2880,7 +2880,7 @@ func LookupIPInfoByIP(ctx context.Context, ip net.IP) (*IPInfo, error) {
 	if err == nil {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, respErr := client.Do(req); respErr == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			var data struct {
 				Status      string `json:"status"`
 				Country     string `json:"country"`
@@ -2906,7 +2906,7 @@ func LookupIPInfoByIP(ctx context.Context, ip net.IP) (*IPInfo, error) {
 	if err == nil {
 		req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, respErr := client.Do(req2); respErr == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			var data struct {
 				Success     bool   `json:"success"`
 				IP          string `json:"ip"`

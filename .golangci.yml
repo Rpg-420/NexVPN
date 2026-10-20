@@ -1,0 +1,82 @@
+# golangci-lint configuration — schema version 2.
+#
+# Why this file exists: the CI lint job used `version: latest` with no config,
+# which meant the gate silently changed every time upstream shipped a release.
+# Pinning the version and the checks makes "lint is green" mean the same thing
+# from one week to the next.
+#
+# Run the same thing CI runs (with the binary from the pinned version):
+#   golangci-lint run --timeout 5m ./...
+
+version: "2"
+
+run:
+  # The suite is large and the race-free test packages take a while; five
+  # minutes is generous on a cold cache and tight enough to fail fast.
+  timeout: 5m
+
+linters:
+  # The v2 "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
+  # That is exactly the set the project was cleaned up against.
+  default: standard
+
+  settings:
+    errcheck:
+      # A closed file whose Close() error carries no actionable information is
+      # written `_ = f.Close()`; that is the project-wide convention (see
+      # internal/protocols/*.go and the tray code). check-blank stays off so
+      # the blank-assignment form remains an accepted, explicit opt-out.
+      check-blank: false
+      check-type-assertions: false
+
+    staticcheck:
+      checks:
+        - all
+        # --- Upstream's own "style" exclusions, kept as-is -----------------
+        # ST1000 (package comments), ST1003 (initialisms: HttpPort, subUrl),
+        # ST1016 (receiver names), ST1020-ST1023 (comment form). Several of the
+        # ST1003 hits here are **serialized field names** — PsiphonOptions and
+        # the aether/singbox adapters read `http_port`/`httpPort` straight out
+        # of user-supplied JSON, so "fixing" the Go name would change the wire
+        # format. Declined deliberately.
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+        # --- Additional project preferences --------------------------------
+        # "could use tagged switch": converting the runtime.GOOS and
+        # protocol/transport if/else chains (killswitch, notifier, parser,
+        # telegram, chain_builder, doctor) into `switch runtime.GOOS` makes the
+        # branches flatter and the bodies harder to read. Declined as a style
+        # preference, not as a defect.
+        - -QF1003
+        # De Morgan / drop-the-type / Fprintf rewrites. The explicit
+        # `var listener net.Listener = rawListener` in remote_server.go is
+        # documentation — it says the variable is the interface, not the
+        # concrete listener — and De Morgan forms are applied only where they
+        # read better. Declined for consistency.
+        - -QF1001
+        - -QF1011
+        - -QF1012
+        # "string literal contains Unicode format characters": the tray menu
+        # and the UI strings carry Persian text with ZWNJ (U+200C), which is
+        # correct orthography. Rewriting it as \u200c escapes would make the
+        # sources unreadable, and the control character found in scanner.go
+        # (mojibake) has been repaired separately.
+        - -ST1018
+        # "default case should be first or last": the tray switch reads better
+        # with the stale-menu guard grouped next to the submenu cases.
+        - -ST1015
+
+  # Files that legitimately deal in unchecked errors, kept out of the gate so
+  # a real regression in them still stands out.
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          # Deferred Close/Remove in a test fixture is noise; the point of the
+          # test is the behaviour, not the temp dir's cleanup result.
+          - errcheck

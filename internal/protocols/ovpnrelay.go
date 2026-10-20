@@ -243,7 +243,7 @@ func (r *SplitRelay) skip(host string) {
 func (r *SplitRelay) serve(client net.Conn) {
 	r.track(client)
 	defer r.untrack(client)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if tcp, ok := client.(*net.TCPConn); ok {
 		_ = tcp.SetNoDelay(true)
@@ -256,7 +256,7 @@ func (r *SplitRelay) serve(client net.Conn) {
 	}
 	r.track(upstream)
 	defer r.untrack(upstream)
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() }()
 
 	r.log("info", fmt.Sprintf("Split relay connected to %s:%d", host, r.port))
 

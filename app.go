@@ -682,7 +682,7 @@ func (a *App) CheckForUpdates() UpdateCheckResult {
 	if err != nil {
 		return UpdateCheckResult{Error: "Network error: " + err.Error(), CurrentVersion: AppVersion}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == 404 {
 		// No release found at all — we are on latest

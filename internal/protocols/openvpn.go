@@ -251,8 +251,8 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 		credsFile, err := os.CreateTemp(ensureNexVPNTempDir(), "openvpn-creds-*.txt")
 		if err == nil {
 			credsPath = credsFile.Name()
-			_, _ = credsFile.WriteString(fmt.Sprintf("%s\n%s\n", username, password))
-			credsFile.Close()
+			_, _ = fmt.Fprintf(credsFile, "%s\n%s\n", username, password)
+			_ = credsFile.Close()
 		}
 	}
 
@@ -267,14 +267,14 @@ func (a *OpenVPNAdapter) Start(ctx context.Context, configContent string) error 
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(sanitized); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		_ = os.Remove(tmpPath)
 		if credsPath != "" {
 			_ = os.Remove(credsPath)
 		}
 		return err
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	binDir := filepath.Dir(ovpnBin)
 
@@ -429,7 +429,7 @@ func (a *OpenVPNAdapter) launchDriverInstance(ctx context.Context, ovpnBin, tmpP
 	var statusFilePath string
 	if err == nil {
 		statusFilePath = statusFile.Name()
-		statusFile.Close()
+		_ = statusFile.Close()
 		args = append(args, "--status", statusFilePath, "1", "--status-version", "3")
 	}
 
@@ -448,7 +448,7 @@ func (a *OpenVPNAdapter) launchDriverInstance(ctx context.Context, ovpnBin, tmpP
 			lockFile, err := os.CreateTemp(ensureNexVPNTempDir(), "openvpn-lock-*.lock")
 			if err == nil {
 				lockFilePath = lockFile.Name()
-				lockFile.Close()
+				_ = lockFile.Close()
 				script := `
 					lock="$1"
 					shift
@@ -701,7 +701,7 @@ func (a *OpenVPNAdapter) IsRunning() bool {
 }
 
 func (a *OpenVPNAdapter) pollStatusFile(ctx context.Context, statusPath string) {
-	defer os.Remove(statusPath)
+	defer func() { _ = os.Remove(statusPath) }()
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 

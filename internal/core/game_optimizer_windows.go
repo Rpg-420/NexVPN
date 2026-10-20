@@ -26,7 +26,7 @@ func (g *GamingOptimizer) ApplyGamingOptimizations() (*GamingOptimizationStatus,
 	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, sysProfileKey, registry.SET_VALUE); err == nil {
 		_ = k.SetDWordValue("NetworkThrottlingIndex", 0xffffffff) // Disable network throttling
 		_ = k.SetDWordValue("SystemResponsiveness", 0x00000000)   // 100% CPU priority for gaming/networking
-		k.Close()
+		_ = k.Close()
 		status.NetworkThrottlingTuned = true
 		status.SystemResponsiveness = true
 	} else {
@@ -39,7 +39,7 @@ func (g *GamingOptimizer) ApplyGamingOptimizations() (*GamingOptimizationStatus,
 	ik, err := registry.OpenKey(registry.LOCAL_MACHINE, interfacesKey, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
 	if err == nil {
 		subkeys, enumErr := ik.ReadSubKeyNames(-1)
-		ik.Close()
+		_ = ik.Close()
 
 		if enumErr == nil {
 			for _, sub := range subkeys {
@@ -48,7 +48,7 @@ func (g *GamingOptimizer) ApplyGamingOptimizations() (*GamingOptimizationStatus,
 					_ = sk.SetDWordValue("TcpAckFrequency", 1) // Send ACK immediately for every packet
 					_ = sk.SetDWordValue("TCPNoDelay", 1)      // Disable Nagle's algorithm
 					_ = sk.SetDWordValue("TcpDelAckTicks", 0)  // Remove delayed ACK timer
-					sk.Close()
+					_ = sk.Close()
 					status.OptimizedInterfaces = append(status.OptimizedInterfaces, sub)
 				}
 			}
@@ -88,7 +88,7 @@ func (g *GamingOptimizer) RevertGamingOptimizations() (*GamingOptimizationStatus
 	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, sysProfileKey, registry.SET_VALUE); err == nil {
 		_ = k.SetDWordValue("NetworkThrottlingIndex", 10) // Windows Default = 10
 		_ = k.SetDWordValue("SystemResponsiveness", 20)   // Windows Default = 20
-		k.Close()
+		_ = k.Close()
 	}
 
 	// 2. Revert Interfaces TCP settings
@@ -96,7 +96,7 @@ func (g *GamingOptimizer) RevertGamingOptimizations() (*GamingOptimizationStatus
 	ik, err := registry.OpenKey(registry.LOCAL_MACHINE, interfacesKey, registry.ENUMERATE_SUB_KEYS)
 	if err == nil {
 		subkeys, enumErr := ik.ReadSubKeyNames(-1)
-		ik.Close()
+		_ = ik.Close()
 
 		if enumErr == nil {
 			for _, sub := range subkeys {
@@ -105,7 +105,7 @@ func (g *GamingOptimizer) RevertGamingOptimizations() (*GamingOptimizationStatus
 					_ = sk.DeleteValue("TcpAckFrequency")
 					_ = sk.DeleteValue("TCPNoDelay")
 					_ = sk.DeleteValue("TcpDelAckTicks")
-					sk.Close()
+					_ = sk.Close()
 				}
 			}
 		}

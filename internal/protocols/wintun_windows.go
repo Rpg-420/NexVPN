@@ -231,7 +231,7 @@ func wintunRegistryBoundNames() map[string]bool {
 	if err != nil {
 		return nil
 	}
-	defer key.Close()
+	defer func() { _ = key.Close() }()
 
 	subKeys, err := key.ReadSubKeyNames(-1)
 	if err != nil {
@@ -246,7 +246,7 @@ func wintunRegistryBoundNames() map[string]bool {
 		}
 		name, _, nameErr := conn.GetStringValue("Name")
 		pnp, _, pnpErr := conn.GetStringValue("PnPInstanceId")
-		conn.Close()
+		_ = conn.Close()
 
 		if nameErr != nil || pnpErr != nil || name == "" {
 			continue

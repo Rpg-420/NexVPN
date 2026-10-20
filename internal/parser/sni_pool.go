@@ -73,7 +73,7 @@ func TestSNIPoolLatency(domain string) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-	defer rawConn.Close()
+	defer func() { _ = rawConn.Close() }()
 
 	tlsConfig := &tls.Config{
 		ServerName: domain,

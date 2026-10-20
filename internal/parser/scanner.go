@@ -148,7 +148,7 @@ func fetchRemoteCleanCandidates(ctx context.Context) []struct {
 				}
 			}
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if len(list) > 30 {
 			break
 		}
@@ -160,19 +160,19 @@ func fetchRemoteCleanCandidates(ctx context.Context) []struct {
 // detectLocation returns human friendly datacenter/region estimate based on IP prefix
 func detectLocation(ip string) string {
 	if strings.HasPrefix(ip, "188.114.96.") || strings.HasPrefix(ip, "188.114.97.") {
-		return "ðŸ‡©ðŸ‡ª Frankfurt / Europe"
+		return "🇩🇪 Frankfurt / Europe"
 	} else if strings.HasPrefix(ip, "188.114.98.") || strings.HasPrefix(ip, "188.114.99.") {
-		return "ðŸ‡³ðŸ‡± Amsterdam / Europe"
+		return "🇳🇱 Amsterdam / Europe"
 	} else if strings.HasPrefix(ip, "162.159.192.") || strings.HasPrefix(ip, "162.159.193.") {
-		return "ðŸ‡¦ðŸ‡¹ Vienna / Europe"
+		return "🇦🇹 Vienna / Europe"
 	} else if strings.HasPrefix(ip, "162.159.204.") || strings.HasPrefix(ip, "162.159.205.") {
-		return "ðŸ‡¹ðŸ‡· Istanbul / Anycast"
+		return "🇹🇷 Istanbul / Anycast"
 	} else if strings.HasPrefix(ip, "172.64.") {
-		return "ðŸ‡¦ðŸ‡ª Dubai / Middle East"
+		return "🇦🇪 Dubai / Middle East"
 	} else if strings.HasPrefix(ip, "104.16.") || strings.HasPrefix(ip, "104.17.") {
-		return "ðŸ‡¬ðŸ‡§ London / Anycast"
+		return "🇬🇧 London / Anycast"
 	}
-	return "ðŸŒ Cloudflare Global Edge"
+	return "🌐 Cloudflare Global Edge"
 }
 
 // ScanCleanIPs scans Cloudflare IP ranges with dual TCP/UDP probing and returns responsive clean IPs
@@ -330,7 +330,7 @@ func testEndpoint(ctx context.Context, ip string, port int) (latency int, lossRa
 	conn, err := dialer.DialContext(ctx, "tcp", tcpAddr)
 	if err == nil {
 		dur := int(time.Since(start).Milliseconds())
-		conn.Close()
+		_ = conn.Close()
 		if dur == 0 {
 			dur = 1
 		}
@@ -342,7 +342,7 @@ func testEndpoint(ctx context.Context, ip string, port int) (latency int, lossRa
 		edgeConn, edgeErr := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, "443"))
 		if edgeErr == nil {
 			dur := int(time.Since(start).Milliseconds())
-			edgeConn.Close()
+			_ = edgeConn.Close()
 			if dur == 0 {
 				dur = 1
 			}
@@ -351,7 +351,7 @@ func testEndpoint(ctx context.Context, ip string, port int) (latency int, lossRa
 		edgeConn80, edgeErr80 := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, "80"))
 		if edgeErr80 == nil {
 			dur := int(time.Since(start).Milliseconds())
-			edgeConn80.Close()
+			_ = edgeConn80.Close()
 			if dur == 0 {
 				dur = 1
 			}

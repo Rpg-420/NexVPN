@@ -194,7 +194,7 @@ func (p *PsiphonAdapter) Start(ctx context.Context, configContent string) error 
 		// Fallback to "psiphon" or "psi"
 		psiphonBin, err = findBinary("psiphon")
 		if err != nil {
-			return fmt.Errorf("Psiphon core binary (psiphon-tunnel-core) not found in bin folder: %w", err)
+			return fmt.Errorf("psiphon core binary (psiphon-tunnel-core) not found in bin folder: %w", err)
 		}
 	}
 

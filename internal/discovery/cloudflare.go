@@ -114,7 +114,7 @@ func FetchRemoteCDNFeed(ctx context.Context) []CloudflareTarget {
 			continue
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil || len(body) > maxFeedBytes {
 			continue
 		}
@@ -198,7 +198,7 @@ func FetchRemoteWARPFeed(ctx context.Context) []CloudflareTarget {
 			continue
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil || len(body) > maxFeedBytes {
 			continue
 		}
@@ -270,7 +270,7 @@ func TestWARPEndpoint(ctx context.Context, ip string, port int, timeout time.Dur
 	conn, err := dialer.DialContext(ctx, "tcp", tcpAddr)
 	if err == nil {
 		elapsed := int(time.Since(start).Milliseconds())
-		conn.Close()
+		_ = conn.Close()
 		if elapsed <= 0 {
 			elapsed = 1
 		}
@@ -292,7 +292,7 @@ func TestWARPEndpoint(ctx context.Context, ip string, port int, timeout time.Dur
 	conn80, err80 := dialer.DialContext(ctx, "tcp", tcpAddr80)
 	if err80 == nil {
 		elapsed := int(time.Since(start).Milliseconds())
-		conn80.Close()
+		_ = conn80.Close()
 		if elapsed <= 0 {
 			elapsed = 1
 		}
@@ -322,7 +322,7 @@ func TestCDNIP(ctx context.Context, ip string, port int, timeout time.Duration) 
 	if err != nil {
 		return 0, false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// For standard HTTP ports, do HTTP GET probe
 	if port == 80 || port == 8080 || port == 8880 || port == 2052 || port == 2082 || port == 2086 || port == 2095 {
@@ -364,7 +364,7 @@ func TestCDNIP(ctx context.Context, ip string, port int, timeout time.Duration) 
 		if dialErr != nil {
 			return 0, false
 		}
-		defer conn2.Close()
+		defer func() { _ = conn2.Close() }()
 
 		tlsConn2 := tls.Client(conn2, &tls.Config{
 			ServerName: "www.cloudflare.com",

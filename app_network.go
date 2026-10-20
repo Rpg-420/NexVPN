@@ -397,7 +397,7 @@ func (a *App) FetchLiveCleanIPFeed() ([]CleanIPRange, error) {
 		req.Header.Set("Accept", "application/json")
 		resp, reqErr := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 		if reqErr == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {
 				body, readErr := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
 				if readErr == nil {

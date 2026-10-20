@@ -18,7 +18,7 @@ func TestMeasureLatencyAcceptsAPlainListener(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	done := make(chan struct{})
 	go func() {
@@ -33,7 +33,7 @@ func TestMeasureLatencyAcceptsAPlainListener(t *testing.T) {
 			}
 			// Accept and hold briefly, then drop: a real server's behaviour, and
 			// nothing that ever speaks TLS.
-			go func(c net.Conn) { <-time.After(20 * time.Millisecond); c.Close() }(conn)
+			go func(c net.Conn) { <-time.After(20 * time.Millisecond); _ = c.Close() }(conn)
 		}
 	}()
 
@@ -42,7 +42,7 @@ func TestMeasureLatencyAcceptsAPlainListener(t *testing.T) {
 	if latency <= 0 {
 		t.Errorf("MeasureLatency = %d, want a positive number for an endpoint that accepts TCP", latency)
 	}
-	ln.Close()
+	_ = ln.Close()
 	<-done
 }
 
@@ -57,7 +57,7 @@ func TestMeasureLatencyRefusesWhatIsNotThere(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close()
 
 	host, port := splitAddr(t, addr)
 	if got := MeasureLatency(host, port, 500*time.Millisecond); got != -1 {

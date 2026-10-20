@@ -198,7 +198,7 @@ func TestSingleFragmentCandidate(
 		for offset < len(clientHello) {
 			select {
 			case <-ctx.Done():
-				conn.Close()
+				_ = conn.Close()
 				return candidate
 			default:
 			}
@@ -220,7 +220,7 @@ func TestSingleFragmentCandidate(
 				sleepMs := randRange(minSleep, maxSleep)
 				select {
 				case <-ctx.Done():
-					conn.Close()
+					_ = conn.Close()
 					return candidate
 				case <-time.After(time.Duration(sleepMs) * time.Millisecond):
 				}
@@ -231,7 +231,7 @@ func TestSingleFragmentCandidate(
 			// Read Server response (ServerHello or Alert)
 			reply := make([]byte, 5)
 			n, readErr := conn.Read(reply)
-			conn.Close()
+			_ = conn.Close()
 
 			if (readErr == nil || n > 0) && n >= 1 && (reply[0] == 0x16 || reply[0] == 0x15 || reply[0] == 0x14 || reply[0] == 0x17) {
 				dur := int(time.Since(start).Milliseconds())
@@ -242,7 +242,7 @@ func TestSingleFragmentCandidate(
 				successCount++
 			}
 		} else {
-			conn.Close()
+			_ = conn.Close()
 		}
 	}
 

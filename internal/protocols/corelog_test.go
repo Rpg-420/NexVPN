@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -15,19 +16,49 @@ import (
 // report file: no escape codes, no thousand-line storms, and no duplicate
 // "stopped" lines for a process that stopped once.
 
+// logSink collects what the merger published.
+//
+// The mutex is not decoration: `expire` runs on the timer goroutine created by
+// time.AfterFunc, while `add` publishes from the caller's goroutine. An
+// unsynchronised `got = append(got, ...)` is exactly the data race the race
+// detector reports — and the race is in the test, not in the merger, which is
+// fully mutex-protected. Every closure that reaches for `got` goes through
+// here for that reason.
+type logSink struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (s *logSink) add(text string) {
+	s.mu.Lock()
+	s.lines = append(s.lines, text)
+	s.mu.Unlock()
+}
+
+// snapshot returns what has been published so far. Safe to call while a merge
+// timer is still pending, which is what the expiry test does on purpose.
+func (s *logSink) snapshot() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.lines))
+	copy(out, s.lines)
+	return out
+}
+
 func TestCoreLogMergerCapsARateOfDistinctCoreLines(t *testing.T) {
 	// Merging only helps repeats. The WireGuard storm in the 2026-10-11 log was
 	// different: one line per failing connection, each naming another domain, so
 	// not one of them repeated the line before it. A rate cap is what keeps that
 	// from pushing the useful lines out of the engine's 1000-entry buffer.
-	var got []string
-	m := newCoreLogMerger(time.Hour, func(level, text string) { got = append(got, level+": "+text) })
+	var sink logSink
+	m := newCoreLogMerger(time.Hour, func(level, text string) { sink.add(level + ": " + text) })
 
 	for i := 0; i < 200; i++ {
 		m.add("error", fmt.Sprintf("dns: lookup failed for host%d.example.com: context deadline exceeded", i))
 	}
 	m.Flush()
 
+	got := sink.snapshot()
 	if len(got) > coreLogBudgetLines+2 {
 		t.Fatalf("200 distinct lines produced %d entries, want the budget of %d plus a notice", len(got), coreLogBudgetLines)
 	}
@@ -84,20 +115,22 @@ func TestLogDedupeKeyCollapsesPerConnectionNoise(t *testing.T) {
 }
 
 func TestCoreLogMergerMergesAStormIntoOneLinePlusCount(t *testing.T) {
-	var got []string
+	var sink logSink
 	m := newCoreLogMerger(time.Hour, func(level, text string) {
-		got = append(got, level+": "+text)
+		sink.add(level + ": " + text)
 	})
 
 	line := "dns: lookup failed for www.google.com: context deadline exceeded"
 	for i := 0; i < 60; i++ {
 		m.add("error", line)
 	}
+	got := sink.snapshot()
 	if len(got) != 1 {
 		t.Fatalf("60 identical lines produced %d entries, want 1 until the run is closed", len(got))
 	}
 
 	m.Flush()
+	got = sink.snapshot()
 	if len(got) != 2 {
 		t.Fatalf("after Flush there are %d entries, want the original line plus one summary", len(got))
 	}
@@ -110,13 +143,14 @@ func TestCoreLogMergerMergesAStormIntoOneLinePlusCount(t *testing.T) {
 }
 
 func TestCoreLogMergerFlushIsIdempotentAndSilentForSingletons(t *testing.T) {
-	var got []string
-	m := newCoreLogMerger(time.Hour, func(level, text string) { got = append(got, text) })
+	var sink logSink
+	m := newCoreLogMerger(time.Hour, func(level, text string) { sink.add(text) })
 
 	m.add("info", "one lonely line")
 	m.Flush()
 	m.Flush()
 
+	got := sink.snapshot()
 	if len(got) != 1 {
 		t.Fatalf("got %d entries, want exactly 1: a single line has nothing to merge and Flush must not repeat it", len(got))
 	}
@@ -126,14 +160,15 @@ func TestCoreLogMergerFlushIsIdempotentAndSilentForSingletons(t *testing.T) {
 }
 
 func TestCoreLogMergerClosesARunWhenTheLineChanges(t *testing.T) {
-	var got []string
-	m := newCoreLogMerger(time.Hour, func(level, text string) { got = append(got, text) })
+	var sink logSink
+	m := newCoreLogMerger(time.Hour, func(level, text string) { sink.add(text) })
 
 	for i := 0; i < 5; i++ {
 		m.add("error", "dns: lookup failed for a.example.com")
 	}
 	m.add("error", "connection closed by peer")
 
+	got := sink.snapshot()
 	if len(got) != 3 {
 		t.Fatalf("got %d entries, want the first storm, its summary, then the new line: %v", len(got), got)
 	}
@@ -148,15 +183,33 @@ func TestCoreLogMergerClosesARunWhenTheLineChanges(t *testing.T) {
 func TestCoreLogMergerExpiresWithoutNewLines(t *testing.T) {
 	// A storm that never stops delivering the same line must still report that
 	// it is ongoing, otherwise the log reads as "fixed itself".
-	var got []string
-	m := newCoreLogMerger(50*time.Millisecond, func(level, text string) { got = append(got, text) })
+	//
+	// The emission under test happens on the timer goroutine, so the wait has
+	// to be a poll rather than a fixed sleep: on a loaded CI box a 50 ms timer
+	// can be delayed well past a 150 ms sleep, and a sleep-based test would
+	// then fail for a reason that has nothing to do with the merger.
+	var sink logSink
+	m := newCoreLogMerger(50*time.Millisecond, func(level, text string) { sink.add(text) })
 
 	m.add("error", "connection refused")
 	for i := 0; i < 3; i++ {
 		m.add("error", "connection refused")
 		time.Sleep(30 * time.Millisecond)
 	}
-	time.Sleep(150 * time.Millisecond)
+
+	// The window is 50 ms and the last add lands ~90 ms in, so a second
+	// publication is due almost immediately after that. Allow a generous
+	// margin for CI, but not an unbounded one — a merger that silently never
+	// expires must fail, not hang.
+	deadline := time.Now().Add(3 * time.Second)
+	var got []string
+	for time.Now().Before(deadline) {
+		got = sink.snapshot()
+		if len(got) >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 
 	if len(got) < 2 {
 		t.Fatalf("the merger stayed silent after the window expired (got %d entries); a continuing problem must keep reporting", len(got))

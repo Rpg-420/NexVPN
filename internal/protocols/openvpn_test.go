@@ -83,13 +83,13 @@ func TestTempFilesSurviveTheDriverFallback(t *testing.T) {
 			t.Fatalf("create temp config: %v", err)
 		}
 		_, _ = cfg.WriteString("client\nremote example.com 1194\n")
-		cfg.Close()
+		_ = cfg.Close()
 		creds, err := os.CreateTemp(dir, "openvpn-creds-*.txt")
 		if err != nil {
 			t.Fatalf("create temp creds: %v", err)
 		}
 		_, _ = creds.WriteString("user\npass\n")
-		creds.Close()
+		_ = creds.Close()
 		return cfg.Name(), creds.Name()
 	}
 
