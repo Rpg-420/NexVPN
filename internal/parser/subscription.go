@@ -4,11 +4,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// maxSubscriptionBodyBytes caps every subscription body read anywhere in this
+// package. A subscription is a remote document fetched over whatever network
+// the user happens to be on; without a cap, a hostile or merely broken endpoint
+// can make the process allocate until it is killed. 10 MiB is far above any real
+// subscription (the largest known ones are well under 2 MiB) and far below a
+// problem.
+const maxSubscriptionBodyBytes = 10 << 20
 
 type SubscriptionUserInfo struct {
 	UploadBytes   int64 `json:"upload_bytes"`
@@ -27,16 +37,23 @@ type SubscriptionFetchResult struct {
 
 // FetchSubscriptionWithUserInfo fetches remote subscription and parses quota headers
 func FetchSubscriptionWithUserInfo(ctx context.Context, urlStr string) (*SubscriptionFetchResult, error) {
+	parsedURL, err := url.Parse(strings.TrimSpace(urlStr))
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Hostname() == "" {
+		return nil, fmt.Errorf("invalid subscription URL")
+	}
+	if ip := net.ParseIP(parsedURL.Hostname()); ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+		return nil, fmt.Errorf("private subscription hosts are not allowed")
+	}
 	client := &http.Client{
 		Timeout: 15 * time.Second,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", parsedURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.3.5 Clash/1.18")
+	req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.4.0 Clash/1.18")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -48,9 +65,13 @@ func FetchSubscriptionWithUserInfo(ctx context.Context, urlStr string) (*Subscri
 		return nil, fmt.Errorf("server returned HTTP %d", resp.StatusCode)
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	const maxSubscriptionBytes = maxSubscriptionBodyBytes // 10 MiB safety limit
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxSubscriptionBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if int64(len(bodyBytes)) > maxSubscriptionBytes {
+		return nil, fmt.Errorf("subscription response exceeds the %d MiB limit", maxSubscriptionBytes/(1<<20))
 	}
 
 	res := &SubscriptionFetchResult{
@@ -96,7 +117,14 @@ func parseUserInfoHeader(header string) *SubscriptionUserInfo {
 
 	info.UsedBytes = info.UploadBytes + info.DownloadBytes
 	if info.TotalBytes > 0 {
-		info.PercentUsed = int((info.UsedBytes * 100) / info.TotalBytes)
+		percent := (info.UsedBytes * 100) / info.TotalBytes
+		if percent > 100 {
+			percent = 100
+		}
+		if percent < 0 {
+			percent = 0
+		}
+		info.PercentUsed = int(percent)
 	}
 
 	if info.ExpireDate > 0 {

@@ -43,7 +43,7 @@ NexVPN Pro follows a hybrid reactive desktop architecture:
 - `app.go`: Wails lifecycle entrypoint (`startup`, `shutdown`), core event broadcasters, main connection dispatch handlers.
 - `app_discovery.go`: Asynchronous concurrent runner for Telegram crawlers, Cloudflare clean IP scans, and free config testers.
 - `app_extra.go`: Mobile Remote HTTP server controller, speed tests, configuration vault export/import, window management.
-- `version.go`: Single source of truth constant `AppVersion = "1.3.5"`.
+- `version.go`: Single source of truth constant `AppVersion = "1.4.0"`.
 - `main.go`: Application window properties, assets embedding, and runtime bootstrap.
 
 ### `internal/` Subsystems

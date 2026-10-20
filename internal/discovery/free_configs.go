@@ -87,28 +87,40 @@ func FetchFreeConfigs(ctx context.Context, customSources []string) ([]FreeConfig
 		go func(srcIndex int, urlStr string) {
 			defer wg.Done()
 
-			// Try primary URL, then mirror if failed
+			// Try primary URL, then mirrors if failed
 			candidates := []string{urlStr}
 			if strings.HasPrefix(urlStr, "https://raw.githubusercontent.com/") {
-				mirror := "https://ghproxy.net/" + urlStr
-				candidates = append(candidates, mirror)
+				candidates = append(candidates,
+					"https://ghproxy.net/"+urlStr,
+					"https://ghfast.top/"+urlStr,
+					"https://gh.ddlc.top/"+urlStr,
+				)
 			}
 
 			var bodyBytes []byte
 			for _, u := range candidates {
-				req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+				reqCtx, reqCancel := context.WithTimeout(ctx, 4*time.Second)
+				req, err := http.NewRequestWithContext(reqCtx, "GET", u, nil)
 				if err != nil {
+					reqCancel()
 					continue
 				}
-				req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.3.5 Clash/1.18")
+				req.Header.Set("User-Agent", "v2rayN/6.42 NexVPN/1.4.0 Clash/1.18")
 
 				resp, err := client.Do(req)
-				if err != nil || resp.StatusCode != http.StatusOK {
+				if err != nil {
+					reqCancel()
 					continue
 				}
-				data, readErr := io.ReadAll(resp.Body)
+				if resp.StatusCode != http.StatusOK {
+					resp.Body.Close()
+					reqCancel()
+					continue
+				}
+				data, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20+1))
 				resp.Body.Close()
-				if readErr == nil && len(data) > 0 {
+				reqCancel()
+				if readErr == nil && len(data) > 0 && len(data) <= 4<<20 {
 					bodyBytes = data
 					break
 				}
@@ -407,18 +419,18 @@ func ConvertFreeConfigToProfile(item FreeConfigItem, groupName string) (config.P
 	if err != nil {
 		// Fallback minimal profile
 		return config.Profile{
-			ID:            fmt.Sprintf("prof-%d-%s", time.Now().UnixNano(), item.ID),
-			Name:          item.Name,
-			Protocol:      config.Protocol(item.Protocol),
-			Category:      config.CategoryV2Ray,
-			RawURI:        item.RawURI,
-			Server:        item.Server,
-			Port:          item.Port,
-			Group:         groupName,
-			Tags:          []string{"FreeHub", strings.ToUpper(item.Protocol)},
-			LatencyMs:     item.LatencyMs,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			ID:        fmt.Sprintf("prof-%d-%s", time.Now().UnixNano(), item.ID),
+			Name:      item.Name,
+			Protocol:  config.Protocol(item.Protocol),
+			Category:  config.CategoryV2Ray,
+			RawURI:    item.RawURI,
+			Server:    item.Server,
+			Port:      item.Port,
+			Group:     groupName,
+			Tags:      []string{"FreeHub", strings.ToUpper(item.Protocol)},
+			LatencyMs: item.LatencyMs,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}, nil
 	}
 

@@ -10,8 +10,8 @@ body:
     id: version
     attributes:
       label: NexVPN Version
-      description: What version of NexVPN are you using? (e.g., v1.3.5)
-      placeholder: v1.3.5
+      description: What version of NexVPN are you using? (e.g., v1.4.0)
+      placeholder: v1.4.0
     validations:
       required: true
   - type: dropdown

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"sort"
 	"strconv"
@@ -115,9 +116,20 @@ func FetchTelegramProxies(ctx context.Context, customSources []string) ([]Telegr
 		wg.Add(1)
 		go func(urlStr string) {
 			defer wg.Done()
+			parsedURL, err := url.Parse(urlStr)
+			if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Hostname() == "" {
+				return
+			}
+			if addr, err := netip.ParseAddr(parsedURL.Hostname()); err == nil && (addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast()) {
+				return
+			}
 			candidates := []string{urlStr}
 			if strings.HasPrefix(urlStr, "https://raw.githubusercontent.com/") {
-				candidates = append(candidates, "https://ghproxy.net/"+urlStr)
+				candidates = append(candidates,
+					"https://ghproxy.net/"+urlStr,
+					"https://ghfast.top/"+urlStr,
+					"https://gh.ddlc.top/"+urlStr,
+				)
 			}
 
 			var bodyBytes []byte
@@ -129,21 +141,30 @@ func FetchTelegramProxies(ctx context.Context, customSources []string) ([]Telegr
 					fetchURL += fmt.Sprintf("?_t=%d", time.Now().Unix())
 				}
 
-				req, err := http.NewRequestWithContext(ctx, "GET", fetchURL, nil)
+				reqCtx, reqCancel := context.WithTimeout(ctx, 4*time.Second)
+				req, err := http.NewRequestWithContext(reqCtx, "GET", fetchURL, nil)
 				if err != nil {
+					reqCancel()
 					continue
 				}
-				req.Header.Set("User-Agent", "NexVPN/1.3.5 Mozilla/5.0")
+				req.Header.Set("User-Agent", "NexVPN/1.4.0 Mozilla/5.0")
 				req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 				req.Header.Set("Pragma", "no-cache")
 
 				resp, err := client.Do(req)
-				if err != nil || resp.StatusCode != http.StatusOK {
+				if err != nil {
+					reqCancel()
 					continue
 				}
-				data, readErr := io.ReadAll(resp.Body)
+				if resp.StatusCode != http.StatusOK {
+					resp.Body.Close()
+					reqCancel()
+					continue
+				}
+				data, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20+1))
 				resp.Body.Close()
-				if readErr == nil && len(data) > 0 {
+				reqCancel()
+				if readErr == nil && len(data) > 0 && len(data) <= 2<<20 {
 					bodyBytes = data
 					break
 				}
@@ -221,7 +242,7 @@ func FetchTelegramProxies(ctx context.Context, customSources []string) ([]Telegr
 // parseTelegramProxyContent parses links (tg://, https://t.me/proxy) and ip:port text
 func parseTelegramProxyContent(content, source string) []TelegramProxy {
 	var list []TelegramProxy
-	
+
 	// If the entire payload is Base64 encoded (common in proxy subscriptions), decode first
 	trimmed := strings.TrimSpace(content)
 	if !strings.Contains(trimmed, "\n") && len(trimmed)%4 == 0 && len(trimmed) > 40 {
@@ -412,8 +433,8 @@ func TestSingleTelegramProxy(ctx context.Context, p TelegramProxy, timeout time.
 			}
 
 			tlsConn := tls.Client(conn, &tls.Config{
-				InsecureSkipVerify: true,
-				ServerName:         sniDomain,
+				ServerName: sniDomain,
+				MinVersion: tls.VersionTLS12,
 			})
 			_ = tlsConn.SetDeadline(time.Now().Add(timeout))
 			if err := tlsConn.Handshake(); err == nil {
@@ -462,14 +483,29 @@ func TestSingleTelegramProxy(ctx context.Context, p TelegramProxy, timeout time.
 
 func hexDecode(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, ":", "")
+
+	// If Base64 or Hex with odd length, try standard hex decode or base64
 	if len(s)%2 != 0 {
-		return nil, fmt.Errorf("odd length")
+		if b, err := base64.RawURLEncoding.DecodeString(s); err == nil && len(b) > 0 {
+			return b, nil
+		}
+		if b, err := base64.StdEncoding.DecodeString(s); err == nil && len(b) > 0 {
+			return b, nil
+		}
+		return nil, fmt.Errorf("invalid hex secret length: %d", len(s))
 	}
+
 	res := make([]byte, len(s)/2)
 	for i := 0; i < len(s); i += 2 {
 		var b byte
 		_, err := fmt.Sscanf(s[i:i+2], "%02x", &b)
 		if err != nil {
+			if b64, b64Err := base64.StdEncoding.DecodeString(s); b64Err == nil {
+				return b64, nil
+			}
 			return nil, err
 		}
 		res[i/2] = b

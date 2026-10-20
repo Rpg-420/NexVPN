@@ -8,6 +8,7 @@ We welcome contributions of all kinds: bug reports, feature requests, documentat
 
 ## 📋 Table of Contents
 - [Code of Conduct](#code-of-conduct)
+- [House Rules](#house-rules)
 - [Architecture Overview](#architecture-overview)
 - [Development Setup](#development-setup)
 - [Project Structure](#project-structure)
@@ -22,6 +23,64 @@ We welcome contributions of all kinds: bug reports, feature requests, documentat
 
 ## 🤝 Code of Conduct
 This project adheres to the Contributor Covenant [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to project maintainers.
+
+---
+
+## 🏠 House Rules
+
+Three rules. They are not style preferences — each one exists because breaking it
+has already cost this project real debugging time, and the incidents are named so
+you can check the reasoning rather than take it on faith.
+
+### 1. Never leave a failure silent
+
+A caught exception that shows the user nothing is how a bug survives for six
+months. If a code path can fail, either handle it and say what happened, or let it
+propagate — but never swallow it into a spinner that never resolves.
+
+**Why:** the TUN crash-loop incident. `SingBoxAdapter.Start()` returned success as
+soon as the process was alive, so the engine verified reachability through the
+SOCKS port, announced **"Successfully connected"** at `+5.3s`, and the core died at
+`+15.4s` with no reason attached. The engine read that anonymous crash as a dead
+*server* and spent all four auto-failover attempts switching servers — which can
+never fix a local adapter fault. Ten seconds of false "connected" and four wasted
+retries, all from one silent failure.
+
+**In practice:** the TUN gate in `internal/protocols/singbox.go` and `xray.go` now
+waits for the adapter to actually exist and returns a real error when it does not,
+so the failure reaches the engine's existing TUN → System Proxy fallback instead of
+surfacing later as an anonymous crash. `internal/diary` records the stage either way.
+
+### 2. Measure, do not assume
+
+If you claim something is faster, fixed, or more reliable, put the numbers in the
+PR. Nearly every wrong turn in this project's history was a plausible theory that
+nobody tested.
+
+**Why:** the same incident produced two confident theories — "the server is dead"
+and "returning an error from `Start()` is enough" — and both were wrong. The log
+timeline showed the core dying asynchronously roughly 13s *after* `Start()` had
+already returned, which is exactly why a synchronous error return could never have
+caught it. The evidence is what changed the fix.
+
+**In practice:** a failing test that reproduces the bug is the strongest form of
+this. `internal/core/autoselect_test.go` and `internal/diary/diary_test.go` exist
+because the behaviour they pin is easy to regress and hard to notice.
+
+### 3. Fix it for the people who are stuck, not for everyone
+
+A per-user lever plus error-driven advice beats changing the default behaviour for
+a million working installations. When someone reports a failure, ask what is
+different about *their* machine before changing what happens on every machine.
+
+**Why:** users behind an ISP that blocks WireGuard handshakes and users behind one
+that blocks WebSocket-over-TLS need opposite defaults. A change that fixes one
+breaks the other. The safe move is almost always to make the failure visible and
+give the stuck user a way out, not to move the default for everybody.
+
+**In practice:** this is also why `tools/NexVPN-Report.ps1` exists. When the app
+will not start, the user cannot reach any in-app diagnostic — so the diagnostic has
+to be a separate tool that runs without the app.
 
 ---
 
@@ -78,16 +137,18 @@ NexVPN/
 ├── app_discovery.go          # Discovery Hub, Telegram scraper, & Free config APIs
 ├── app_extra.go              # Utility APIs, Mobile Remote, backup/restore, speed test
 ├── main.go                   # Go runtime initialization & window configuration
-├── version.go                # Single source of truth for versioning (e.g. 1.3.5)
+├── version.go                # Single source of truth for versioning (e.g. 1.4.0)
 ├── internal/
 │   ├── config/               # Profile storage, encrypted vault, JSON settings
 │   ├── core/                 # Engine dispatcher, Killswitch, DNS leak, Network Doctor
+│   ├── diary/                # On-disk launch diary (startup.log), read by the report tool
 │   ├── discovery/            # Cloudflare scanner, Fragment tester, Telegram crawler
 │   ├── parser/               # VLESS, VMess, Trojan, SS, Hysteria2, TUIC, Warp parsers
 │   ├── protocols/            # Protocol adapters (Sing-box, Xray, Aether, OpenVPN, Psiphon)
 │   ├── sysproc/              # Hidden process execution flags & background daemons
 │   ├── sysproxy/             # Windows WinINet, Linux GNOME/KDE, macOS sysproxy handlers
 │   └── tray/                 # Windows taskbar system tray integration & icon handlers
+├── tools/                    # NexVPN-Report.ps1/.cmd — standalone launch diagnostic
 ├── frontend/
 │   ├── src/
 │   │   ├── components/       # Modals (CleanIP, FragmentStudio, MobileRemote, NetworkDoctor...)
@@ -113,7 +174,11 @@ NexVPN/
 - Use functional components with React Hooks.
 - Ensure all new UI text strings are added to `frontend/src/lib/i18n.ts` with both `en` and `fa` translations.
 - Maintain responsive RTL (Right-to-Left) and LTR (Left-to-Right) support.
-- Stick to the unified design language: Dark theme, glassmorphism (`glass-card`), vibrant cyan/purple/emerald accents, Lucide icons.
+- Stick to the unified design language: the shadcn/ui token system in
+  `frontend/src/components/ui/`. Use the CSS custom properties (`--card`,
+  `--border`, `--primary`, `--muted`, …) through Tailwind classes rather than
+  hard-coded colours, so light and dark themes both work. The old
+  `card` / `btn` class layer was retired and must not come back.
 
 ---
 
