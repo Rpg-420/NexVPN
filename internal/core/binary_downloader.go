@@ -77,9 +77,9 @@ func GetCoreDownloadURL(coreKey string) string {
 
 	case "singbox":
 		// Use latest stable v1.13.x - auto-fetched via GitHub API with hardcoded fallback
-		latestVer := fetchLatestSingBoxVersion() // e.g. "v1.13.19"
+		latestVer := fetchLatestSingBoxVersion() // e.g. "v1.14.0"
 		if latestVer == "" {
-			latestVer = "v1.13.19"
+			latestVer = "v1.14.0"
 		}
 		ver := strings.TrimPrefix(latestVer, "v")
 		switch {
@@ -307,12 +307,12 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 	urlStr := GetCoreDownloadURL(coreKey)
 	if urlStr == "" {
 		if coreKey == "psiphon" && runtime.GOOS == "windows" {
-			return "", fmt.Errorf("Psiphon در ویندوز به صورت پیش‌فرض همراه برنامه است و نیاز به دانلود جدا ندارد. اگر فایل bin/psiphon.exe حذف شده، آن را از نصب‌کننده بازیابی کنید")
+			return "", fmt.Errorf("Psiphon is pre-installed on Windows and does not require separate download")
 		}
 		if coreKey == "openvpn" && runtime.GOOS != "windows" {
-			return "", fmt.Errorf("OpenVPN فقط در ویندوز پشتیبانی می‌شود")
+			return "", fmt.Errorf("OpenVPN is only supported on Windows")
 		}
-		return "", fmt.Errorf("لینک دانلود برای %s در این سیستم عامل موجود نیست", coreKey)
+		return "", fmt.Errorf("download URL for %s is not available on this platform", coreKey)
 	}
 
 	urls := strings.Split(urlStr, ",")
@@ -332,9 +332,9 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 		}
 		if progressCb != nil {
 			if idx == 0 {
-				progressCb(0, 0, 0, 0, "در حال اتصال به سرور...")
+				progressCb(0, 0, 0, 0, "Connecting to mirror server...")
 			} else {
-				progressCb(0, 0, 0, 0, fmt.Sprintf("تلاش با آینه %d...", idx+1))
+				progressCb(0, 0, 0, 0, fmt.Sprintf("Trying mirror %d...", idx+1))
 			}
 		}
 		req, reqErr := http.NewRequest("GET", u, nil)
@@ -356,7 +356,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 				resp.Body.Close()
 				peekStr := strings.ToLower(string(bodyPeek[:n]))
 				if strings.Contains(peekStr, "<html") || strings.Contains(peekStr, "not found") {
-					lastErr = "سرور فایل را پیدا نکرد (404)"
+					lastErr = "server returned 404 (file not found)"
 					continue
 				}
 				// Re-request if it was actually valid but small
@@ -365,7 +365,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 					if resp != nil {
 						resp.Body.Close()
 					}
-					lastErr = "فایل دریافتی نامعتبر است"
+					lastErr = "downloaded file is invalid"
 					continue
 				}
 			}
@@ -375,7 +375,7 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 		if err != nil {
 			lastErr = err.Error()
 		} else if resp != nil {
-			lastErr = fmt.Sprintf("سرور پاسخ %d داد", resp.StatusCode)
+			lastErr = fmt.Sprintf("server returned %d", resp.StatusCode)
 			resp.Body.Close()
 		}
 	}
@@ -385,9 +385,9 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 			lastErr = err.Error()
 		}
 		if lastErr == "" {
-			lastErr = "اتصال به هیچ آینه‌ای برقرار نشد - اینترنت یا فیلترینگ را بررسی کنید"
+			lastErr = "failed to connect to any download mirror"
 		}
-		return "", fmt.Errorf("دانلود %s ناموفق بود: %s. لطفاً VPN دیگری برای دانلود اولیه استفاده کنید یا فایل را دستی در پوشه bin قرار دهید", coreKey, lastErr)
+		return "", fmt.Errorf("download of %s failed: %s", coreKey, lastErr)
 	}
 	defer resp.Body.Close()
 
@@ -444,13 +444,13 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 
 	data := bodyBuffer.Bytes()
 	if len(data) == 0 {
-		return "", fmt.Errorf("فایل دانلود شده خالی است - اتصال قطع شده")
+		return "", fmt.Errorf("downloaded file is empty - connection interrupted")
 	}
 	// Basic size sanity check (cores are at least 1MB)
 	if len(data) < 100*1024 && (strings.HasSuffix(activeUrl, ".zip") || strings.HasSuffix(activeUrl, ".tar.gz")) {
 		// Check if it's HTML error page
 		if bytes.Contains(data[:min(512, len(data))], []byte("<html")) {
-			return "", fmt.Errorf("سرور به جای فایل، صفحه خطا برگرداند - لینک ممکن است منقضی شده باشد")
+			return "", fmt.Errorf("server returned HTML error page instead of archive")
 		}
 	}
 
@@ -465,26 +465,56 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 		err = os.WriteFile(dest, data, 0755)
 		if err == nil {
 			if info, statErr := os.Stat(dest); statErr != nil || info.Size() == 0 {
-				err = fmt.Errorf("فایل پس از ذخیره خالی است")
+				err = fmt.Errorf("file is empty after writing to disk")
 			}
 		}
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("خطا در استخراج %s: %w", coreKey, err)
+		return "", fmt.Errorf("failed to extract %s: %w", coreKey, err)
 	}
 
-	// SHA256 verification (best-effort against sidecar .sha256 if available)
+	// SHA-256 integrity verification.
+	//
+	// SECURITY: the expected digest is never fetched from the mirror that served
+	// the payload - a compromised mirror could otherwise serve both a tampered
+	// archive and a matching hash file, defeating the check entirely. The
+	// canonical (first) URL is used for the sidecar instead, and a locally pinned
+	// digest takes precedence and fails closed.
 	hash := sha256.Sum256(data)
 	hashHex := hex.EncodeToString(hash[:])
-	if err := verifySHA256FromURL(data, activeUrl); err != nil {
-		return "", fmt.Errorf("تأیید صحت فایل ناموفق: %w - فایل ممکن است خراب یا دستکاری شده باشد", err)
+	canonicalURL, _ := splitMirrors(GetCoreDownloadURL(coreKey))
+	if verr := verifyDownloadedArchive(data, canonicalURL); verr != nil {
+		if verr == errChecksumUnavailable {
+			// SECURITY: no digest could be obtained. Historically this was a
+			// silent "proceed with a warning", which let a malicious mirror
+			// substitute an arbitrary binary whenever upstream published no
+			// .sha256 sidecar. It is now gated:
+			//   * If the artefact is pinned in pinnedCoreHashes the check above
+			//     would already have run, so reaching here means it is UNPINNED.
+			//   * Unless the user has explicitly opted into unverified
+			//     downloads, refuse. A failed update is recoverable; running an
+			//     attacker-supplied proxy core is not.
+			if !allowUnverifiedCoreDownloads() {
+				return "", fmt.Errorf(
+					"refusing to install %s: no trusted SHA-256 digest is available "+
+						"(upstream published no sidecar and the artefact is not pinned). "+
+						"Pin the digest in pinnedCoreHashes or enable unverified downloads explicitly",
+					coreKey)
+			}
+			if progressCb != nil {
+				progressCb(99, downloaded, totalBytes, 0,
+					"Warning: operating in unverified mode - integrity could NOT be confirmed")
+			}
+		} else {
+			return "", fmt.Errorf("checksum verification failed: %w", verr)
+		}
 	}
 	if progressCb != nil {
-		progressCb(100, downloaded, totalBytes, 0, "تکمیل شد")
+		progressCb(100, downloaded, totalBytes, 0, "Complete")
 	}
 
-	return fmt.Sprintf("%s با موفقیت به‌روزرسانی شد (SHA256: %s...)", coreKey, hashHex[:12]), nil
+	return fmt.Sprintf("%s updated successfully (SHA256: %s...)", coreKey, hashHex[:12]), nil
 }
 
 func min(a, b int) int {
@@ -494,41 +524,167 @@ func min(a, b int) int {
 	return b
 }
 
-// verifySHA256FromURL tries to fetch URL.sha256 and compare with data hash (best-effort)
-func verifySHA256FromURL(data []byte, baseURL string) error {
-	hash := sha256.Sum256(data)
-	actual := hex.EncodeToString(hash[:])
-	for _, suffix := range []string{".sha256", ".sha256sum", ".sha256.txt"} {
-		shaURL := baseURL + suffix
-		// Also try ghproxy mirrors for hash file
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Get(shaURL)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			if resp != nil {
-				resp.Body.Close()
-			}
+// errChecksumUnavailable signals that no upstream checksum could be obtained for a
+// downloaded artefact, so its integrity could not be verified at all.
+var errChecksumUnavailable = fmt.Errorf("no published checksum available")
+
+// pinnedCoreHashes maps a canonical download URL to the SHA-256 digest of the
+// archive it serves. When an entry is present, the download MUST match it.
+//
+// Populate this map for every core version a release ships. It is the only
+// mechanism that makes the update path resistant to a malicious or compromised
+// mirror, because the expected digest never travels over the network.
+//
+// Run `sha256sum <archive>` on an artefact downloaded from the official upstream
+// release page and paste the result here.
+//
+// NOTE for URL schemes that serve "latest": a pinned digest goes stale the
+// moment upstream publishes a new release. verifyDownloadedArchive handles that
+// case by falling back to the upstream-published sidecar (see fetchSidecarSHA256)
+// before declaring a mismatch, so a genuine new release still installs while a
+// tampered mirror payload does not.
+var pinnedCoreHashes = map[string]string{
+	// sing-box v1.14.0 — the version bundled with NexVPN 1.4.0. sing-box
+	// publishes NO checksum sidecar (verified: .sha256/.dgst/.sha256sum all 404),
+	// so this pin is the only integrity anchor for that core.
+	"https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-windows-amd64.zip": "3ffb56267da14e287be48bd10cf7e6505260125bad940b75101fbb4d5d58e5d6",
+
+	// Xray-core v26.3.27 (the "latest" URL served this archive on 2026-10-21).
+	// Xray publishes a .dgst sidecar, so future upstream releases verify
+	// through fetchSidecarSHA256 even after this pin goes stale.
+	"https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip": "d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad",
+
+	// openvpn-portable 2.5.8-19 (portapps). No sidecar published; the URL is
+	// version-pinned so this entry never goes stale.
+	"https://github.com/portapps/openvpn-portable/releases/download/2.5.8-19/openvpn-portable-win64.zip": "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
+}
+
+// allowUnverifiedDownloads is the process-wide escape hatch for installing a
+// core archive that has no trusted digest. It is off by default and must be
+// flipped deliberately (see SetAllowUnverifiedCoreDownloads), so an ordinary
+// update can never silently install a substitutable binary.
+var (
+	allowUnverifiedMu      sync.RWMutex
+	allowUnverifiedEnabled bool
+)
+
+// SetAllowUnverifiedCoreDownloads opts in (or out of) installing core archives
+// whose SHA-256 could not be checked against a pinned or upstream-published
+// digest.
+//
+// This exists for the rare upstream that ships no checksum at all. Callers must
+// surface the choice to the user; enabling it means the update path is no longer
+// resistant to a compromised mirror.
+func SetAllowUnverifiedCoreDownloads(enabled bool) {
+	allowUnverifiedMu.Lock()
+	allowUnverifiedEnabled = enabled
+	allowUnverifiedMu.Unlock()
+}
+
+func allowUnverifiedCoreDownloads() bool {
+	allowUnverifiedMu.RLock()
+	defer allowUnverifiedMu.RUnlock()
+	return allowUnverifiedEnabled
+}
+
+// splitMirrors splits a comma-separated download list into its canonical (first)
+// URL and the remaining mirror URLs.
+func splitMirrors(raw string) (canonical string, mirrors []string) {
+	parts := strings.Split(raw, ",")
+	if len(parts) == 0 {
+		return "", nil
+	}
+	canonical = strings.TrimSpace(parts[0])
+	for _, p := range parts[1:] {
+		if m := strings.TrimSpace(p); m != "" {
+			mirrors = append(mirrors, m)
+		}
+	}
+	return canonical, mirrors
+}
+
+// fetchSidecarSHA256 fetches a checksum sidecar published next to the archive
+// (canonical URL only) and returns the first 64-character hex digest found.
+//
+// Upstreams are not consistent about the sidecar format, so both the common
+// filename variants and both layouts are handled:
+//
+//	Xray (XTLS):    "<url>.zip.dgst"      →  "SHA2-256= d004c392…"
+//	some projects:  "<url>.zip.sha256"    →  "d004c392…  xray.zip"
+//
+// The whole body is scanned for the first 64-char hex token, which covers both.
+func fetchSidecarSHA256(baseURL string) (string, bool) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	for _, suffix := range []string{".sha256", ".sha256sum", ".sha256.txt", ".dgst"} {
+		resp, err := client.Get(baseURL + suffix)
+		if err != nil {
 			continue
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
-		if readErr != nil {
+		if resp.StatusCode != http.StatusOK || readErr != nil {
 			continue
 		}
-		// Hash file format: "<hex>  filename" or just "<hex>"
-		fields := strings.Fields(string(body))
-		if len(fields) == 0 {
-			continue
+		for _, field := range strings.Fields(string(body)) {
+			candidate := strings.ToLower(strings.Trim(field, "="))
+			if len(candidate) == 64 && isHexString(candidate) {
+				return candidate, true
+			}
 		}
-		expected := strings.ToLower(strings.TrimSpace(fields[0]))
-		if len(expected) != 64 {
-			continue
-		}
-		if expected != actual {
-			return fmt.Errorf("SHA256 mismatch: expected %s, got %s", expected[:12], actual[:12])
-		}
-		return nil // verified
 	}
-	return nil // no hash file available - skip strict verification
+	return "", false
+}
+
+// isHexString reports whether s consists solely of hexadecimal characters.
+func isHexString(s string) bool {
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyDownloadedArchive verifies the SHA-256 digest of a downloaded core archive.
+//
+// Verification order:
+//  1. A sidecar digest published by upstream, fetched from canonicalURL (never
+//     from the mirror that served the payload, which would defeat the purpose of
+//     the check). This is tried first because release URLs that serve "latest"
+//     legitimately change content on every upstream release, so a pinned digest
+//     for such a URL is expected to go stale.
+//  2. A digest pinned in pinnedCoreHashes for canonicalURL - authoritative and
+//     offline; the only anchor for upstreams that publish no sidecar.
+//  3. If neither exists, errChecksumUnavailable is returned so the caller can warn
+//     the user instead of silently pretending the download was verified.
+//
+// A sidecar that exists but disagrees with the download is tampering, and a pin
+// that disagrees while no sidecar can vouch for the change is treated as
+// tampering too - neither falls through to the other check as a second chance.
+func verifyDownloadedArchive(data []byte, canonicalURL string) error {
+	hash := sha256.Sum256(data)
+	actual := hex.EncodeToString(hash[:])
+
+	// 1. Upstream-published sidecar, canonical origin only.
+	if canonicalURL != "" {
+		if expected, ok := fetchSidecarSHA256(canonicalURL); ok {
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("SHA256 mismatch against upstream-published digest: expected %s..., got %s...", expected[:12], actual[:12])
+			}
+			return nil
+		}
+	}
+
+	// 2. Pinned digest (authoritative, offline).
+	if pinned, ok := pinnedCoreHashes[canonicalURL]; ok && strings.TrimSpace(pinned) != "" {
+		if !strings.EqualFold(strings.TrimSpace(pinned), actual) {
+			return fmt.Errorf("SHA256 mismatch against pinned digest: expected %s..., got %s...", pinned[:12], actual[:12])
+		}
+		return nil
+	}
+
+	// 3. Nothing to verify against.
+	return errChecksumUnavailable
 }
 
 // UpdateGeoData downloads and updates GeoIP and GeoSite routing databases
@@ -590,25 +746,34 @@ func UpdateGeoData() (string, error) {
 		}
 	}
 
+	if _, err := os.Stat(filepath.Join(binDir, "geoip.dat")); err != nil {
+		return "", fmt.Errorf("geoip.dat update failed: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(binDir, "geosite.dat")); err != nil {
+		return "", fmt.Errorf("geosite.dat update failed: %w", err)
+	}
 	return "GeoIP and GeoSite routing rules updated successfully!", nil
 }
 
 func getBinDirectory() string {
 	execDir, _ := os.Executable()
 	baseDir := filepath.Dir(execDir)
-
-	// Check if bin exists in baseDir
-	if info, err := os.Stat(filepath.Join(baseDir, "bin")); err == nil && info.IsDir() {
-		return filepath.Join(baseDir, "bin")
-	}
-
 	cwd, _ := os.Getwd()
-	if info, err := os.Stat(filepath.Join(cwd, "bin")); err == nil && info.IsDir() {
-		return filepath.Join(cwd, "bin")
+
+	candidates := []string{
+		filepath.Join(cwd, "build", "bin", "bin"),
+		filepath.Join(baseDir, "bin", "bin"),
+		filepath.Join(baseDir, "bin"),
+		filepath.Join(cwd, "build", "bin"),
+		filepath.Join(cwd, "bin"),
+		filepath.Join(cwd, "..", "bin"),
+		filepath.Join(baseDir, "..", "bin"),
 	}
 
-	if info, err := os.Stat(filepath.Join(cwd, "..", "bin")); err == nil && info.IsDir() {
-		return filepath.Join(cwd, "..", "bin")
+	for _, dir := range candidates {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
 	}
 
 	return filepath.Join(baseDir, "bin")
@@ -661,7 +826,8 @@ func extractZip(data []byte, targetDir, coreKey string) error {
 			continue
 		}
 		destPath := filepath.Join(targetDir, baseName)
-		out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		tmpPath := destPath + ".download"
+		out, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
 			rc.Close()
 			continue
@@ -670,26 +836,54 @@ func extractZip(data []byte, targetDir, coreKey string) error {
 		out.Close()
 		if copyErr != nil && copyErr != io.EOF {
 			rc.Close()
-			_ = os.Remove(destPath)
+			_ = os.Remove(tmpPath)
 			continue
 		}
 		if written > int64(file.UncompressedSize64) {
 			rc.Close()
-			_ = os.Remove(destPath)
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("archive entry exceeded declared size")
 		}
 		extractedBytes += written
 		rc.Close()
-		_ = os.Chmod(destPath, 0755)
+		_ = os.Chmod(tmpPath, 0755)
+		if err := safeReplaceFile(tmpPath, destPath); err != nil {
+			_ = os.Remove(tmpPath)
+			continue
+		}
 		extracted++
 	}
 	if extracted == 0 {
-		return fmt.Errorf("فایل %s در آرشیو پیدا نشد - آرشیو ممکن است خراب باشد", targetExe)
+		return fmt.Errorf("file %s not found in archive or could not be extracted", targetExe)
 	}
 	return nil
 }
 
+func safeReplaceFile(tmpPath, destPath string) error {
+	// Attempt direct rename
+	if err := os.Rename(tmpPath, destPath); err == nil {
+		return nil
+	}
+	// Try removing destination if exists
+	_ = os.Remove(destPath)
+	if err := os.Rename(tmpPath, destPath); err == nil {
+		return nil
+	}
+	// Windows file locking fallback: rename destination to .old and place new file
+	oldPath := destPath + ".old"
+	_ = os.Remove(oldPath)
+	if err := os.Rename(destPath, oldPath); err == nil {
+		if err := os.Rename(tmpPath, destPath); err == nil {
+			_ = os.Remove(oldPath)
+			return nil
+		}
+	}
+	return os.Rename(tmpPath, destPath)
+}
+
 func extractTarGz(data []byte, targetDir, coreKey string) error {
+	const maxArchiveFiles = 128
+	const maxExtractedBytes = 512 << 20
 	gzr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -698,6 +892,9 @@ func extractTarGz(data []byte, targetDir, coreKey string) error {
 
 	tr := tar.NewReader(gzr)
 	targetExe := exeName(coreKey)
+	extractedFiles := 0
+	var extractedBytes int64
+	found := false
 	if coreKey == "singbox" {
 		targetExe = exeName("sing-box")
 	}
@@ -711,17 +908,43 @@ func extractTarGz(data []byte, targetDir, coreKey string) error {
 			return err
 		}
 
-		baseName := filepath.Base(header.Name)
-		if strings.EqualFold(baseName, targetExe) {
-			destPath := filepath.Join(targetDir, baseName)
-			out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
-			if err != nil {
-				continue
-			}
-			_, _ = io.Copy(out, tr)
-			out.Close()
-			_ = os.Chmod(destPath, 0755)
+		if extractedFiles >= maxArchiveFiles || header.Size < 0 || header.Size > maxExtractedBytes || extractedBytes+header.Size > maxExtractedBytes {
+			return fmt.Errorf("archive exceeds extraction safety limits")
 		}
+		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+			continue
+		}
+		baseName := filepath.Base(header.Name)
+		if !strings.EqualFold(baseName, targetExe) {
+			continue
+		}
+		destPath := filepath.Join(targetDir, baseName)
+		tmpPath := destPath + ".download"
+		out, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		written, copyErr := io.CopyN(out, tr, header.Size+1)
+		out.Close()
+		if copyErr != nil && copyErr != io.EOF {
+			_ = os.Remove(tmpPath)
+			return copyErr
+		}
+		if written > header.Size {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("archive entry exceeded declared size")
+		}
+		_ = os.Chmod(tmpPath, 0755)
+		if err := safeReplaceFile(tmpPath, destPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return err
+		}
+		extractedBytes += written
+		extractedFiles++
+		found = true
+	}
+	if !found {
+		return fmt.Errorf("file %s not found in archive", targetExe)
 	}
 	return nil
 }
@@ -755,7 +978,7 @@ var (
 )
 
 // fetchLatestSingBoxVersion queries GitHub API for latest sing-box tag (cached, 8s timeout)
-// Falls back to hardcoded v1.13.19 if API blocked or fails
+// Falls back to hardcoded v1.14.0 if API blocked or fails
 func fetchLatestSingBoxVersion() string {
 	singBoxLatestCacheOnce.Do(func() {
 		client := &http.Client{Timeout: 8 * time.Second}
@@ -763,7 +986,7 @@ func fetchLatestSingBoxVersion() string {
 		if err != nil {
 			return
 		}
-		req.Header.Set("User-Agent", "NexVPN/1.3.5")
+		req.Header.Set("User-Agent", "NexVPN/1.4.0")
 		req.Header.Set("Accept", "application/vnd.github+json")
 		resp, err := client.Do(req)
 		if err != nil || resp.StatusCode != 200 {
@@ -787,5 +1010,5 @@ func fetchLatestSingBoxVersion() string {
 	if singBoxLatestCache != "" {
 		return singBoxLatestCache
 	}
-	return "v1.13.19"
+	return "v1.14.0"
 }
