@@ -153,7 +153,9 @@ jobs:
           npm run build
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v7 is required for golangci-lint v2; v6 rejects any v2 version
+        # string with "golangci-lint v2 is not supported by golangci-lint-action v6".
+        uses: golangci/golangci-lint-action@v7
         with:
           # Pinned, not `latest`: the gate used to drift every time upstream
           # shipped a release, and the default linter set changed with it.
