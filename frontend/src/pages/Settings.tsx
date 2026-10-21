@@ -916,145 +916,9 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                   }
                 />
 
-                {/* Custom Direct Domains */}
-                <SettingRow
-                  id="custom-direct-domains-row"
-                  icon={<Globe size={16} />}
-                  label={t('custom_direct_domains_label')}
-                  description={t('custom_direct_domains_desc')}
-                  query={query}
-                  control={
-                    <input
-                      type="text"
-                      className="form-control font-mono text-xs"
-                      style={{ width: '280px', fontSize: '11px' }}
-                      placeholder="e.g. example.com, mybank.ir"
-                      value={(settings.custom_direct_domains || []).join(', ')}
-                      onChange={e => {
-                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                        update('custom_direct_domains', arr)
-                      }}
-                    />
-                  }
-                />
-
-                {/* Custom Proxy Domains */}
-                <SettingRow
-                  id="custom-proxy-domains-row"
-                  icon={<Shield size={16} />}
-                  label={t('custom_proxy_domains_label')}
-                  description={t('custom_proxy_domains_desc')}
-                  query={query}
-                  control={
-                    <input
-                      type="text"
-                      className="form-control font-mono text-xs"
-                      style={{ width: '280px', fontSize: '11px' }}
-                      placeholder="e.g. youtube.com, openai.com"
-                      value={(settings.custom_proxy_domains || []).join(', ')}
-                      onChange={e => {
-                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                        update('custom_proxy_domains', arr)
-                      }}
-                    />
-                  }
-                />
-
-                {/* Primary DNS Engine */}
-                <SettingRow
-                  id="dns-server-row"
-                  icon={<Globe size={16} />}
-                  label={t('dns_engine_label')}
-                  description={t('dns_engine_desc')}
-                  query={query}
-                  control={
-                    <div className="flex flex-col gap-2 items-end">
-                      <select
-                        className="form-control"
-                        style={{ width: '250px', fontSize: '12px' }}
-                        value={
-                          ['https://1.1.1.1/dns-query', 'https://dns.google/dns-query', 'https://dns.quad9.net/dns-query', '1.1.1.1', '8.8.8.8', '9.9.9.9'].includes(settings.dns_server)
-                            ? settings.dns_server
-                            : 'custom'
-                        }
-                        onChange={e => {
-                          if (e.target.value !== 'custom') {
-                            update('dns_server', e.target.value)
-                          }
-                        }}
-                      >
-                        <option value="https://1.1.1.1/dns-query">Cloudflare DoH (1.1.1.1)</option>
-                        <option value="https://dns.google/dns-query">Google DoH (8.8.8.8)</option>
-                        <option value="https://dns.quad9.net/dns-query">Quad9 Secure DoH</option>
-                        <option value="1.1.1.1">Cloudflare UDP (1.1.1.1)</option>
-                        <option value="8.8.8.8">Google UDP (8.8.8.8)</option>
-                        <option value="9.9.9.9">Quad9 UDP (9.9.9.9)</option>
-                        <option value="custom">⚙️ Custom DNS / DoH URL...</option>
-                      </select>
-                      <input
-                        type="text"
-                        placeholder={t('custom_dns_placeholder')}
-                        className="form-control font-mono"
-                        style={{ width: '250px', fontSize: '11px' }}
-                        value={settings.dns_server || ''}
-                        onChange={e => update('dns_server', e.target.value)}
-                      />
-
-                      <Button variant="secondary" size="sm" className="mt-1 w-[250px] flex justify-center items-center gap-2"
-                        type="button"
-                        onClick={handleScanDNS}
-                        disabled={isScanningDNS}
-                      >
-                        {isScanningDNS ? (
-                          <>
-                            <div className="spinner" style={{ width: 12, height: 12 }} />
-                            <span>{t('settings_scanning')}</span>
-                          </>
-                        ) : (
-                          <>
-                            <Activity size={14} />
-                            <span>{t('settings_find_fastest_dns')}</span>
-                          </>
-                        )}
-                      </Button>
-
-                      {dnsScanResult && dnsScanResult.length > 0 && (
-                        <div className="mt-2 text-xs bg-card/50 p-2 rounded-lg border border-border w-[250px]">
-                          <div className="text-success font-bold mb-1">
-                            {t('settings_best_dns_found')}
-                          </div>
-                          {dnsScanResult.filter((r) => r.is_success).slice(0, 3).map((r, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center py-1 border-b border-border last:border-0">
-                              <span className="text-foreground font-mono text-[10px]" title={r.raw_value}>{r.server_name}</span>
-                              <span className={`font-mono text-[10px] ${idx === 0 ? 'text-success font-bold' : 'text-muted-foreground'}`}>
-                                {r.latency}ms
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  }
-                />
-
-                {/* Fallback DNS */}
-                <SettingRow
-                  id="dns-fallback-row"
-                  icon={<Radio size={16} />}
-                  label={t('dns_fallback_label')}
-                  description={t('dns_fallback_desc')}
-                  query={query}
-                  control={
-                    <input
-                      type="text"
-                      className="form-control font-mono"
-                      style={{ width: '250px', fontSize: '12px' }}
-                      value={settings.dns_fallback || '8.8.8.8'}
-                      onChange={e => update('dns_fallback', e.target.value)}
-                      placeholder="8.8.8.8"
-                    />
-                  }
-                />
+                {/* Primary DNS Engine — lives in the "DNS & Resolution"
+                    section below, next to the fallback and the custom DoH
+                    endpoint, so every name-resolution setting is in one place. */}
 
                 {/* IPv4 / IPv6 Strategy */}
                 <SettingRow
@@ -1133,6 +997,148 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                       value={settings.real_delay_url || 'http://cp.cloudflare.com/generate_204'}
                       onChange={e => update('real_delay_url', e.target.value)}
                     />
+                  }
+                />
+              </div>
+            </Card>
+          </div>
+
+          {/* DNS & Resolution — every name-resolution setting in one place:
+              the primary engine, the fallback, the custom DoH endpoint (which
+              used to sit in the System tab) and the cache flush (which used to
+              sit in System Behavior). */}
+          <div className="section">
+            <div className="section-title">
+              <Globe size={13} style={{ display: 'inline', marginInlineEnd: 6 }} />
+              {t('sec_dns')}
+            </div>
+            <Card >
+              <div style={{ padding: 0 }}>
+                <SettingRow
+                  id="dns-server-row"
+                  icon={<Globe size={16} />}
+                  label={t('dns_engine_label')}
+                  description={t('dns_engine_desc')}
+                  query={query}
+                  control={
+                    <div className="flex flex-col gap-2 items-end">
+                      <select
+                        className="form-control"
+                        style={{ width: '250px', fontSize: '12px' }}
+                        value={
+                          ['https://1.1.1.1/dns-query', 'https://dns.google/dns-query', 'https://dns.quad9.net/dns-query', '1.1.1.1', '8.8.8.8', '9.9.9.9'].includes(settings.dns_server)
+                            ? settings.dns_server
+                            : 'custom'
+                        }
+                        onChange={e => {
+                          if (e.target.value !== 'custom') {
+                            update('dns_server', e.target.value)
+                          }
+                        }}
+                      >
+                        <option value="https://1.1.1.1/dns-query">Cloudflare DoH (1.1.1.1)</option>
+                        <option value="https://dns.google/dns-query">Google DoH (8.8.8.8)</option>
+                        <option value="https://dns.quad9.net/dns-query">Quad9 Secure DoH</option>
+                        <option value="1.1.1.1">Cloudflare UDP (1.1.1.1)</option>
+                        <option value="8.8.8.8">Google UDP (8.8.8.8)</option>
+                        <option value="9.9.9.9">Quad9 UDP (9.9.9.9)</option>
+                        <option value="custom">⚙️ Custom DNS / DoH URL...</option>
+                      </select>
+                      <input
+                        type="text"
+                        placeholder={t('custom_dns_placeholder')}
+                        className="form-control font-mono"
+                        style={{ width: '250px', fontSize: '11px' }}
+                        value={settings.dns_server || ''}
+                        onChange={e => update('dns_server', e.target.value)}
+                      />
+
+                      <Button variant="secondary" size="sm" className="mt-1 w-[250px] flex justify-center items-center gap-2"
+                        type="button"
+                        onClick={handleScanDNS}
+                        disabled={isScanningDNS}
+                      >
+                        {isScanningDNS ? (
+                          <>
+                            <div className="spinner" style={{ width: 12, height: 12 }} />
+                            <span>{t('settings_scanning')}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Activity size={14} />
+                            <span>{t('settings_find_fastest_dns')}</span>
+                          </>
+                        )}
+                      </Button>
+
+                      {dnsScanResult && dnsScanResult.length > 0 && (
+                        <div className="mt-2 text-xs bg-card/50 p-2 rounded-lg border border-border w-[250px]">
+                          <div className="text-success font-bold mb-1">
+                            {t('settings_best_dns_found')}
+                          </div>
+                          {dnsScanResult.filter((r) => r.is_success).slice(0, 3).map((r, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center py-1 border-b border-border last:border-0">
+                              <span className="text-foreground font-mono text-[10px]" title={r.raw_value}>{r.server_name}</span>
+                              <span className={`font-mono text-[10px] ${idx === 0 ? 'text-success font-bold' : 'text-muted-foreground'}`}>
+                                {r.latency}ms
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  }
+                />
+
+                <SettingRow
+                  id="dns-fallback-row"
+                  icon={<Radio size={16} />}
+                  label={t('dns_fallback_label')}
+                  description={t('dns_fallback_desc')}
+                  query={query}
+                  control={
+                    <input
+                      type="text"
+                      className="form-control font-mono"
+                      style={{ width: '250px', fontSize: '12px' }}
+                      value={settings.dns_fallback || '8.8.8.8'}
+                      onChange={e => update('dns_fallback', e.target.value)}
+                      placeholder="8.8.8.8"
+                    />
+                  }
+                />
+
+                <SettingRow
+                  id="custom-doh-row"
+                  icon={<Globe size={16} />}
+                  label={t('custom_doh_label')}
+                  description={t('custom_doh_desc')}
+                  query={query}
+                  control={
+                    <input
+                      type="text"
+                      dir="ltr"
+                      className="form-control text-xs w-64 font-mono"
+                      placeholder="https://1.1.1.1/dns-query"
+                      value={settings.custom_doh_url || ''}
+                      onChange={e => update('custom_doh_url', e.target.value)}
+                    />
+                  }
+                />
+
+                <SettingRow
+                  id="flush-dns-row"
+                  icon={<Globe size={16} />}
+                  label={t('settings_dns_flush_label')}
+                  description={t('settings_dns_flush_desc')}
+                  query={query}
+                  control={
+                    <Button variant="secondary" size="sm"
+                      onClick={handleFlushDNS}
+                      disabled={flushingDNS}
+                    >
+                      {flushingDNS ? '...' : dnsFlushed ? t('settings_dns_flushed') : t('settings_dns_flush_btn')}
+                    </Button>
                   }
                 />
               </div>
@@ -1343,25 +1349,6 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                     }
                   />
 
-                  {/* Auto reconnect on unexpected drop */}
-                  <SettingRow
-                    id="auto-reconnect-row"
-                    icon={<RefreshCw size={16} />}
-                    label={t('auto_reconnect_label')}
-                    description={t('auto_reconnect_desc')}
-                    query={query}
-                    control={
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={!!settings.auto_reconnect}
-                          onChange={e => update('auto_reconnect', e.target.checked)}
-                        />
-                        <span className="toggle-slider" />
-                      </label>
-                    }
-                  />
-
                   {/* Domestic traffic routing */}
                   <SettingRow
                     id="domestic-routing-row"
@@ -1527,84 +1514,10 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                     }
                   />
 
-                  {/* Privacy Shield — redacts tokens/keys/UUIDs from logs */}
-                  <SettingRow
-                    id="privacy-shield-row"
-                    icon={<Shield size={16} />}
-                    label={t('privacy_shield_label')}
-                    description={t('privacy_shield_desc')}
-                    query={query}
-                    control={
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={settings.privacy_shield_enabled !== false}
-                          onChange={e => update('privacy_shield_enabled', e.target.checked)}
-                        />
-                        <span className="toggle-slider" />
-                      </label>
-                    }
-                  />
-
-                  {/* Native notifications */}
-                  <SettingRow
-                    id="notifications-row"
-                    icon={<Bell size={16} />}
-                    label={t('notifications_label')}
-                    description={t('notifications_desc')}
-                    query={query}
-                    control={
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={settings.notifications_enabled !== false}
-                          onChange={e => update('notifications_enabled', e.target.checked)}
-                        />
-                        <span className="toggle-slider" />
-                      </label>
-                    }
-                  />
-
-                  {/* Log verbosity */}
-                  <SettingRow
-                    id="log-level-row"
-                    icon={<Terminal size={16} />}
-                    label={t('log_level_label')}
-                    description={t('log_level_desc')}
-                    query={query}
-                    control={
-                      <select
-                        className="form-control text-xs"
-                        value={settings.log_level || 'info'}
-                        onChange={e => update('log_level', e.target.value as Settings['log_level'])}
-                      >
-                        <option value="debug">{t('log_level_debug')}</option>
-                        <option value="info">{t('log_level_info')}</option>
-                        <option value="warning">{t('log_level_warning')}</option>
-                        <option value="error">{t('log_level_error')}</option>
-                      </select>
-                    }
-                  />
-
-                  {/* Retained log entries */}
-                  <SettingRow
-                    id="max-log-entries-row"
-                    icon={<Terminal size={16} />}
-                    label={t('max_log_entries_label')}
-                    description={t('max_log_entries_desc')}
-                    query={query}
-                    control={
-                      <input
-                        type="number"
-                        min={100}
-                        max={100000}
-                        step={100}
-                        className="form-control text-xs font-mono w-32"
-                        value={settings.max_log_entries ?? 1000}
-                        onChange={e => update('max_log_entries', parseInt(e.target.value) || 1000)}
-                      />
-                    }
-                  />
+                  {/* Privacy Shield, notifications, log verbosity and the log
+                      buffer size live in the "Logging & Notifications" section
+                      of the System tab, so everything about what gets written
+                      down and surfaced is in one place. */}
                 </div>
               </Card>
             </div>
@@ -2087,7 +2000,12 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                     }
                   />
 
-                  {/* Smart Failover */}
+                  {/* Smart Failover — one switch for the feature. The backend
+                      keeps two fields (auto_failover and auto_failover_enabled)
+                      from an older release and ORs them, and ToggleAutoFailover
+                      writes both, so a single toggle here cannot desync them.
+                      This duplicates the row that used to sit in the Routing
+                      Rules section below. */}
                   <SettingRow
                     id="auto-failover"
                     icon={<RefreshCw size={16} />}
@@ -2098,8 +2016,27 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                       <label className="toggle">
                         <input
                           type="checkbox"
-                          checked={settings.auto_failover !== false}
-                          onChange={e => update('auto_failover', e.target.checked)}
+                          checked={settings.auto_failover_enabled !== false}
+                          onChange={e => handleToggleFailover(e.target.checked)}
+                        />
+                        <span className="toggle-slider" />
+                      </label>
+                    }
+                  />
+
+                  {/* Auto reconnect on unexpected drop */}
+                  <SettingRow
+                    id="auto-reconnect-row"
+                    icon={<RefreshCw size={16} />}
+                    label={t('auto_reconnect_label')}
+                    description={t('auto_reconnect_desc')}
+                    query={query}
+                    control={
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={!!settings.auto_reconnect}
+                          onChange={e => update('auto_reconnect', e.target.checked)}
                         />
                         <span className="toggle-slider" />
                       </label>
@@ -2143,109 +2080,101 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                       </Button>
                     }
                   />
-                  <SettingRow
-                    id="flush-dns-row"
-                    icon={<Globe size={16} />}
-                    label={t('settings_dns_flush_label')}
-                    description={t('settings_dns_flush_desc')}
-                    query={query}
-                    control={
-                      <Button variant="secondary" size="sm"
-                        onClick={handleFlushDNS}
-                        disabled={flushingDNS}
-                      >
-                        {flushingDNS ? '...' : dnsFlushed ? t('settings_dns_flushed') : t('settings_dns_flush_btn')}
-                      </Button>
-                    }
-                  />
+                  {/* Flushing the resolver cache is a DNS action and now sits
+                      with the rest of the DNS settings in the Network tab. */}
                 </div>
               </Card>
             </div>
 
-            {/* 1-Click Diagnostics & Network Recovery Section */}
+            {/* Logging & Notifications — what the app writes down and what it
+                surfaces. These four rows used to sit at the bottom of the
+                Anti-DPI tab, which is about evading censorship, not about logs. */}
             <div className="section">
-              <div className="section-title flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Activity size={14} className="text-primary" />
-                  <span>{t('settings_diag_title')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="secondary" size="sm" className="text-[11px] flex items-center gap-1.5"
-                    onClick={handleRunDiagnostics}
-                    disabled={isRunningDiagnostics}
-                  >
-                    <RefreshCw size={12} className={isRunningDiagnostics ? 'animate-spin' : ''} />
-                    {isRunningDiagnostics ? t('settings_diag_scanning') : t('settings_diag_scan_btn')}
-                  </Button>
-                  <Button size="sm" className="text-[11px] flex items-center gap-1.5"
-                    onClick={handleRepairDiagnostics}
-                    disabled={isRepairing}
-                  >
-                    <Wrench size={12} className={isRepairing ? 'animate-spin' : ''} />
-                    {isRepairing ? t('settings_diag_repairing') : t('settings_diag_repair_btn')}
-                  </Button>
-                </div>
+              <div className="section-title">
+                <Terminal size={13} style={{ display: 'inline', marginInlineEnd: 6 }} />
+                {t('sec_logging')}
               </div>
-              <Card className="p-4 space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  {t('settings_diag_desc')}
-                </p>
+              <Card >
+                <div style={{ padding: 0 }}>
+                  {/* Privacy Shield — redacts tokens/keys/UUIDs from logs */}
+                  <SettingRow
+                    id="privacy-shield-row"
+                    icon={<Shield size={16} />}
+                    label={t('privacy_shield_label')}
+                    description={t('privacy_shield_desc')}
+                    query={query}
+                    control={
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={settings.privacy_shield_enabled !== false}
+                          onChange={e => update('privacy_shield_enabled', e.target.checked)}
+                        />
+                        <span className="toggle-slider" />
+                      </label>
+                    }
+                  />
 
-                {repairResult && (
-                  <div className={`p-3 rounded-xl border text-xs ${repairResult.success ? 'bg-success/40 border-success/30 text-success' : 'bg-warning/40 border-warning/30 text-warning'}`}>
-                    <div className="font-semibold mb-1 flex items-center gap-1.5">
-                      <CheckCircle2 size={14} />
-                      <span>{repairResult.message}</span>
-                    </div>
-                    {repairResult.actions_taken.length > 0 && (
-                      <ul className="list-disc list-inside space-y-0.5 text-[11px] text-foreground">
-                        {repairResult.actions_taken.map((act, i) => (
-                          <li key={i}>{act}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
+                  {/* Native notifications */}
+                  <SettingRow
+                    id="notifications-row"
+                    icon={<Bell size={16} />}
+                    label={t('notifications_label')}
+                    description={t('notifications_desc')}
+                    query={query}
+                    control={
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={settings.notifications_enabled !== false}
+                          onChange={e => update('notifications_enabled', e.target.checked)}
+                        />
+                        <span className="toggle-slider" />
+                      </label>
+                    }
+                  />
 
-                {diagnosticReport ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
-                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_overall')}</span>
-                        <span className={`font-bold ${diagnosticReport.healthy ? 'text-success' : 'text-destructive'}`}>
-                          {diagnosticReport.healthy ? t('settings_diag_healthy') : t('settings_diag_warning')}
-                        </span>
-                      </div>
-                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
-                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_wintun')}</span>
-                        <span className="font-medium text-primary text-[11px]">{diagnosticReport.wintun_status}</span>
-                      </div>
-                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
-                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_dns')}</span>
-                        <span className="font-medium text-primary text-[11px]">{diagnosticReport.dns_status}</span>
-                      </div>
-                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
-                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_sysproxy')}</span>
-                        <span className="font-medium text-warning text-[11px]">{diagnosticReport.proxy_status}</span>
-                      </div>
-                    </div>
+                  {/* Log verbosity */}
+                  <SettingRow
+                    id="log-level-row"
+                    icon={<Terminal size={16} />}
+                    label={t('log_level_label')}
+                    description={t('log_level_desc')}
+                    query={query}
+                    control={
+                      <select
+                        className="form-control text-xs"
+                        value={settings.log_level || 'info'}
+                        onChange={e => update('log_level', e.target.value as Settings['log_level'])}
+                      >
+                        <option value="debug">{t('log_level_debug')}</option>
+                        <option value="info">{t('log_level_info')}</option>
+                        <option value="warning">{t('log_level_warning')}</option>
+                        <option value="error">{t('log_level_error')}</option>
+                      </select>
+                    }
+                  />
 
-                    {diagnosticReport.issues_found.length > 0 && (
-                      <div className="p-3 bg-destructive/40 border border-destructive/30 rounded-xl text-xs text-destructive">
-                        <span className="font-semibold block mb-1">{t('settings_diag_issues')}</span>
-                        <ul className="list-disc list-inside space-y-1 text-[11px]">
-                          {diagnosticReport.issues_found.map((iss, i) => (
-                            <li key={i}>{iss}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center py-2 text-xs text-muted-foreground">
-                    {t('settings_diag_hint')}
-                  </div>
-                )}
+                  {/* Retained log entries */}
+                  <SettingRow
+                    id="max-log-entries-row"
+                    icon={<Terminal size={16} />}
+                    label={t('max_log_entries_label')}
+                    description={t('max_log_entries_desc')}
+                    query={query}
+                    control={
+                      <input
+                        type="number"
+                        min={100}
+                        max={100000}
+                        step={100}
+                        className="form-control text-xs font-mono w-32"
+                        value={settings.max_log_entries ?? 1000}
+                        onChange={e => update('max_log_entries', parseInt(e.target.value) || 1000)}
+                      />
+                    }
+                  />
+                </div>
               </Card>
             </div>
 
@@ -2443,13 +2372,9 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                   <Cpu size={13} style={{ display: 'inline', marginInlineEnd: 6 }} />
                   {t('sec_cores')}
                 </div>
-                <Button variant="secondary" size="sm" className="text-[11px] flex items-center gap-1.5"
-                  onClick={handleUpdateGeoData}
-                  disabled={updatingGeo}
-                >
-                  <RefreshCw size={12} className={updatingGeo ? 'animate-spin' : ''} />
-                  {updatingGeo ? t('updating') : geoUpdated ? '✓ GeoIP & GeoSite Updated' : t('update_geo_rules')}
-                </Button>
+                {/* The GeoIP/GeoSite update button that used to sit here is the
+                    one in the "Routing Rules Assets" section below; having it
+                    twice updated the same data from two places. */}
               </div>
               <Card >
                 <div className="flex items-center justify-between">
@@ -2583,27 +2508,8 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
                         disabled={updatingGeo}
                       >
                         <RefreshCw size={11} className={updatingGeo ? 'animate-spin' : ''} />
-                        {updatingGeo ? t('updating') : t('update_geo_btn')}
+                        {updatingGeo ? t('updating') : geoUpdated ? '✓ GeoIP & GeoSite Updated' : t('update_geo_btn')}
                       </Button>
-                    }
-                  />
-
-                  {/* Auto failover between healthy profiles */}
-                  <SettingRow
-                    id="auto-failover-row"
-                    icon={<Zap size={16} />}
-                    label={t('auto_failover_label')}
-                    description={t('auto_failover_desc')}
-                    query={query}
-                    control={
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={!!settings.auto_failover_enabled}
-                          onChange={e => handleToggleFailover(e.target.checked)}
-                        />
-                        <span className="toggle-slider" />
-                      </label>
                     }
                   />
                 </div>
@@ -2618,24 +2524,8 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
               </div>
               <Card className="p-0">
                 <div className="p-0">
-                  {/* Custom DoH endpoint */}
-                  <SettingRow
-                    id="custom-doh-row"
-                    icon={<Globe size={16} />}
-                    label={t('custom_doh_label')}
-                    description={t('custom_doh_desc')}
-                    query={query}
-                    control={
-                      <input
-                        type="text"
-                        dir="ltr"
-                        className="form-control text-xs w-64 font-mono"
-                        placeholder="https://1.1.1.1/dns-query"
-                        value={settings.custom_doh_url || ''}
-                        onChange={e => update('custom_doh_url', e.target.value)}
-                      />
-                    }
-                  />
+                  {/* The custom DoH endpoint moved to the DNS section of the
+                      Network tab, next to the primary engine it overrides. */}
 
                   {/* Block ads / trackers */}
                   <SettingRow
@@ -2820,7 +2710,100 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
 
         {/* TAB 7: Diagnostics */}
         {activeTab === 'diagnostics' && settings && (
-          <DiagnosticsPanel settings={settings} update={update} connectionState={connectionState} />
+          <div className="space-y-4">
+            {/* Network health audit. This used to sit in the System tab,
+                which left diagnostics spread over two tabs; the leak
+                tests, timeline, bundle export and update check in
+                DiagnosticsPanel below are the other half. */}
+            {/* Network Health — wintun, resolver and system proxy */}
+            <div className="section">
+              <div className="section-title flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Activity size={14} className="text-primary" />
+                  <span>{t('settings_diag_title')}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" size="sm" className="text-[11px] flex items-center gap-1.5"
+                    onClick={handleRunDiagnostics}
+                    disabled={isRunningDiagnostics}
+                  >
+                    <RefreshCw size={12} className={isRunningDiagnostics ? 'animate-spin' : ''} />
+                    {isRunningDiagnostics ? t('settings_diag_scanning') : t('settings_diag_scan_btn')}
+                  </Button>
+                  <Button size="sm" className="text-[11px] flex items-center gap-1.5"
+                    onClick={handleRepairDiagnostics}
+                    disabled={isRepairing}
+                  >
+                    <Wrench size={12} className={isRepairing ? 'animate-spin' : ''} />
+                    {isRepairing ? t('settings_diag_repairing') : t('settings_diag_repair_btn')}
+                  </Button>
+                </div>
+              </div>
+              <Card className="p-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  {t('settings_diag_desc')}
+                </p>
+
+                {repairResult && (
+                  <div className={`p-3 rounded-xl border text-xs ${repairResult.success ? 'bg-success/40 border-success/30 text-success' : 'bg-warning/40 border-warning/30 text-warning'}`}>
+                    <div className="font-semibold mb-1 flex items-center gap-1.5">
+                      <CheckCircle2 size={14} />
+                      <span>{repairResult.message}</span>
+                    </div>
+                    {repairResult.actions_taken.length > 0 && (
+                      <ul className="list-disc list-inside space-y-0.5 text-[11px] text-foreground">
+                        {repairResult.actions_taken.map((act, i) => (
+                          <li key={i}>{act}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {diagnosticReport ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
+                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_overall')}</span>
+                        <span className={`font-bold ${diagnosticReport.healthy ? 'text-success' : 'text-destructive'}`}>
+                          {diagnosticReport.healthy ? t('settings_diag_healthy') : t('settings_diag_warning')}
+                        </span>
+                      </div>
+                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
+                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_wintun')}</span>
+                        <span className="font-medium text-primary text-[11px]">{diagnosticReport.wintun_status}</span>
+                      </div>
+                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
+                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_dns')}</span>
+                        <span className="font-medium text-primary text-[11px]">{diagnosticReport.dns_status}</span>
+                      </div>
+                      <div className="p-2.5 bg-card/80 rounded-xl border border-border">
+                        <span className="text-muted-foreground block text-[11px]">{t('settings_diag_sysproxy')}</span>
+                        <span className="font-medium text-warning text-[11px]">{diagnosticReport.proxy_status}</span>
+                      </div>
+                    </div>
+
+                    {diagnosticReport.issues_found.length > 0 && (
+                      <div className="p-3 bg-destructive/40 border border-destructive/30 rounded-xl text-xs text-destructive">
+                        <span className="font-semibold block mb-1">{t('settings_diag_issues')}</span>
+                        <ul className="list-disc list-inside space-y-1 text-[11px]">
+                          {diagnosticReport.issues_found.map((iss, i) => (
+                            <li key={i}>{iss}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-2 text-xs text-muted-foreground">
+                    {t('settings_diag_hint')}
+                  </div>
+                )}
+              </Card>
+            </div>
+
+            <DiagnosticsPanel settings={settings} update={update} connectionState={connectionState} />
+          </div>
         )}
       </SettingMatchContext.Provider>
     </div>

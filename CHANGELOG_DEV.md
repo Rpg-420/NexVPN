@@ -1,5 +1,42 @@
 # Developer Changelog
 
+## [2026-10-21] - 🧹 Settings Page De-Duplicated and Re-Grouped (DNS, Routing, Logging, Diagnostics)
+
+The Settings page had grown by accretion: the same control reachable from two
+places, and the same concern spread over three tabs. Verified with
+`npx tsc --noEmit`, `npx vitest run` (26/26) and `npx vite build` (exit 0).
+
+- **Domain rules were entered twice.** "Custom Direct Domains" and "Custom Proxy
+  Domains" existed both as comma-separated text rows inside the Routing card
+  and as the visual chip manager below it, both writing the same two arrays.
+  The text rows are gone; the chip manager (which also handles the block list)
+  is the single entry point.
+- **Auto-failover had two switches in one tab.** `auto_failover` (plain update,
+  written only on Save) in System Behavior and `auto_failover_enabled` (via
+  `ToggleAutoFailover`, immediate, with rollback) in Routing Rules Assets. The
+  backend keeps both fields from an older release and ORs them, and
+  `ToggleAutoFailover` writes both — so the surviving System Behavior switch now
+  calls `handleToggleFailover` and the duplicate is removed.
+- **GeoIP update was a header button on Cores *and* a row in Routing Rules
+  Assets.** The header button is gone; the row stays and now shows the
+  `geoUpdated` confirmation that the header button used to show.
+- **DNS was scattered over three tabs.** The engine and fallback lived in the
+  Network tab, `custom_doh_url` in the System tab's Hardening card, and the
+  resolver-cache flush in System Behavior. All four now sit in one new
+  "DNS & Resolution" section in the Network tab (`sec_dns`, en + fa).
+- **Diagnostics lived in two tabs.** The network-health audit (wintun, resolver,
+  system proxy + 1-click repair) sat in the System tab while the Diagnostics tab
+  held the leak tests, timeline, bundle export and update check. The audit moved
+  to the top of the Diagnostics tab, above `DiagnosticsPanel`.
+- **The Anti-DPI tab held logging settings.** Privacy Shield, native
+  notifications, log verbosity and the log-buffer size were at the bottom of a
+  tab whose subject is evading censorship, and auto-reconnect sat there too.
+  All five moved: the first four into a new "Logging & Notifications" section
+  (`sec_logging`) in the System tab, auto-reconnect next to auto-connect and
+  kill-switch in System Behavior.
+- Checked mechanically afterwards: no settings key is read or written from more
+  than one tab (59 keys, one tab each), and no duplicated `SettingRow` id.
+
 ## [2026-10-21] - 🔒 Release v1.4.0 (Core-Supply-Chain Pinning, Frontend Test Baseline, Connect Refactor, Repo Hygiene)
 
 Fourth audit pass plus the v1.4.0 release prep. Every verification ran on a cold build cache and passed: `go build ./...`, `go vet ./internal/... .`, `go test ./internal/... -count=1`, `npx tsc --noEmit`, `npx vitest run` (26/26).
