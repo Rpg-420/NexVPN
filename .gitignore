@@ -55,5 +55,8 @@ skills-lock.json
 # Archived UI-design prototype — local reference only, not part of the app
 design/
 
+# Personal/private documents — never publish (moved out of docs/ by the developer)
+docs/My docs/
+
 # Build artifact fingerprints
 *.md5

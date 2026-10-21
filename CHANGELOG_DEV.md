@@ -1,5 +1,29 @@
 # Developer Changelog
 
+## [2026-10-21] - 🔖 v1.4.1 — Version Bump + Persian/English Documentation Sync
+
+Release housekeeping on top of the Settings de-duplication. Verified with
+`go build`, `go vet`, `go test ./internal/... -count=1` (10/10),
+`npx tsc --noEmit`, `npx vitest run` (26/26) and `npx vite build` (exit 0).
+
+- **Version 1.4.0 → 1.4.1 everywhere it actually lives:** `version.go`
+  (`AppVersion`), `frontend/package.json`, **both** `package-lock.json` files
+  (the root one was still at 1.3.5 — the previous bump missed it),
+  `build/windows/info.json` (4 fields), the `update_latest_notice` strings in
+  both languages, and the `v1.4.0` defaults/asset names in
+  `.github/workflows/release.yml`.
+- **`docs/index.html` bilingual parity restored.** The Persian half of the
+  landing page still advertised version ۱.۳.۵ while the English half said
+  1.4.0 — the exact "one language updated, the other forgotten" drift the
+  paired `fa-only`/`en-only` structure is prone to. All four version strings
+  now read 1.4.1 / ۱.۴.۱.
+- **`AppVersion` reference in both developer guides** (`DEVELOPER_GUIDE.md` and
+  `DEVELOPER_GUIDE_FA.md`) updated to 1.4.1.
+- **Audit of every language surface** (1366-key UI dictionary, both READMEs,
+  both user guides, both developer guides, landing page): apart from the two
+  stale version strings above, all pairs are in sync — no missing keys, no
+  untranslated entries, no hardcoded UI strings.
+
 ## [2026-10-21] - 🧹 Settings Page De-Duplicated and Re-Grouped (DNS, Routing, Logging, Diagnostics)
 
 The Settings page had grown by accretion: the same control reachable from two

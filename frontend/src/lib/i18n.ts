@@ -1003,7 +1003,7 @@ export const translations = {
     support_feedback: 'Support & Community',
     check_updates: 'Check for Updates',
     checking_updates: 'Checking update server...',
-    update_latest_notice: '✓ You are using the latest stable release of NexVPN (v1.4.0)',
+    update_latest_notice: '✓ You are using the latest stable release of NexVPN (v1.4.1)',
     cores_status_title: 'Active Core Kernels',
     about_license: 'Released under open-source license. Dedicated to internet freedom and privacy.',
 
@@ -2494,7 +2494,7 @@ export const translations = {
     support_feedback: 'پشتیبانی و پیشنهادات',
     check_updates: 'بررسی بروزرسانی جدید',
     checking_updates: 'در حال بررسی سرور...',
-    update_latest_notice: '✓ شما از آخرین نسخه پایدار و بروز برنامه استفاده می‌کنید (v1.4.0)',
+    update_latest_notice: '✓ شما از آخرین نسخه پایدار و بروز برنامه استفاده می‌کنید (v1.4.1)',
     cores_status_title: 'وضعیت هسته‌های اجرایی',
     about_license: 'طراحی و توسعه یافته تحت لایسنس متن‌باز با هدف دسترسی آزاد و امن به اینترنت جهانی.',
 
