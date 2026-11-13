@@ -21,7 +21,7 @@ jobs:
           cache: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -84,7 +84,7 @@ jobs:
           cache: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -150,7 +150,7 @@ jobs:
       # build system did not supply embed configuration`. That single error is
       # what made this job fail for weeks while the real backlog was elsewhere.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
