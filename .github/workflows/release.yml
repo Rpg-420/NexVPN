@@ -341,6 +341,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Declared at JOB level on purpose: the `secrets` context is not available
+    # inside a step's `if` expression, and using it there makes GitHub reject
+    # the whole workflow at startup (run with zero jobs). The step reads this
+    # as env.APP_SIGNING_PRIVATE_KEY instead.
+    env:
+      APP_SIGNING_PRIVATE_KEY: ${{ secrets.APP_SIGNING_PRIVATE_KEY }}
     steps:
       - name: Download All Built Artifacts
         uses: actions/download-artifact@v4
@@ -359,13 +365,16 @@ jobs:
       # (64 hex chars) once; generate a pair with:
       #   go run tools/sign-artifact/ --help   (see the pair-generation note in
       #   docs/signing.md — the private key NEVER leaves the repo settings)
+      # The signing step runs `go run`, and this job has no toolchain of its own.
+      - name: Setup Go
+        if: env.APP_SIGNING_PRIVATE_KEY != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+
       - name: Sign Release Artifacts (Ed25519)
-        # NOTE: the condition must read the SECRETS context — a step-level `env`
-        # value is not visible to that same step's `if`, so an
-        # `env.APP_SIGNING_PRIVATE_KEY != ''` guard would never run the step.
-        if: ${{ secrets.APP_SIGNING_PRIVATE_KEY != '' }}
-        env:
-          APP_SIGNING_PRIVATE_KEY: ${{ secrets.APP_SIGNING_PRIVATE_KEY }}
+        if: env.APP_SIGNING_PRIVATE_KEY != ''
         run: |
           # the glob is expanded once, so freshly written .sig files are not re-signed
           for f in dist/*; do
