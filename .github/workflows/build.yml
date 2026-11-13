@@ -175,11 +175,15 @@ jobs:
         # string with "golangci-lint v2 is not supported by golangci-lint-action v6".
         uses: golangci/golangci-lint-action@v7
         with:
-          # Pinned, not `latest`: the gate used to drift every time upstream
-          # shipped a release, and the default linter set changed with it.
+          # v2.15.0, not v2.6.2: the older build cannot decode Go 1.27 export
+          # data ("export data version 5 is greater than maximum supported
+          # version 2"), so the job aborted with exit code 3 before reporting a
+          # single issue — on every branch, including dependabot version bumps.
+          # Pinned, not `latest`: the gate must not drift under us, and
           # .golangci.yml carries the version-2 config the project is clean
           # against; bump both together.
-          version: v2.6.2
-          # Report issues without failing the pipeline until the existing
-          # backlog is cleared; flip to false to make lint blocking.
-          only-new-issues: true
+          version: v2.15.0
+          # Blocking now: the backlog this used to skip is gone — v2.15.0
+          # reports "0 issues" over ./... with this config, so any future
+          # finding is a regression this job should stop.
+          only-new-issues: false
