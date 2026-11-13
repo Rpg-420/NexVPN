@@ -136,7 +136,15 @@ jobs:
     name: Lint (golangci-lint)
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 — golangci-lint-action is configured with
+      # `only-new-issues: true`, which diffs the branch against its base. On a
+      # default shallow checkout (depth 1) the base commit is not present, the
+      # action cannot compute the range, and golangci-lint exits with code 3
+      # ("failure", no issue list) — which is exactly how this job failed on
+      # every branch, including dependabot bumps that touch nothing else.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
