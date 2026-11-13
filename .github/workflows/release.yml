@@ -453,5 +453,19 @@ jobs:
             - 🌐 **Anti-Censorship & DPI Evasion**: TLS ClientHello fragmentation, SNI proxying, and DNS leak prevention.
             - 🎨 **Sleek Cybernetic UI**: Glassmorphic dark aesthetic, real-time traffic visualizer, Discovery Hub, and sound effects.
 
+            ### 🔏 Verify your download (optional, offline)
+            Every artifact is signed with Ed25519. To prove that a file was built by
+            this repository and not tampered with, run:
+
+            ```
+            go run ./tools/verify-signature \
+              7544f81ab0fdf8504601bef822422a09c396d9abbd0f30c5dbc315b3949a8818 \
+              NexVPN-Setup.exe NexVPN-Setup.exe.sig
+            # -> "signature OK"   (a modified file prints "SIGNATURE INVALID")
+            ```
+
+            The public key is pinned in `docs/signing.md`; the matching private key
+            exists only as a repository secret and never leaves GitHub Actions.
+
             ---
             *Community & Support: [Telegram Channel](https://t.me/nexvpnpro) | [GitHub Issues](https://github.com/Rpg-420/NexVPN/issues)*
