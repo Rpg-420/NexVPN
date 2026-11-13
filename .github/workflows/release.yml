@@ -370,6 +370,12 @@ jobs:
       # setup-go step in this job failed on the runner while the build jobs'
       # identical step succeeded. Signing is best-effort: a release without a
       # signature is still a working release, and the warning makes it visible.
+      # No actions/setup-go here on purpose: the ubuntu-latest image already
+      # ships a Go toolchain for the signing helper's `go run`.
+      #
+      # Every failure path emits an ::error:: ANNOTATION with the cause inline:
+      # annotations are readable from the API without an authenticated log
+      # download, which is how this step is debugged.
       - name: Sign Release Artifacts (Ed25519)
         if: env.APP_SIGNING_PRIVATE_KEY != ''
         run: |
@@ -377,16 +383,31 @@ jobs:
             echo "::warning::No Go toolchain on this runner - artifacts are UNSIGNED"
             exit 0
           fi
-          # the glob is expanded once, so freshly written .sig files are not re-signed
+
+          KEYLEN=$(printf '%s' "$APP_SIGNING_PRIVATE_KEY" | tr -d '\r\n[:space:]' | wc -c)
+          echo "APP_SIGNING_PRIVATE_KEY length: $KEYLEN (expected 128)"
+          if [ "$KEYLEN" -ne 128 ]; then
+            echo "::error::APP_SIGNING_PRIVATE_KEY is $KEYLEN characters, expected 128 (hex ed25519 private key). Re-set the repository secret."
+            exit 1
+          fi
+
           signed=0
+          firsterr=""
           for f in dist/*; do
             case "$f" in *.sig) continue;; esac
-            if go run ./tools/sign-artifact/ "$f"; then signed=$((signed+1)); fi
+            if out=$(go run ./tools/sign-artifact "$f" 2>&1); then
+              signed=$((signed+1))
+            else
+              echo "$f -> $out"
+              [ -z "$firsterr" ] && firsterr="$f: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-250)"
+            fi
           done
           echo "signed $signed artifact(s)"
-          ls -la dist/*.sig
-          if [ "$signed" -eq 0 ]; then echo "::error::signing was requested but produced no signatures"; exit 1; fi
-
+          ls -la dist/*.sig 2>/dev/null || true
+          if [ "$signed" -eq 0 ]; then
+            echo "::error::signing produced no signatures. First error: ${firsterr:-none}"
+            exit 1
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         env:
