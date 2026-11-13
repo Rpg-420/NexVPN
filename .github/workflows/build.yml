@@ -65,7 +65,7 @@ jobs:
         run: wails build -skipbindings -platform windows/amd64
 
       - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: NexVPN-windows-amd64
           path: build/bin/NexVPN.exe
@@ -127,7 +127,7 @@ jobs:
         run: wails build -skipbindings -platform linux/amd64 -tags webkit2_41
 
       - name: Upload Linux Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: NexVPN-linux-amd64
           path: build/bin/NexVPN
