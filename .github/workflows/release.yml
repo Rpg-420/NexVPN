@@ -35,7 +35,7 @@ jobs:
             goarch: "386"
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -152,7 +152,7 @@ jobs:
             goarch: amd64
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -264,7 +264,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -354,7 +354,7 @@ jobs:
       # "go.mod file not found in current directory or any parent directory",
       # and `go-version-file: go.mod` in a setup-go step failed for the same
       # reason.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download All Built Artifacts
         uses: actions/download-artifact@v4
