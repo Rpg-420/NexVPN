@@ -16,7 +16,7 @@ func QueryTunnelAdapterBytes() (rx int64, tx int64, found bool) {
 	if err != nil {
 		return 0, 0, false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
