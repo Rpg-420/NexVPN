@@ -130,7 +130,7 @@ jobs:
           Compress-Archive -Path "$distName/*" -DestinationPath "$distName.zip" -Force
 
       - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}
           path: |
@@ -249,7 +249,7 @@ jobs:
           dpkg-deb --build --root-owner-group "$PKG_DIR" "NexVPN-${VER}-linux-${{ matrix.arch }}.deb"
 
       - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: |
@@ -325,7 +325,7 @@ jobs:
           fi
 
       - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-universal
           path: |
