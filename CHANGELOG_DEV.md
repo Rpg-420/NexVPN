@@ -1,5 +1,55 @@
 # Developer Changelog
 
+## [2026-11-13] - 🔒 Security & Correctness Audit + v1.4.2 (Full-repo review, 45 files)
+
+Full line-by-line review of the Go backend (~40k LOC) and React/TS frontend
+(~30k LOC) by six parallel auditors, then the fixes. Verified with `go build`,
+`go vet`, `gofmt`, `go test ./internal/...` (all packages), `npx tsc --noEmit`,
+`npx vitest run` (32/32) and a production `wails build` + `build.ps1` run.
+
+### Critical
+- **Core binaries are now verified BEFORE they touch disk** (`internal/core/binary_downloader.go`): the SHA-256 check ran *after* extraction, so a crash (or a kill) between extract and verify left a substituted `sing-box.exe`/`xray.exe` permanently installed. Verification now precedes any write, and `UpdateGeoData` no longer `os.Remove`s the existing good database before renaming (backup-and-restore swap).
+- **Backup exports no longer leak credentials**: `ExportFullBackupJSON` blanked `Password` but shipped `RawURI`/`ConfigContent` (VLESS UUIDs, trojan/Hy2 passwords, WireGuard private keys) and `SubscriptionURL` (subscription tokens). All are stripped now.
+- **Diagnostics bundle redaction** also strips `SubscriptionURL` (the token that fetches every config) — `app_insights.go`.
+- **TUIC URI builder fixed** (`internal/parser/parser.go`): a literal `***` placeholder inside the format string shifted every argument — host received the password and the port parsed to 0 → 443. Every TUIC node from a Clash subscription was garbage.
+- **QR generation actually works** (`frontend/src/lib/qrcode.ts`): the helper called the async `QRCode.toString` and read the result synchronously, so every QR the app rendered was empty. Reimplemented with the synchronous `create()` API + hand-built SVG; regression tests added.
+- **Data race on `app.ctx`** in `OnSessionComplete` (now via `appCtx()`), and the signal handler no longer runs proxy/firewall teardown concurrently with the normal exit path (`sync.Once`), nor skips `ClearConnectJournal` (which produced a false "previous session ended unexpectedly" repair on the next launch).
+- **`bin/openvpn.exe` + 3 DLLs were tracked despite `.gitignore`** — 900 KB of vendored engine binaries distributed through the installer while bypassing the CI download/verify flow. Removed from the index.
+
+### High
+- TunnelBear relay start/swap/close is now one critical section (two concurrent connects leaked a loopback listener).
+- `PingAllProfiles` is serialized (`TryLock`) — a second sweep used to un-cancel the first and overwrite its results with stale copies.
+- Update check uses `compareVersions` (older releases and `-beta` tags no longer register as an update).
+- `isStaleNexVPNProxy` compares exact app-owned addresses instead of a `127.0.0.1:108` substring — it used to wipe a user's own proxy on port 1080.
+- `ApplyCleanIPTo*` validates the IP (`net.ParseIP`) before rewriting every profile in the category; `WarpEndpoint` no longer formats a `:0` port.
+- `RealPingActiveProfile` returns a clear error instead of probing port 0; `randRange` no longer nil-derefs when crypto/rand fails; notifier processes are reaped; `RecordConnectionSession` unlocks via defer.
+
+### Medium / infrastructure
+- `Settings.LastRun` markers, `LastProfileID` and the failover cooldowns now go through the new **atomic `Store.UpdateSettings`**, closing the read-modify-write lost-update class.
+- **Dynamic Censorship Failover became a ladder**: probe backups → WARP/UDP sidestep → Psiphon shield, each stage gated by a persisted cooldown (survives restarts, cleared on backup import).
+- **Server health score** (`app_reliability.go` + `ReliabilityBadge`): derived 0-100 reliability per profile from the existing failure ledger, rendered on the V2Ray/WARP cards.
+- **Radar history is persisted** (50 reports) with `GetProtocolRadarHistory`/`CancelProtocolRadar`; the modal shows recent scans, a stop button and a busy notice.
+- **Fonts are self-hosted**: Vazirmatn-FD (from `next-persian-fonts`, OFL) plus Inter/JetBrains Mono via `@fontsource` — the CDN `@import`s and Google Fonts links are gone, so startup leaks nothing and works fully offline.
+- **Release artifacts are Ed25519-signed** (`tools/sign-artifact`, `tools/verify-signature`, `tools/keygen`, workflow step + pinned public key) so a tampered installer is detectable offline.
+- Scanner panics now emit their terminal `*_error` event (spinner no longer sticks); batch imports/subscription refreshes report per-item failures instead of silently returning short; SSID detection runs under `chcp 65001` (Persian SSIDs no longer mojibake).
+- CI: vitest now runs (Windows + Linux jobs), Dependabot added, `x/crypto` v0.33 → v0.59, Wails CLI pinned to v2.17.1 (v2.9.3 cannot read Go 1.27 export data — it failed the build with `package "X" without types was imported`), `build.ps1` falls back to `-skipbindings` on any bindings failure and is BOM'd (PowerShell 5.1 read the UTF-8 em-dashes as quotes and refused to parse it).
+- Shared frontend hooks replace four copy-pasted implementations: `useToast`, `useProfileList`, `useCoreDownload` (also fixes the un-cleaned `setTimeout` in Aether/Psiphon and the `EventsOff`-kills-everyone fallback in `api.onEvent`).
+
+## [2026-10-22] - 🚀 Added & 🐛 Fixed (Dynamic Censorship Failover, Frontend ProfileSummary Lazy-Loading, Aether Fallback, Psiphon Offline Server List)
+
+- **`app.go` (Dynamic Censorship Failover):** Enhanced `triggerAutoFailover` so that when all candidate backup proxies fail reachability probes (indicating ISP-level SNI / TLS / UDP censorship blocks), the app no longer gives up and stays disconnected. Instead, it automatically engages the Psiphon Emergency Shield (`ConnectPsiphon("auto")`) as a dynamic anti-censorship failover mechanism of last resort.
+- **`frontend/src` (ProfileSummary & Lazy-Loading IPC Integration):**
+  - Updated `frontend/src/types/index.ts` to make `config_content` and `raw_uri` optional in the `Profile` interface.
+  - Updated `frontend/src/lib/api.ts` so `getProfiles` and `getProfilesByCategory` call `GetProfilesSummary` / `GetProfilesSummaryByCategory`.
+  - Added on-demand lazy fetching via `api.getProfileById(id)` in `ProfileQRModal.tsx`, `Dashboard.tsx`, `V2RayPage.tsx`, and `WarpWireGuardPage.tsx` when the user copies or shares a profile.
+- **`internal/core/dispatcher.go`:** Added binary pre-check for Aether protocol dispatching. If `aether.exe` is not found on disk, it logs `aether-core-missing` and transparently routes to the Sing-box emergency shield (which handles MASQUE / WireGuard) rather than hanging on port binding.
+- **`bin/server_list.dat` & `package.ps1` / `installer.iss`:** Bundled a verified, pre-cached Psiphon `server_list.dat` (323 KB) directly into the binary assets directory. This ensures Psiphon bootstraps offline on fresh installations in censored environments without requiring an initial connection to Amazon S3. Synchronized Inno Setup and portable packaging scripts to include `psiphon.exe` and `server_list.dat`.
+- **`internal/config/store.go` & `app_profile.go`:** Implemented `ProfileSummary` projection and `GetProfilesSummary()` / `GetProfilesSummaryByCategory()`. Omits heavyweight `ConfigContent` and `RawURI` payloads, slashing memory and IPC overhead by ~95% when querying large profile collections.
+- **`internal/core/engine.go`:** Fixed hardcoded verification port in `RealDelayPing` probe loop. When `targetProtocol == config.ProtocolPsiphon`, probe port is switched from `10808` to `10809` (Psiphon's dedicated local HTTP proxy port) instead of hitting SOCKS5 port `10808` with HTTP plaintext requests, which previously triggered instant `EOF` resets and caused connected Psiphon tunnels to be terminated after 90 seconds.
+- **`internal/parser/parser.go`:** Enhanced `RealDelayPing` and `LookupIPInfo` to seamlessly support both HTTP and SOCKS5 proxy schemes:
+  - If port `10808` is passed and port `10809` is listening on `127.0.0.1`, prefers HTTP proxy on port `10809`.
+  - Automatically falls back from `http://` to `socks5://` scheme if an inbound listener is strictly SOCKS5.
+
 ## [2026-10-21] - 🔖 v1.4.1 — Version Bump + Persian/English Documentation Sync
 
 Release housekeeping on top of the Settings de-duplication. Verified with

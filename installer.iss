@@ -2,7 +2,7 @@
 ; Produces NexVPN-Setup-v1.4.0-x64.exe
 
 #define MyAppName "NexVPN"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.4.2"
 #define MyAppPublisher "NexVPN Team"
 #define MyAppURL "https://github.com/Rpg-420/NexVPN"
 #define MyAppExeName "NexVPN.exe"
