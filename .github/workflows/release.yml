@@ -348,6 +348,14 @@ jobs:
     env:
       APP_SIGNING_PRIVATE_KEY: ${{ secrets.APP_SIGNING_PRIVATE_KEY }}
     steps:
+      # This job downloads build outputs, so it used to have no checkout at all.
+      # The signing step runs `go run ./tools/sign-artifact`, which needs the
+      # module (go.mod + tools/) — without a checkout it died with
+      # "go.mod file not found in current directory or any parent directory",
+      # and `go-version-file: go.mod` in a setup-go step failed for the same
+      # reason.
+      - uses: actions/checkout@v4
+
       - name: Download All Built Artifacts
         uses: actions/download-artifact@v4
         with:
