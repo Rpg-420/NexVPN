@@ -599,6 +599,10 @@ func redactProfilesForDiagnostics(profiles []config.Profile) []config.Profile {
 		profile.ConfigContent = ""
 		profile.RawURI = ""
 		profile.Password = ""
+		// Subscription URLs routinely embed access tokens as query parameters
+		// (.../sub?token=...) — the credential that fetches every config the
+		// user subscribes to. The bundle is made to travel; it must not carry it.
+		profile.SubscriptionURL = ""
 		if profile.Username != "" {
 			profile.Username = redactedPlaceholder
 		}

@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # NexVPN Production Build Script
 #
 # Produces build\bin\NexVPN.exe.
@@ -86,15 +86,15 @@ try {
     Invoke-Step "Windows resources (go-winres)" {
         # This writes rsrc_windows_386.syso / rsrc_windows_amd64.syso into the
         # repository root. They are gitignored build artifacts, but they are what
-        # embeds the application manifest — including the
+        # embeds the application manifest -- including the
         # "require administrator" execution level that TUN mode needs.
         #
         # Side effect worth knowing: any *.syso in a package directory is linked
         # into that package's test binary too, so while these files exist
         # `go test ./...` builds a root-package test exe that Windows refuses to
         # launch from a non-elevated shell ("The requested operation requires
-        # elevation"). That is unavoidable — Go has no per-target resource
-        # filtering — and the manifest is not optional, so the trade is taken
+        # elevation"). That is unavoidable -- Go has no per-target resource
+        # filtering -- and the manifest is not optional, so the trade is taken
         # deliberately. Run the root package's tests from an elevated shell, or
         # delete the .syso files first (the next build regenerates them).
         & $winresExe make --in winres\winres.json
@@ -107,7 +107,7 @@ try {
         #
         # Binding generation is attempted first and is allowed to fail in exactly
         # one way. Wails generates bindings by compiling a helper
-        # (wailsbindings.exe) and then *running* it — and that helper inherits
+        # (wailsbindings.exe) and then *running* it -- and that helper inherits
         # this app's manifest, which requests Administrator. A non-elevated shell
         # therefore cannot launch it:
         #
@@ -120,9 +120,24 @@ try {
         # changing a method on App.
         $wailsLog = & $wailsExe build -nopackage -s -o NexVPN.exe 2>&1
         $wailsLog | Write-Host
-        if ($LASTEXITCODE -ne 0 -and ($wailsLog -match 'requires elevation')) {
-            Write-Host ""
-            Write-Host "Binding generation needs elevation (the app manifest requests Administrator)." -ForegroundColor Yellow
+        # The committed bindings are valid unless an App method changed, so ANY
+        # binding-generation failure is recoverable with -skipbindings. Known
+        # failure modes:
+        #   * 'requires elevation' -- wailsbindings inherits the app manifest
+        #     (Administrator) and cannot launch from a non-elevated shell.
+        #   * 'package "embed" without types was imported' -- the binding
+        #     helper's export-data pass trips over export data written by a
+        #     newer Go toolchain (go1.27+ with wails v2.9.x); the app itself
+        #     compiles fine and only the helper fails.
+        # Falling back on any failure is therefore safer than a growing allowlist.
+        if ($LASTEXITCODE -ne 0) {
+            if ($wailsLog -match 'requires elevation') {
+                Write-Host ""
+                Write-Host "Binding generation needs elevation (the app manifest requests Administrator)." -ForegroundColor Yellow
+            } else {
+                Write-Host ""
+                Write-Host "Binding generation failed (see log above) -- the app compile itself is unaffected." -ForegroundColor Yellow
+            }
             Write-Host "Retrying with -skipbindings; frontend/wailsjs is left unchanged." -ForegroundColor Yellow
             Write-Host ""
             & $wailsExe build -nopackage -s -skipbindings -o NexVPN.exe

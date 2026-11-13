@@ -9,6 +9,7 @@ import (
 
 	"nexvpn/internal/config"
 	"nexvpn/internal/core"
+	"nexvpn/internal/diary"
 	"nexvpn/internal/parser"
 	"nexvpn/internal/sysproxy"
 
@@ -39,11 +40,25 @@ func (a *App) GetProfiles() []config.Profile {
 	return a.store.GetProfiles()
 }
 
+func (a *App) GetProfilesSummary() []config.ProfileSummary {
+	if a.store == nil {
+		return []config.ProfileSummary{}
+	}
+	return a.store.GetProfilesSummary()
+}
+
 func (a *App) GetProfilesByCategory(category string) []config.Profile {
 	if a.store == nil {
 		return []config.Profile{}
 	}
 	return a.store.GetProfilesByCategory(config.ProfileCategory(category))
+}
+
+func (a *App) GetProfilesSummaryByCategory(category string) []config.ProfileSummary {
+	if a.store == nil {
+		return []config.ProfileSummary{}
+	}
+	return a.store.GetProfilesSummaryByCategory(config.ProfileCategory(category))
 }
 
 func (a *App) AddProfile(profile config.Profile) (string, error) {
@@ -208,9 +223,28 @@ func (a *App) UpdateAllSubscriptions() (int, error) {
 	}
 
 	totalUpdated := 0
+	var failures []string
 	for url, name := range subMap {
 		if count, err := a.ImportSubscription(url, name); err == nil {
 			totalUpdated += count
+		} else {
+			// A dead URL, an expired token or plain network-down is a real
+			// outcome the user must see: without this the total was silently
+			// short and the error always nil.
+			failures = append(failures, fmt.Sprintf("%s: %v", name, err))
+		}
+	}
+
+	if len(failures) > 0 {
+		if a.engine != nil {
+			a.engine.AddLog("warning",
+				fmt.Sprintf("[Subscriptions] %d of %d subscription refreshes failed: %s",
+					len(failures), len(subMap), strings.Join(failures, "; ")),
+				"subscriptions")
+		}
+		diary.LogErr("subscriptions", "update-all-partial-failure", fmt.Errorf("%d of %d failed: %s", len(failures), len(subMap), strings.Join(failures, " | ")))
+		if totalUpdated == 0 {
+			return 0, fmt.Errorf("all %d subscriptions failed: %s", len(failures), strings.Join(failures, "; "))
 		}
 	}
 
@@ -409,6 +443,17 @@ type ProfilePingProgress struct {
 // a large subscription takes minutes at three seconds per probe, and a button
 // that cannot be taken back is a button users learn to avoid.
 func (a *App) PingAllProfiles(category string) []config.Profile {
+	// Serialize sweeps: the cancel flag is shared, so an overlapping second
+	// sweep would un-cancel the first and both would commit stale latency
+	// copies over each other. Returns the current profiles untouched instead.
+	if !a.pingAllMu.TryLock() {
+		if ctx := a.appCtx(); ctx != nil {
+			runtime.EventsEmit(ctx, "profiles:ping_complete", a.store.GetProfiles())
+		}
+		return a.store.GetProfiles()
+	}
+	defer a.pingAllMu.Unlock()
+
 	a.pingAllCancel.Store(false)
 
 	profiles := a.store.GetProfiles()
@@ -549,6 +594,9 @@ func (a *App) RealPingActiveProfile() (int, error) {
 	} else if conn, err := net.DialTimeout("tcp", "127.0.0.1:10808", 200*time.Millisecond); err == nil {
 		_ = conn.Close()
 		port = 10808
+	}
+	if port == 0 {
+		return -1, fmt.Errorf("local proxy ports (10809/10808) are not listening")
 	}
 
 	latency, err := parser.RealDelayPing(port, testURL, 4*time.Second)

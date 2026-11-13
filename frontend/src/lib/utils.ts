@@ -137,10 +137,13 @@ export function detectCountryFromText(text: string): string | undefined {
   if (match) return match[0]
 
   const lower = text.toLowerCase()
+  // Word/boundary match ONLY. The old `|| lower.includes(key)` fallback made
+  // the word test dead code and produced wrong flags on substrings — e.g.
+  // "croatia".includes("at") matched Austria. If nothing matches at word
+  // boundaries, honestly return undefined.
   for (const [key, code] of Object.entries(countryKeywords)) {
-    // Exact word or bracketed match like [DE] or de-server or Germany
     const wordPattern = new RegExp(`\\b${key}\\b|[\\[\\(_-]${key}[\\]\\)_-\\d]`, 'i')
-    if (wordPattern.test(lower) || lower.includes(key)) {
+    if (wordPattern.test(lower)) {
       return getCountryFlag(code)
     }
   }

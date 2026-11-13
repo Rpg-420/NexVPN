@@ -5,6 +5,7 @@ package sysproxy
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"syscall"
@@ -201,9 +202,15 @@ func buildConnectionBlob(enableProxy bool, proxyServer string, bypass string) []
 }
 
 // isStaleNexVPNProxy reports whether the OS-level system proxy currently points at one
-// of NexVPN's own local proxy ports (127.0.0.1:108xx). Only in that case is it safe to
-// assume the proxy setting was left behind by a previous NexVPN session rather than
-// configured intentionally by the user or their network administrator.
+// of NexVPN's own local proxy addresses (127.0.0.1/localhost on ports 10808/10809).
+// Only in that case is it safe to assume the proxy setting was left behind by a
+// previous NexVPN session rather than configured intentionally by the user or
+// their network administrator.
+//
+// This is deliberately an exact address match, not a substring probe: a loose
+// "contains 127.0.0.1:108" check also swallowed a user-configured proxy on a
+// nearby port such as 127.0.0.1:1080 (the classic ssh -D / v2rayN port) and
+// then wiped it.
 func isStaleNexVPNProxy() bool {
 	k, err := registry.OpenKey(registry.CURRENT_USER, internetSettingsKey, registry.QUERY_VALUE)
 	if err != nil {
@@ -221,7 +228,32 @@ func isStaleNexVPNProxy() bool {
 		return false
 	}
 
-	return strings.Contains(server, "127.0.0.1:108") || strings.Contains(server, "localhost:108")
+	// ProxyServer is either "host:port" or a per-scheme list
+	// "http=h:p;https=h:p;socks=h:p". Parse every pair.
+	pairs := strings.Split(server, ";")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		if i := strings.Index(pair, "="); i != -1 {
+			pair = strings.TrimSpace(pair[i+1:])
+		}
+		host, port, err := net.SplitHostPort(pair)
+		if err != nil {
+			continue
+		}
+		host = strings.Trim(strings.ToLower(host), "[]")
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			return false // points somewhere else entirely — never touch it
+		}
+		if port == "10809" || port == "10808" {
+			return true
+		}
+	}
+	// NexVPN's own addresses: also handle the bare-host form ProxyServer
+	// sometimes stores as "<host>:<port>" when only http/https are set.
+	return false
 }
 
 // IsSystemProxyEnabled reports whether a system-wide WinINET proxy is currently

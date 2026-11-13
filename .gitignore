@@ -60,3 +60,9 @@ docs/My docs/
 
 # Build artifact fingerprints
 *.md5
+
+# Release-signing keys must never enter the repo (tools/keygen writes them
+# outside by default; this is the belt-and-braces ignore).
+private.hex
+public.hex
+*.hex.sig

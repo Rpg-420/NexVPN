@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useCoreDownload } from '../lib/useCoreDownload'
 import { t } from '../lib/i18n'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -71,9 +72,16 @@ export default function PsiphonPage({ status, stats }: PsiphonPageProps) {
   const [regions, setRegions] = useState<string[]>(PSIPHON_REGIONS_FALLBACK)
   const [isConnecting, setIsConnecting] = useState(false)
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null)
-  const [coreInstalled, setCoreInstalled] = useState(false)
   const [updatingCore, setUpdatingCore] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState<{ percent: number; speed: number; status: string } | null>(null)
+  // Shared core-download follower (progress listener, installed? flag, and the
+  // 100%-completion reset) — replaces the copy-pasted effect below that used an
+  // un-tracked setTimeout.
+  const {
+    downloadProgress,
+    setDownloadProgress,
+    coreInstalled,
+    checkCoreStatus,
+  } = useCoreDownload('psiphon', 'psiphon')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [tunnelProtocol, setTunnelProtocol] = useState<string>('SSH')
   const [socksPort, setSocksPort] = useState(10808)
@@ -89,22 +97,7 @@ export default function PsiphonPage({ status, stats }: PsiphonPageProps) {
     (status.protocol === 'psiphon' ||
       Boolean(status.profile_name && status.profile_name.toLowerCase().includes('psiphon')))
 
-  const checkCoreStatus = async () => {
-    try {
-      const b = await api.checkCoreBinaries()
-      if (b && b.psiphon && b.psiphon.status === 'installed') {
-        setCoreInstalled(true)
-      } else {
-        setCoreInstalled(false)
-      }
-    } catch (err) {
-      console.error('Failed to check Psiphon core status:', err)
-    }
-  }
-
   useEffect(() => {
-    checkCoreStatus()
-
     // The region list and the persisted engine options both come from the
     // backend, so the UI can never drift from what the engine supports.
     void (async () => {
@@ -131,28 +124,6 @@ export default function PsiphonPage({ status, stats }: PsiphonPageProps) {
       }
     })()
 
-    // Listen for core download progress
-    const win = window as any
-    if (win.runtime && win.runtime.EventsOn) {
-      const unsub = win.runtime.EventsOn('core:download_progress', (data: any) => {
-        if (data && data.key === 'psiphon') {
-          setDownloadProgress({
-            percent: data.percent || 0,
-            speed: data.speed || 0,
-            status: data.status || 'Downloading...',
-          })
-          if (data.percent >= 100) {
-            setTimeout(() => {
-              setDownloadProgress(null)
-              checkCoreStatus()
-            }, 1000)
-          }
-        }
-      })
-      return () => {
-        if (typeof unsub === 'function') unsub()
-      }
-    }
   }, [])
 
   const handleInstallCore = async () => {

@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release Version (e.g. v1.4.1)'
+        description: 'Release Version (e.g. v1.4.2)'
         required: true
-        default: 'v1.4.1'
+        default: 'v1.4.2'
 
 permissions:
   contents: write
@@ -112,7 +112,7 @@ jobs:
         run: |
           $ver = "${{ github.ref_name }}"
           if ($ver -eq "" -or $ver -like "*refs*" -or $ver -eq "main" -or $ver -eq "master") { $ver = "${{ github.event.inputs.version }}" }
-          if ($ver -eq "" -or $ver -eq "main" -or $ver -eq "master") { $ver = "v1.4.1" }
+          if ($ver -eq "" -or $ver -eq "main" -or $ver -eq "master") { $ver = "v1.4.2" }
           
           $distName = "NexVPN-$ver-windows-${{ matrix.arch }}-portable"
           New-Item -ItemType Directory -Path $distName
@@ -210,7 +210,7 @@ jobs:
             VER="${{ github.event.inputs.version }}"
           fi
           if [ -z "$VER" ] || [ "$VER" = "main" ] || [ "$VER" = "master" ]; then
-            VER="v1.4.1"
+            VER="v1.4.2"
           fi
           
           # 1. Package .tar.gz
@@ -225,7 +225,7 @@ jobs:
           # 2. Package Debian .deb (Debian Version MUST start with a digit)
           PKG_VER="${VER#v}"
           if [[ ! "$PKG_VER" =~ ^[0-9] ]]; then
-            PKG_VER="1.4.1"
+            PKG_VER="1.4.2"
           fi
           PKG_DIR="nexvpn_${PKG_VER}_${{ matrix.arch }}"
           mkdir -p "$PKG_DIR/DEBIAN"
@@ -309,7 +309,7 @@ jobs:
             VER="${{ github.event.inputs.version }}"
           fi
           if [ -z "$VER" ] || [ "$VER" = "main" ] || [ "$VER" = "master" ]; then
-            VER="v1.4.1"
+            VER="v1.4.2"
           fi
           
           # Create ZIP
@@ -353,35 +353,56 @@ jobs:
           find release-assets -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dmg" -o -name "*.deb" \) -exec cp {} dist/ \;
           ls -la dist/
 
+      # Ed25519 artifact signing: every release file gets a <file>.sig sidecar
+      # that anyone can verify offline with tools/verify-signature against the
+      # pinned public key below. Set the APP_SIGNING_PRIVATE_KEY repo secret
+      # (64 hex chars) once; generate a pair with:
+      #   go run tools/sign-artifact/ --help   (see the pair-generation note in
+      #   docs/signing.md — the private key NEVER leaves the repo settings)
+      - name: Sign Release Artifacts (Ed25519)
+        # NOTE: the condition must read the SECRETS context — a step-level `env`
+        # value is not visible to that same step's `if`, so an
+        # `env.APP_SIGNING_PRIVATE_KEY != ''` guard would never run the step.
+        if: ${{ secrets.APP_SIGNING_PRIVATE_KEY != '' }}
+        env:
+          APP_SIGNING_PRIVATE_KEY: ${{ secrets.APP_SIGNING_PRIVATE_KEY }}
+        run: |
+          # the glob is expanded once, so freshly written .sig files are not re-signed
+          for f in dist/*; do
+            case "$f" in *.sig) continue;; esac
+            go run ./tools/sign-artifact/ "$f"
+          done
+          ls -la dist/*.sig
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.ref_name == 'main' && format('v1.4.1-b{0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.4.1' }}
-          name: NexVPN ${{ github.ref_name == 'main' && format('v1.4.1 Build {0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.4.1' }}
+          tag_name: ${{ github.ref_name == 'main' && format('v1.4.2-b{0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.4.2' }}
+          name: NexVPN ${{ github.ref_name == 'main' && format('v1.4.2 Build {0}', github.run_number) || github.ref_name || github.event.inputs.version || 'v1.4.2' }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: dist/*
           body: |
-            ## 🚀 NexVPN v1.4.1 Official Cross-Platform Release
+            ## 🚀 NexVPN v1.4.2 Official Cross-Platform Release
 
             NexVPN is an advanced, privacy-first, and ultra-high-speed desktop client featuring pre-bundled protocol cores and dynamic updater.
 
             ### 📦 Release Packages & Architectures
             - **Windows (x64, ARM64, x86)**:
-              - `NexVPN-v1.4.1-windows-amd64-portable.zip` (Portable, Zero Installation)
-              - `NexVPN-v1.4.1-windows-arm64-portable.zip` (Snapdragon & Windows on ARM)
-              - `NexVPN-v1.4.1-windows-386-portable.zip` (32-bit Legacy)
-              - `NexVPN-v1.4.1-windows-installer.exe` (Full System Installer)
+              - `NexVPN-v1.4.2-windows-amd64-portable.zip` (Portable, Zero Installation)
+              - `NexVPN-v1.4.2-windows-arm64-portable.zip` (Snapdragon & Windows on ARM)
+              - `NexVPN-v1.4.2-windows-386-portable.zip` (32-bit Legacy)
+              - `NexVPN-v1.4.2-windows-installer.exe` (Full System Installer)
             - **Linux (Ubuntu/Debian/Fedora/Arch)**:
-              - `NexVPN-v1.4.1-linux-amd64.deb` (Debian/Ubuntu Package)
-              - `NexVPN-v1.4.1-linux-amd64.tar.gz` (Universal Linux Binary)
+              - `NexVPN-v1.4.2-linux-amd64.deb` (Debian/Ubuntu Package)
+              - `NexVPN-v1.4.2-linux-amd64.tar.gz` (Universal Linux Binary)
             - **macOS (Apple Silicon & Intel)**:
-              - `NexVPN-v1.4.1-macOS-Universal.dmg` (Installer Disk Image)
-              - `NexVPN-v1.4.1-macOS-Universal.zip` (Universal Binary M1/M2/M3/M4 & Intel)
+              - `NexVPN-v1.4.2-macOS-Universal.dmg` (Installer Disk Image)
+              - `NexVPN-v1.4.2-macOS-Universal.zip` (Universal Binary M1/M2/M3/M4 & Intel)
 
             ### ✨ Key Features
             - 🛡️ **Pre-Bundled Protocol Cores**: Sing-Box, Xray-Core, Wintun Driver, OpenVPN, and GeoIP/GeoSite databases included out of the box.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Plus,
   Trash2,
@@ -26,8 +26,11 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useProfileList } from '../hooks/useProfileList'
+import { ReliabilityBadge } from '../components/ui/reliability-badge'
+import { useToast } from '../hooks/useToast'
 import { t } from '../lib/i18n'
-import type { Profile, ConnectionStatus, SubscriptionUserInfo } from '../types'
+import type { Profile, ConnectionStatus, SubscriptionUserInfo, ProfileReliability } from '../types'
 import CountryFlag, { cleanServerName } from '../components/CountryFlag'
 import { generateQRCodeSVG } from '../lib/qrcode'
 import EditProfileModal from '../components/EditProfileModal'
@@ -68,7 +71,23 @@ function getDisplayProtocol(p: Profile): { label: string; color: string } {
 }
 
 export default function V2RayPage({ status, onStatusChange }: Props) {
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  // Shared loader + live-sync (guards the null/array edge that once blanked the list)
+  const { profiles, setProfiles, loadProfiles } = useProfileList('v2ray')
+  const [scores, setScores] = useState<Record<string, ProfileReliability>>({})
+
+  const loadScores = useCallback(async () => {
+    try {
+      const m = await api.getProfileReliabilityScores()
+      if (m) setScores(m)
+    } catch (err) {
+      console.error('Failed to load reliability scores:', err)
+    }
+  }, [])
+  useEffect(() => {
+    void loadScores()
+  }, [loadScores])
+
+
   const [search, setSearch] = useState('')
 
   const [filterGroup, setFilterGroupState] = useState<string>(() => {
@@ -101,21 +120,10 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [optimizingSniId, setOptimizingSniId] = useState<string | null>(null)
   const [backendGroups, setBackendGroups] = useState<string[]>([])
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg)
-    setTimeout(() => setToastMessage(null), 3000)
-  }
+  // Shared toast helper: managed timer + unmount cleanup + per-show re-arm
+  const { toast: toastMessage, showToast } = useToast(3000)
 
-  const loadProfiles = useCallback(async () => {
-    try {
-      const p = await api.getProfilesByCategory('v2ray')
-      if (p && Array.isArray(p)) setProfiles(p)
-    } catch (err) {
-      console.error('Failed to load V2Ray profiles:', err)
-    }
-  }, [])
 
   useEffect(() => {
     loadProfiles()
@@ -172,7 +180,8 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
     setIsPinging(true)
     try {
       const updated = await api.pingAllProfiles('v2ray')
-      setProfiles(updated)
+      if (updated && Array.isArray(updated)) setProfiles(updated)
+      void loadScores()
       showToast(t('saved_successfully'))
     } catch (err) {
       console.error('Ping all error:', err)
@@ -368,10 +377,18 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
     }
   }
 
-  const handleCopyURI = (p: Profile, e: React.MouseEvent) => {
+  const handleCopyURI = async (p: Profile, e: React.MouseEvent) => {
     e.stopPropagation()
-    const text = p.raw_uri || p.config_content || p.name
-    navigator.clipboard.writeText(text)
+    let text = p.raw_uri || p.config_content
+    if (!text && p.id) {
+      try {
+        const full = await api.getProfileById(p.id)
+        text = full?.raw_uri || full?.config_content
+      } catch (err) {
+        console.error('Failed to load profile for copy:', err)
+      }
+    }
+    navigator.clipboard.writeText(text || p.name)
     setCopiedId(p.id)
     setTimeout(() => setCopiedId(null), 2000)
   }
@@ -426,7 +443,7 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-card border border-primary/50 text-primary text-xs px-4 py-2.5 rounded-xl shadow-2xl animate-fade-in flex items-center gap-2">
           <Sparkles size={14} className="text-primary shrink-0" />
-          <span>{toastMessage}</span>
+          <span>{toastMessage?.message ?? ''}</span>
         </div>
       )}
 
@@ -726,6 +743,7 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
                         📁 {p.subscription_name || p.group}
                       </span>
                     )}
+                    <ReliabilityBadge r={scores[p.id]} />
                   </>
                 }
                 footnoteSlot={
@@ -773,9 +791,18 @@ export default function V2RayPage({ status, onStatusChange }: Props) {
                       type="button"
                       className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-muted dark:hover:text-primary dark:hover:bg-muted transition"
                       title={t('qr_code_modal_title')}
-                      onClick={e => {
+                      onClick={async e => {
                         e.stopPropagation()
-                        setSharingProfile(p)
+                        let full = p
+                        if (!full.raw_uri && !full.config_content && p.id) {
+                          try {
+                            const fetched = await api.getProfileById(p.id)
+                            if (fetched) full = fetched
+                          } catch (err) {
+                            console.error('Failed to load full profile for share:', err)
+                          }
+                        }
+                        setSharingProfile(full)
                       }}
                     >
                       <QrCode size={13} />

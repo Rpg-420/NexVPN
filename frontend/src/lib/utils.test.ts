@@ -89,4 +89,14 @@ describe('detectCountryFromText', () => {
   it('returns undefined for empty input', () => {
     expect(detectCountryFromText('')).toBeUndefined()
   })
+
+  // Regression: the old `|| lower.includes(key)` fallback matched substrings
+  // and produced wrong flags, e.g. "croatia" → 🇦🇹 (contains "at").
+  it('does not match substrings that are not country words', () => {
+    expect(detectCountryFromText('croatia-premium')).not.toBe('🇦🇹')
+  })
+
+  it('still detects whole country words', () => {
+    expect(detectCountryFromText('Netherlands Prime')).toBe('🇳🇱')
+  })
 })

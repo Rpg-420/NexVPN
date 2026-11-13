@@ -27,7 +27,18 @@ func randRange(minV, maxV int) int {
 	if maxV <= minV {
 		return minV
 	}
-	n, _ := rand.Int(rand.Reader, big.NewInt(int64(maxV-minV+1)))
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(maxV-minV+1)))
+	if err != nil || n == nil {
+		// crypto/rand failed (this can happen when the system entropy source
+		// is exhausted); fall back to a time-seeded value rather than
+		// nil-dereferencing. Randomness here is for cosmetic port/ID
+		// scrambling, not for keys.
+		r := time.Now().UnixNano() % int64(maxV-minV+1)
+		if r < 0 {
+			r = -r
+		}
+		return minV + int(r)
+	}
 	return minV + int(n.Int64())
 }
 
@@ -2485,7 +2496,10 @@ func buildNodeFromClashMap(m map[string]string) *ParsedNode {
 			return node
 		}
 	case "tuic":
-		rawURI := fmt.Sprintf("tuic://%s:%s@%s:%d?sni=%s#%s", uuidStr, password, server, port, sni, url.QueryEscape(name))
+		// NOTE: uuidStr is the username, password is the password — the literal
+		// "***" redaction placeholder must NOT appear in the format string, it
+		// shifts every argument (this shipped once as a real bug).
+		rawURI := fmt.Sprintf("tuic://%s:%s@%s:%d?sni=%s#%s", url.QueryEscape(uuidStr), url.QueryEscape(password), server, port, sni, url.QueryEscape(name))
 		if node, err := ParseURI(rawURI); err == nil {
 			return node
 		}
@@ -2709,7 +2723,31 @@ func RealDelayPing(proxyPort int, testURL string, timeout time.Duration) (int, e
 		proxyPort = 10808 // SOCKS/HTTP mixed port
 	}
 
-	proxyUrl, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	// Try HTTP proxy protocol first (used by sing-box/xray mixed inbounds and psiphon HTTP port 10809).
+	// If 10808 was requested but 10809 is open (e.g. Psiphon is running), prefer 10809 for HTTP.
+	effectivePort := proxyPort
+	if proxyPort == 10808 {
+		if conn, err := net.DialTimeout("tcp", "127.0.0.1:10809", 150*time.Millisecond); err == nil {
+			_ = conn.Close()
+			effectivePort = 10809
+		}
+	}
+
+	latency, err := doRealDelayPing("http", effectivePort, testURL, timeout)
+	if err == nil {
+		return latency, nil
+	}
+
+	// Fallback to SOCKS5 proxy protocol if HTTP failed (e.g. pure SOCKS5 listener on proxyPort).
+	if fallbackLatency, fallbackErr := doRealDelayPing("socks5", proxyPort, testURL, timeout); fallbackErr == nil {
+		return fallbackLatency, nil
+	}
+
+	return -1, err
+}
+
+func doRealDelayPing(scheme string, proxyPort int, testURL string, timeout time.Duration) (int, error) {
+	proxyUrl, err := url.Parse(fmt.Sprintf("%s://127.0.0.1:%d", scheme, proxyPort))
 	if err != nil {
 		return -1, err
 	}
@@ -2772,7 +2810,17 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort), 300*time.Millisecond)
 		if err == nil {
 			_ = conn.Close()
-			proxyUrl, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+			scheme := "http"
+			port := proxyPort
+			if proxyPort == 10808 {
+				if conn9, err9 := net.DialTimeout("tcp", "127.0.0.1:10809", 150*time.Millisecond); err9 == nil {
+					_ = conn9.Close()
+					port = 10809
+				} else {
+					scheme = "socks5"
+				}
+			}
+			proxyUrl, _ := url.Parse(fmt.Sprintf("%s://127.0.0.1:%d", scheme, port))
 			transport.Proxy = http.ProxyURL(proxyUrl)
 		}
 	}
@@ -2783,7 +2831,7 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	}
 
 	// 1. Primary: ip-api.com
-	req, err := http.NewRequest("GET", "http://ip-api.com/json?fields=status,country,countryCode,city,isp,query", nil)
+	req, err := http.NewRequest("GET", "https://ip-api.com/json?fields=status,country,countryCode,city,isp,query", nil)
 	if err == nil {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, err := client.Do(req); err == nil {
@@ -2809,7 +2857,7 @@ func LookupIPInfo(proxyPort int) (*IPInfo, error) {
 	}
 
 	// 2. Secondary Fallback: ipwho.is
-	req2, err := http.NewRequest("GET", "http://ipwho.is/", nil)
+	req2, err := http.NewRequest("GET", "https://ipwho.is/", nil)
 	if err == nil {
 		req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, err := client.Do(req2); err == nil {
@@ -2876,7 +2924,7 @@ func LookupIPInfoByIP(ctx context.Context, ip net.IP) (*IPInfo, error) {
 
 	// Primary: ip-api.com (supports direct IP queries, no proxy).
 	req, err := http.NewRequestWithContext(ctx, "GET",
-		"http://ip-api.com/json/"+url.PathEscape(target)+"?fields=status,country,countryCode,city,isp,query", nil)
+		"https://ip-api.com/json/"+url.PathEscape(target)+"?fields=status,country,countryCode,city,isp,query", nil)
 	if err == nil {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, respErr := client.Do(req); respErr == nil {
@@ -2902,7 +2950,7 @@ func LookupIPInfoByIP(ctx context.Context, ip net.IP) (*IPInfo, error) {
 	}
 
 	// Fallback: ipwho.is
-	req2, err := http.NewRequestWithContext(ctx, "GET", "http://ipwho.is/"+url.PathEscape(target), nil)
+	req2, err := http.NewRequestWithContext(ctx, "GET", "https://ipwho.is/"+url.PathEscape(target), nil)
 	if err == nil {
 		req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexVPN/1.3")
 		if resp, respErr := client.Do(req2); respErr == nil {

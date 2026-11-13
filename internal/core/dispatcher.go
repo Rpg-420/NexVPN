@@ -58,26 +58,33 @@ func (d *SmartCoreDispatcher) Decide(profile *config.Profile, settings config.Se
 
 	// Aether Profile
 	if profile.Protocol == config.ProtocolAether {
-		adapter, err := protocols.NewAdapter(config.ProtocolAether)
-		if err != nil {
-			return nil, fmt.Errorf("aether adapter error: %w", err)
+		if _, binErr := protocols.FindBinary("aether"); binErr == nil {
+			adapter, err := protocols.NewAdapter(config.ProtocolAether)
+			if err != nil {
+				return nil, fmt.Errorf("aether adapter error: %w", err)
+			}
+
+			wrap := map[string]interface{}{
+				"aether_config": profile.ConfigContent,
+				"settings":      settings,
+				"proxy_mode":    proxyMode,
+				"routing_mode":  routingMode,
+			}
+			wrapBytes, _ := json.Marshal(wrap)
+
+			return &DispatchDecision{
+				CoreProtocol:  config.ProtocolAether,
+				ConfigContent: string(wrapBytes),
+				Adapter:       adapter,
+				CoreName:      "Aether Core",
+				Description:   "Aether user-space censorship circumvention engine (MASQUE / gool)",
+			}, nil
 		}
 
-		wrap := map[string]interface{}{
-			"aether_config": profile.ConfigContent,
-			"settings":      settings,
-			"proxy_mode":    proxyMode,
-			"routing_mode":  routingMode,
-		}
-		wrapBytes, _ := json.Marshal(wrap)
-
-		return &DispatchDecision{
-			CoreProtocol:  config.ProtocolAether,
-			ConfigContent: string(wrapBytes),
-			Adapter:       adapter,
-			CoreName:      "Aether Core",
-			Description:   "Aether user-space censorship circumvention engine (MASQUE / gool)",
-		}, nil
+		// The Aether core binary is missing. Fall back cleanly to the
+		// in-engine Sing-box emergency tunnel (which carries MASQUE/WireGuard natively).
+		diary.Log("connect", "aether-core-missing", "fallback", "emergency-shield")
+		return DispatchEmergencyShield(settings, proxyMode, routingMode)
 	}
 
 	// Psiphon / Emergency Shield Profile

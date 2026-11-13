@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 3. Create Distribution Folder
 Write-Host "[3/4] Assembling Release Bundle..." -ForegroundColor Yellow
-$distDir = "$PSScriptRoot\dist\NexVPN-v1.4.0-Windows-x64"
+$distDir = "$PSScriptRoot\dist\NexVPN-v1.4.1-Windows-x64"
 if (Test-Path $distDir) {
     Remove-Item -Recurse -Force $distDir -ErrorAction SilentlyContinue
 }
@@ -47,6 +47,8 @@ $binFiles = @(
     "xray.exe", 
     "sing-box.exe", 
     "openvpn.exe", 
+    "psiphon.exe",
+    "server_list.dat",
     "wintun.dll", 
     "libcrypto-1_1-x64.dll", 
     "libssl-1_1-x64.dll", 
@@ -71,7 +73,7 @@ if (Test-Path "$PSScriptRoot\LICENSE") {
 
 # 4. Create ZIP Archive
 Write-Host "[4/4] Creating Portable ZIP Package..." -ForegroundColor Yellow
-$zipPath = "$PSScriptRoot\dist\NexVPN-v1.4.0-Portable-x64.zip"
+$zipPath = "$PSScriptRoot\dist\NexVPN-v1.4.1-Portable-x64.zip"
 if (Test-Path $zipPath) {
     Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
 }

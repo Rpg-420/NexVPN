@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"nexvpn/internal/config"
+	"nexvpn/internal/diary"
 	"nexvpn/internal/discovery"
 	"nexvpn/internal/sysproc"
 )
@@ -217,8 +218,16 @@ func (a *App) StartCloudflareDiscoveryScan(mode string, isp string, customSubnet
 	go func() {
 		defer cancel()
 		defer func() {
+			// After a panic the recover unwinds PAST the emit lines below, so
+			// the terminal event must be sent here — otherwise the frontend
+			// spinner/stop button stays stuck exactly as if the scan hung.
 			if r := recover(); r != nil {
 				debug.PrintStack()
+				if ctx2 := a.appCtx(); ctx2 != nil {
+					runtime.EventsEmit(ctx2, "cf_scanner:error",
+						fmt.Sprintf("scanner crashed: %v", r))
+				}
+				diary.LogErr("discovery", "cf-scanner-panic", fmt.Errorf("%v", r))
 			}
 		}()
 
@@ -300,6 +309,13 @@ func (a *App) ApplyCleanIPToWARPProfiles(ip string, port int) (int, error) {
 	if a.store == nil {
 		return 0, fmt.Errorf("store not initialized")
 	}
+	// Validate before rewriting anything: an empty or hostile string would be
+	// joined into every profile's URI/endpoint at once (":443" hosts and the
+	// like), corrupting the whole category in one call.
+	if net.ParseIP(strings.TrimSpace(ip)) == nil {
+		return 0, fmt.Errorf("invalid IP address: %q", ip)
+	}
+	ip = strings.TrimSpace(ip)
 
 	profiles := a.store.GetProfilesByCategory(config.CategoryWireGuardWarp)
 	updatedCount := 0
@@ -310,7 +326,9 @@ func (a *App) ApplyCleanIPToWARPProfiles(ip string, port int) (int, error) {
 			p.Port = port
 		}
 		p.WarpCleanIP = ip
-		p.WarpEndpoint = fmt.Sprintf("%s:%d", ip, port)
+		if port > 0 {
+			p.WarpEndpoint = fmt.Sprintf("%s:%d", ip, port)
+		}
 		if p.RawURI != "" {
 			p.RawURI = updateURIHostPort(p.RawURI, ip, port)
 		}
@@ -344,6 +362,12 @@ func (a *App) ApplyCleanIPToV2RayProfiles(ip string, port int, onlyCDN bool) (in
 	if a.store == nil {
 		return 0, fmt.Errorf("store not initialized")
 	}
+	// Same validation as ApplyCleanIPToWARPProfiles: never rewrite every
+	// profile in the category with an unvalidated address.
+	if net.ParseIP(strings.TrimSpace(ip)) == nil {
+		return 0, fmt.Errorf("invalid IP address: %q", ip)
+	}
+	ip = strings.TrimSpace(ip)
 
 	profiles := a.store.GetProfilesByCategory(config.CategoryV2Ray)
 	updatedCount := 0
@@ -393,8 +417,15 @@ func (a *App) StartFragmentDiscoveryScan() {
 	go func() {
 		defer cancel()
 		defer func() {
+			// Same panic-safe terminal event as the Cloudflare scanner: a panic
+			// would otherwise leave the frontend in "scanning" forever.
 			if r := recover(); r != nil {
 				debug.PrintStack()
+				if ctx2 := a.appCtx(); ctx2 != nil {
+					runtime.EventsEmit(ctx2, "frag_scanner:error",
+						fmt.Sprintf("scanner crashed: %v", r))
+				}
+				diary.LogErr("discovery", "frag-scanner-panic", fmt.Errorf("%v", r))
 			}
 		}()
 

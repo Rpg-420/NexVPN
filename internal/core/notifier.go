@@ -11,6 +11,10 @@ import (
 
 // ShowWindowsNotification displays a native system notification across Windows, Linux, and macOS
 func ShowWindowsNotification(title, message string) {
+	// Reap the child process: Start() without Wait leaks a handle per toast,
+	// and notifications fire on every connect/disconnect/failover event.
+	run := func(cmd *exec.Cmd) { go func() { _ = cmd.Run() }() }
+
 	if runtime.GOOS == "windows" {
 		titleB64 := base64.StdEncoding.EncodeToString([]byte(title))
 		messageB64 := base64.StdEncoding.EncodeToString([]byte(message))
@@ -31,16 +35,16 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 
 		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
 		cmd.SysProcAttr = sysproc.HideWindowAttr()
-		_ = cmd.Start()
+		run(cmd)
 	} else if runtime.GOOS == "darwin" {
 		script := fmt.Sprintf(`display notification %q with title %q`, message, title)
 		cmd := exec.Command("osascript", "-e", script)
 		cmd.SysProcAttr = sysproc.HideWindowAttr()
-		_ = cmd.Start()
+		run(cmd)
 	} else {
 		// Linux notify-send
 		cmd := exec.Command("notify-send", title, message, "-a", "NexVPN")
 		cmd.SysProcAttr = sysproc.HideWindowAttr()
-		_ = cmd.Start()
+		run(cmd)
 	}
 }

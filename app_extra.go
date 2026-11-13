@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	osruntime "runtime"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 
 	"nexvpn/internal/config"
 	"nexvpn/internal/core"
+	"nexvpn/internal/diary"
 	"nexvpn/internal/parser"
 	"nexvpn/internal/sysproc"
 	"nexvpn/internal/sysproxy"
@@ -95,10 +98,19 @@ func (a *App) GetAppDataPath() string {
 }
 
 func (a *App) OpenProfilesFolder() {
-	if a.store != nil {
-		dataDir := a.store.GetDataDir()
-		runtime.BrowserOpenURL(a.appCtx(), "file://"+dataDir)
+	if a.store == nil {
+		return
 	}
+	ctx := a.appCtx()
+	if ctx == nil {
+		return
+	}
+	// A Windows path cannot be pasted after "file://" raw: backslashes and the
+	// drive colon make an invalid URI, which the WebView silently ignores.
+	// Convert to a slash-separated, escaped file URL instead.
+	dataDir := a.store.GetDataDir()
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(dataDir)}
+	runtime.BrowserOpenURL(ctx, u.String())
 }
 
 func (a *App) GetSystemInfo() map[string]string {
@@ -168,6 +180,9 @@ type BatchIPRequest struct {
 // embedded into each generated profile so the fleet-wide tuning values actually
 // reach the generated config (previously only the display name changed).
 func (a *App) BatchGenerateWarpProfiles(targets []BatchIPRequest, useAmnezia bool) ([]config.Profile, error) {
+	if a.store == nil {
+		return nil, fmt.Errorf("store not initialized")
+	}
 	amz := parser.AmneziaParams{}
 	if useAmnezia && a.store != nil {
 		s := a.store.GetSettings()
@@ -185,12 +200,14 @@ func (a *App) BatchGenerateWarpProfiles(targets []BatchIPRequest, useAmnezia boo
 	}
 
 	var created []config.Profile
+	var failures []string
 	for i, t := range targets {
 		if t.IP == "" {
 			continue
 		}
 		p, err := parser.GenerateCloudflareWarpWithAmnezia(t.IP, t.Port, amz)
 		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s:%d (generate): %v", t.IP, t.Port, err))
 			continue
 		}
 		if useAmnezia {
@@ -201,9 +218,25 @@ func (a *App) BatchGenerateWarpProfiles(targets []BatchIPRequest, useAmnezia boo
 			p.Group = "Cloudflare WARP"
 		}
 		id, err := a.store.AddProfile(*p)
-		if err == nil {
-			p.ID = id
-			created = append(created, *p)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s:%d (save): %v", t.IP, t.Port, err))
+			continue
+		}
+		p.ID = id
+		created = append(created, *p)
+	}
+	// Surface what silently vanished: previously a batch of 50 IPs could yield
+	// 3 profiles with no explanation whatsoever.
+	if len(failures) > 0 {
+		diary.LogErr("warp", "batch-generate-partial-failure",
+			fmt.Errorf("%d of %d targets failed: %s", len(failures), len(targets), strings.Join(failures, " | ")))
+		if a.engine != nil {
+			a.engine.AddLog("warning",
+				fmt.Sprintf("[WARP] %d of %d batch targets failed to generate", len(failures), len(targets)),
+				"warp")
+		}
+		if len(created) == 0 {
+			return nil, fmt.Errorf("no WARP profiles could be generated: %s", strings.Join(failures, "; "))
 		}
 	}
 	return created, nil
@@ -292,8 +325,9 @@ func (a *App) ApplyWarpLicenseKey(licenseKey string) error {
 		}
 	}
 
-	settings := a.store.GetSettings()
-	settings.WarpLicenseKey = licenseKey
+	oldSettings := a.store.GetSettings()
+	settings := oldSettings
+	settings.WarpLicenseKey = clean // store the normalized key, not the raw input
 	settings.WarpAccountType = "plus"
 	if err := a.store.SaveSettings(settings); err != nil {
 		return fmt.Errorf("failed to persist WARP+ license key: %w", err)
@@ -304,8 +338,13 @@ func (a *App) ApplyWarpLicenseKey(licenseKey string) error {
 	if cleanIP == "" {
 		cleanIP = "162.159.192.1"
 	}
-	_, err := a.GenerateWarpProfile(cleanIP, settings.WarpPort)
-	return err
+	if _, err := a.GenerateWarpProfile(cleanIP, settings.WarpPort); err != nil {
+		// Regeneration failed: do not leave settings claiming a "plus" account
+		// whose profile was never actually rebuilt. Revert and surface the error.
+		_ = a.store.SaveSettings(oldSettings)
+		return fmt.Errorf("license saved but WARP profile regeneration failed, reverted: %w", err)
+	}
+	return nil
 }
 
 // StartSubscriptionScheduler is retained as an explicit no-op for API

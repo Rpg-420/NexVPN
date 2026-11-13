@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Radio, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Globe, Sparkles } from 'lucide-react'
+import { X, Radio, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Globe, Sparkles, History, Square } from 'lucide-react'
 import { api } from '../lib/api'
 import { sound } from '../lib/sound'
 import { t } from '../lib/i18n'
@@ -14,27 +14,55 @@ interface Props {
 
 export default function RadarModal({ isOpen, onClose }: Props) {
   const [report, setReport] = useState<RadarReport | null>(null)
+  const [history, setHistory] = useState<RadarReport[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  // The start-call can reject with "a radar run is already in progress" when a
+  // previous run is still probing; without this state the rejection was silent
+  // and the modal stayed empty.
+  const [busyRejected, setBusyRejected] = useState(false)
+
+  const loadHistory = async () => {
+    try {
+      const h = await api.getProtocolRadarHistory()
+      if (Array.isArray(h) && h.length > 0) setHistory(h)
+    } catch (err) {
+      console.error('Load radar history error:', err)
+    }
+  }
 
   const scanRadar = async () => {
     setIsLoading(true)
+    setBusyRejected(false)
     sound.playPing()
     try {
       const res = await api.runProtocolRadar()
       setReport(res)
       sound.playSuccess()
+      await loadHistory()
     } catch (err) {
       console.error('Run protocol radar error:', err)
+      // Fall back to the most recent persisted report instead of an empty modal.
+      if (!report && history.length > 0) setReport(history[0])
+      setBusyRejected(true)
     } finally {
       setIsLoading(false)
     }
   }
 
+  const stopRadar = async () => {
+    try {
+      await api.cancelProtocolRadar()
+    } catch (err) {
+      console.error('Cancel protocol radar error:', err)
+    }
+  }
+
   useEffect(() => {
     if (isOpen) {
+      void loadHistory()
       scanRadar()
     }
-  }, [isOpen])
+  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
@@ -81,6 +109,12 @@ export default function RadarModal({ isOpen, onClose }: Props) {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {busyRejected && (
+          <div className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+            {t('radar_busy') || 'A radar run is already in progress — showing the latest saved results.'}
+          </div>
+        )}
 
         {/* ISP Summary Card */}
         {report && (
@@ -129,6 +163,13 @@ export default function RadarModal({ isOpen, onClose }: Props) {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground font-semibold animate-pulse">{t('radar_scanning_label')}</p>
+              <button
+                onClick={stopRadar}
+                className="text-[11px] px-3 py-1.5 rounded-lg border border-border bg-muted hover:bg-muted/90 text-muted-foreground hover:text-foreground transition flex items-center gap-1.5 mx-auto"
+              >
+                <Square size={11} />
+                <span>{t('radar_stop_btn') || 'Stop'}</span>
+              </button>
             </div>
           ) : report ? (
             report.protocols.map(p => {
@@ -171,6 +212,35 @@ export default function RadarModal({ isOpen, onClose }: Props) {
             })
           ) : null}
         </div>
+
+        {/* Persisted history strip - answers "is the block getting worse?" across restarts. */}
+        {history.length > 1 && (
+          <div className="pt-2 border-t border-border">
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold mb-1.5">
+              <History size={11} />
+              <span>{t('radar_history_label') || 'Recent scans'}</span>
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {history.slice(0, 12).map(h => {
+                const blocked = h.protocols.filter(pp => pp.status === 'blocked').length
+                const bg =
+                  blocked >= 4 ? 'bg-destructive/15 text-destructive'
+                  : blocked >= 2 ? 'bg-warning/15 text-warning'
+                  : 'bg-success/10 text-success'
+                return (
+                  <button
+                    key={h.timestamp}
+                    title={`${h.timestamp} - ${blocked}/${h.protocols.length} blocked`}
+                    onClick={() => setReport(h)}
+                    className={`shrink-0 px-2 py-1 rounded-lg border border-border text-[10px] font-mono ${bg} hover:brightness-110 transition`}
+                  >
+                    {h.timestamp.slice(5, 16)} - {h.protocols.length - blocked}/{h.protocols.length}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-border">

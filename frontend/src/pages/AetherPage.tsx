@@ -14,6 +14,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useCoreDownload } from '../lib/useCoreDownload'
 import { t } from '../lib/i18n'
 import type { Profile, ConnectionStatus } from '../types'
 
@@ -36,9 +37,16 @@ export default function AetherPage({ status, onStatusChange }: Props) {
   const [search, setSearch] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
-  const [coreInstalled, setCoreInstalled] = useState(false)
   const [updatingCore, setUpdatingCore] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState<{ percent: number; speed: number; status: string } | null>(null)
+  // Shared core-download follower: progress listener, installed? flag and the
+  // 100%-completion reset — replaces the copy-pasted effect below (which also
+  // had the un-tracked setTimeout bug).
+  const {
+    downloadProgress,
+    setDownloadProgress,
+    coreInstalled,
+    checkCoreStatus,
+  } = useCoreDownload('aether', 'aether')
 
   // Form states
   const [name, setName] = useState('')
@@ -62,46 +70,9 @@ export default function AetherPage({ status, onStatusChange }: Props) {
     }
   }, [])
 
-  const checkCoreStatus = useCallback(async () => {
-    try {
-      const b = await api.checkCoreBinaries()
-      if (b && b.aether && b.aether.status === 'installed') {
-        setCoreInstalled(true)
-      } else {
-        setCoreInstalled(false)
-      }
-    } catch (err) {
-      console.error('Failed to check Aether core status:', err)
-    }
-  }, [])
-
   useEffect(() => {
     loadProfiles()
-    checkCoreStatus()
-
-    // Listen for core download progress
-    const win = window as any
-    if (win.runtime && win.runtime.EventsOn) {
-      const unsub = win.runtime.EventsOn('core:download_progress', (data: any) => {
-        if (data && data.key === 'aether') {
-          setDownloadProgress({
-            percent: data.percent || 0,
-            speed: data.speed || 0,
-            status: data.status || 'Downloading...',
-          })
-          if (data.percent >= 100) {
-            setTimeout(() => {
-              setDownloadProgress(null)
-              checkCoreStatus()
-            }, 1000)
-          }
-        }
-      })
-      return () => {
-        if (typeof unsub === 'function') unsub()
-      }
-    }
-  }, [loadProfiles, checkCoreStatus])
+  }, [loadProfiles])
 
   const handleInstallCore = useCallback(async () => {
     setUpdatingCore(true)
@@ -318,7 +289,7 @@ export default function AetherPage({ status, onStatusChange }: Props) {
           {filtered.map(p => {
             let conf: Partial<AetherConfig> = {}
             try {
-              conf = JSON.parse(p.config_content)
+              conf = JSON.parse(p.config_content || '{}')
             } catch {
               // Malformed profile config: render with an empty config.
             }

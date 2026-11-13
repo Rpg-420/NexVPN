@@ -3,6 +3,7 @@ package dnsscan
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"fmt"
 	"io"
 	"net"
@@ -65,9 +66,26 @@ func testUDPDNS(serverAddress string, testDomain string, timeout time.Duration) 
 		return 0, fmt.Errorf("no IPs returned")
 	}
 
-	// Basic check against common Iranian poisoned IPs (e.g. 10.10.34.34)
+	// Basic check against common Iranian poisoned DNS answers: the well-known
+	// 10.10.34.34 block and the wider 10.10.0.0/16 range the filters have been
+	// observed to answer from. Match by parsed octets rather than a string
+	// prefix so future rotation within the range is still caught; a non-IP
+	// parser output counts as poison too.
+	// NOTE: keep all observed poison ranges here so they can be updated in a
+	// single edit as the censors rotate their answers.
+	zeroOctet := func(ipStr string) bool {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			return true // a parser-produced non-IP is itself a poison indicator
+		}
+		ip4 := ip.To4()
+		if ip4 == nil {
+			return false
+		}
+		return ip4[0] == 10 && ip4[1] == 10
+	}
 	for _, ip := range ips {
-		if strings.HasPrefix(ip, "10.10.3") {
+		if zeroOctet(ip) {
 			return 0, fmt.Errorf("poisoned DNS response detected: %s", ip)
 		}
 	}
@@ -78,12 +96,18 @@ func testUDPDNS(serverAddress string, testDomain string, timeout time.Duration) 
 // testDoHDNS measures resolution time using real RFC 8484 DNS over HTTPS query
 func testDoHDNS(dohURL string, testDomain string, timeout time.Duration) (time.Duration, error) {
 	var query []byte
-	query = append(query, 0x12, 0x34) // ID
-	query = append(query, 0x01, 0x00) // Flags: standard query, RD=1
-	query = append(query, 0x00, 0x01) // QDCOUNT: 1
-	query = append(query, 0x00, 0x00) // ANCOUNT: 0
-	query = append(query, 0x00, 0x00) // NSCOUNT: 0
-	query = append(query, 0x00, 0x00) // ARCOUNT: 0
+	// Random transaction ID: a fixed ID is trivially predictable and lets an
+	// on-path observer correlate/inject. crypto/rand costs nothing here.
+	var txid [2]byte
+	if _, err := crand.Read(txid[:]); err != nil {
+		return 0, fmt.Errorf("entropy unavailable for DNS query ID: %w", err)
+	}
+	query = append(query, txid[0], txid[1]) // ID
+	query = append(query, 0x01, 0x00)       // Flags: standard query, RD=1
+	query = append(query, 0x00, 0x01)       // QDCOUNT: 1
+	query = append(query, 0x00, 0x00)       // ANCOUNT: 0
+	query = append(query, 0x00, 0x00)       // NSCOUNT: 0
+	query = append(query, 0x00, 0x00)       // ARCOUNT: 0
 
 	labels := strings.Split(testDomain, ".")
 	for _, l := range labels {

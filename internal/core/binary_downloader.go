@@ -454,33 +454,18 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 		}
 	}
 
-	// Determine archive type
-	if strings.HasSuffix(activeUrl, ".zip") {
-		err = extractZip(data, targetDir, coreKey)
-	} else if strings.HasSuffix(activeUrl, ".tar.gz") || strings.HasSuffix(activeUrl, ".tgz") {
-		err = extractTarGz(data, targetDir, coreKey)
-	} else {
-		// Direct file (psiphon binary)
-		dest := filepath.Join(targetDir, exeName(coreKey))
-		err = os.WriteFile(dest, data, 0755)
-		if err == nil {
-			if info, statErr := os.Stat(dest); statErr != nil || info.Size() == 0 {
-				err = fmt.Errorf("file is empty after writing to disk")
-			}
-		}
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("failed to extract %s: %w", coreKey, err)
-	}
-
-	// SHA-256 integrity verification.
+	// SHA-256 integrity verification — runs BEFORE anything touches disk.
 	//
-	// SECURITY: the expected digest is never fetched from the mirror that served
-	// the payload - a compromised mirror could otherwise serve both a tampered
+	// SECURITY: verification must precede extraction. Extracting first and
+	// verifying after would leave a substituted (potentially malicious) core
+	// installed on disk whenever the process died between the two steps —
+	// defeating the whole digest design.
+	//
+	// The expected digest is never fetched from the mirror that served the
+	// payload - a compromised mirror could otherwise serve both a tampered
 	// archive and a matching hash file, defeating the check entirely. The
-	// canonical (first) URL is used for the sidecar instead, and a locally pinned
-	// digest takes precedence and fails closed.
+	// canonical (first) URL is used for the sidecar instead, and a locally
+	// pinned digest takes precedence and fails closed.
 	hash := sha256.Sum256(data)
 	hashHex := hex.EncodeToString(hash[:])
 	canonicalURL, _ := splitMirrors(GetCoreDownloadURL(coreKey))
@@ -510,6 +495,27 @@ func UpdateCoreEngineWithProgress(coreKey string, progressCb DownloadProgressCal
 			return "", fmt.Errorf("checksum verification failed: %w", verr)
 		}
 	}
+
+	// Verified — only now write to disk.
+	if err := func() error {
+		if strings.HasSuffix(activeUrl, ".zip") {
+			return extractZip(data, targetDir, coreKey)
+		} else if strings.HasSuffix(activeUrl, ".tar.gz") || strings.HasSuffix(activeUrl, ".tgz") {
+			return extractTarGz(data, targetDir, coreKey)
+		}
+		// Direct file (psiphon binary)
+		dest := filepath.Join(targetDir, exeName(coreKey))
+		if werr := os.WriteFile(dest, data, 0755); werr != nil {
+			return werr
+		}
+		if info, statErr := os.Stat(dest); statErr != nil || info.Size() == 0 {
+			return fmt.Errorf("file is empty after writing to disk")
+		}
+		return nil
+	}(); err != nil {
+		return "", fmt.Errorf("failed to extract %s: %w", coreKey, err)
+	}
+
 	if progressCb != nil {
 		progressCb(100, downloaded, totalBytes, 0, "Complete")
 	}
@@ -733,12 +739,30 @@ func UpdateGeoData() (string, error) {
 				_ = os.Remove(tmpPath)
 				continue
 			}
-			_ = os.Remove(targetPath)
-			if err := os.Rename(tmpPath, targetPath); err == nil {
-				success = true
-				break
+			// Never os.Remove(targetPath) before renaming: a failed rename would
+			// then destroy the existing good database. Keep the previous file as
+			// a .bak, swap atomically, restore on any failure.
+			bakPath := targetPath + ".bak"
+			hadExisting := false
+			if _, err := os.Stat(targetPath); err == nil {
+				if err := os.Rename(targetPath, bakPath); err != nil {
+					_ = os.Remove(tmpPath)
+					continue
+				}
+				hadExisting = true
 			}
-			_ = os.Remove(tmpPath)
+			if err := os.Rename(tmpPath, targetPath); err != nil {
+				if hadExisting {
+					_ = os.Rename(bakPath, targetPath) // restore previous good file
+				}
+				_ = os.Remove(tmpPath)
+				continue
+			}
+			if hadExisting {
+				_ = os.Remove(bakPath)
+			}
+			success = true
+			break
 		}
 		if !success {
 			// keep old file if download failed

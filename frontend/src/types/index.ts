@@ -7,7 +7,7 @@ export interface Profile {
   name: string
   protocol: Protocol
   category: ProfileCategory
-  config_content: string
+  config_content?: string
   raw_uri?: string
   server?: string
   port?: number
@@ -486,6 +486,17 @@ export interface RadarReport {
   recommended_action: string
   protocols: RadarProtocolResult[]
   timestamp: string
+}
+
+/** Derived per-server health (see app_reliability.go for the scoring rule). */
+export interface ProfileReliability {
+  score: number // 0..100 — 100 means no failure record
+  state: 'unknown' | 'excellent' | 'good' | 'fair' | 'poor'
+  failures: number
+  last_failure?: string
+  last_failure_at?: string
+  cooling: boolean
+  usage_count: number
 }
 
 export interface BinaryInfo {

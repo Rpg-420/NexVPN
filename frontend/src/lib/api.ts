@@ -24,6 +24,7 @@ import type {
   UsageReport,
   PsiphonOptions,
   MobileRemoteInfo,
+  ProfileReliability,
 } from '../types'
 
 const isWails = () => {
@@ -63,6 +64,13 @@ function waitForWails(): Promise<boolean> {
   return wailsReadyPromise
 }
 
+// whenRuntimeReady resolves once the Wails runtime has appeared (or definitively
+// not, after the retry budget). UI code that must decide "events vs polling"
+// should await this instead of probing window.runtime synchronously at mount.
+export function whenRuntimeReady(): Promise<boolean> {
+  return waitForWails()
+}
+
 async function callGo<T>(methodName: string, ...args: any[]): Promise<T> {
   const shortName = methodName.replace('main.App.', '')
   const ready = await waitForWails()
@@ -93,9 +101,11 @@ async function callGo<T>(methodName: string, ...args: any[]): Promise<T> {
 }
 
 export const api = {
-  getProfiles: () => callGo<Profile[]>('GetProfiles'),
+  getProfiles: () => callGo<Profile[]>('GetProfilesSummary'),
   getProfileById: (id: string) => callGo<Profile>('GetProfileByID', id),
-  getProfilesByCategory: (category: string) => callGo<Profile[]>('GetProfilesByCategory', category),
+  getProfilesByCategory: (category: string) => callGo<Profile[]>('GetProfilesSummaryByCategory', category),
+  getFullProfiles: () => callGo<Profile[]>('GetProfiles'),
+  getFullProfilesByCategory: (category: string) => callGo<Profile[]>('GetProfilesByCategory', category),
   addProfile: (profile: Profile) => callGo<string>('AddProfile', profile),
   updateProfile: (profile: Profile) => callGo<void>('UpdateProfile', profile),
   deleteProfile: (id: string) => callGo<void>('DeleteProfile', id),
@@ -191,6 +201,10 @@ export const api = {
   getLocalIPAddress: () => callGo<string>('GetLocalIPAddress'),
   toggleAllowLan: (enabled: boolean) => callGo<void>('ToggleAllowLan', enabled),
   runProtocolRadar: () => callGo<RadarReport>('RunProtocolRadar'),
+  cancelProtocolRadar: () => callGo<void>('CancelProtocolRadar'),
+  getProtocolRadarHistory: () => callGo<RadarReport[]>('GetProtocolRadarHistory'),
+  getProfileReliabilityScores: () =>
+    callGo<Record<string, ProfileReliability>>('GetProfileReliabilityScores'),
   runEmergencyNetworkRepair: () => callGo<EmergencyRepairReport>('RunEmergencyNetworkRepair'),
   fetchLiveCleanIPFeed: () => callGo<Array<{ cidr: string; region: string; description: string }>>('FetchLiveCleanIPFeed'),
   exportEncryptedBackup: (password?: string) => callGo<string>('ExportEncryptedBackup', password || ''),
@@ -375,19 +389,35 @@ export const api = {
   checkSubscriptionQuotas: (subUrl: string) =>
     callGo<QuotaAlertInfo>('CheckSubscriptionQuotas', subUrl),
 
-  // Events listener helper
+  // Events listener helper.
+  //
+  // The Wails runtime is injected asynchronously, so this function must not
+  // check `window.runtime` synchronously: a listener attached before the
+  // runtime arrives would silently become a no-op forever (the old behaviour —
+  // status/stats updates simply never fired). Instead the subscription is
+  // replayed as soon as `waitForWails` resolves.
   onEvent: (eventName: string, callback: (...data: any[]) => void): (() => void) => {
-    if (typeof window !== 'undefined' && (window as any).runtime && (window as any).runtime.EventsOn) {
-      const cancelFn = (window as any).runtime.EventsOn(eventName, callback)
-      return () => {
+    let cancelled = false
+    let unsub: (() => void) | null = null
+    waitForWails().then(ready => {
+      if (cancelled) return
+      const rt = ready ? (window as any).runtime : undefined
+      if (rt?.EventsOn) {
+        const cancelFn = rt.EventsOn(eventName, callback)
         if (typeof cancelFn === 'function') {
-          cancelFn()
-        } else if ((window as any).runtime.EventsOff) {
-          (window as any).runtime.EventsOff(eventName)
+          unsub = () => cancelFn()
+        } else {
+          // Wails v2 always returns a cancel function. If it somehow did not,
+          // do NOT fall back to EventsOff — that removes ALL listeners for the
+          // event, tearing down every other subscriber's callback too.
+          console.warn(`EventsOn("${eventName}") returned no cancel function; listener will live for the session`)
         }
       }
+    })
+    return () => {
+      cancelled = true
+      unsub?.()
     }
-    return () => {}
   },
 }
 

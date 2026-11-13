@@ -29,10 +29,26 @@ export default function ProfileQRModal({ profile, isOpen, onClose }: Props) {
       setIsLoading(true)
       api.getProfileShareURI(profile.id)
         .then(uri => {
-          setShareURI(uri || profile.raw_uri || profile.config_content || '')
+          if (uri) {
+            setShareURI(uri)
+          } else if (profile.raw_uri || profile.config_content) {
+            setShareURI(profile.raw_uri || profile.config_content || '')
+          } else {
+            return api.getProfileById(profile.id).then(full => {
+              setShareURI(full?.raw_uri || full?.config_content || profile.name)
+            })
+          }
         })
         .catch(() => {
-          setShareURI(profile.raw_uri || profile.config_content || '')
+          if (profile.raw_uri || profile.config_content) {
+            setShareURI(profile.raw_uri || profile.config_content || '')
+          } else {
+            api.getProfileById(profile.id).then(full => {
+              setShareURI(full?.raw_uri || full?.config_content || profile.name)
+            }).catch(() => {
+              setShareURI(profile.name)
+            })
+          }
         })
         .finally(() => {
           setIsLoading(false)

@@ -110,6 +110,49 @@ type Profile struct {
 	UsageCount int       `json:"usage_count"`
 }
 
+// ProfileSummary is a lightweight projection of Profile containing only the
+// metadata needed for list rendering, filtering, sorting, and UI displays,
+// deliberately omitting the heavy ConfigContent and RawURI payloads.
+type ProfileSummary struct {
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Protocol         Protocol        `json:"protocol"`
+	Category         ProfileCategory `json:"category"`
+	Server           string          `json:"server,omitempty"`
+	Port             int             `json:"port,omitempty"`
+	Group            string          `json:"group,omitempty"`
+	Country          string          `json:"country,omitempty"`
+	CountryCode      string          `json:"country_code,omitempty"`
+	LatencyMs        int             `json:"latency_ms,omitempty"`
+	RealDelayMs      int             `json:"real_delay_ms,omitempty"`
+	SubscriptionName string          `json:"subscription_name,omitempty"`
+	Description      string          `json:"description,omitempty"`
+	Tags             []string        `json:"tags,omitempty"`
+	Favorite         bool            `json:"favorite,omitempty"`
+	UsageCount       int             `json:"usage_count"`
+}
+
+func (p Profile) ToSummary() ProfileSummary {
+	return ProfileSummary{
+		ID:               p.ID,
+		Name:             p.Name,
+		Protocol:         p.Protocol,
+		Category:         p.EffectiveCategory(),
+		Server:           p.Server,
+		Port:             p.Port,
+		Group:            p.Group,
+		Country:          p.Country,
+		CountryCode:      p.CountryCode,
+		LatencyMs:        p.LatencyMs,
+		RealDelayMs:      p.RealDelayMs,
+		SubscriptionName: p.SubscriptionName,
+		Description:      p.Description,
+		Tags:             p.Tags,
+		Favorite:         p.Favorite,
+		UsageCount:       p.UsageCount,
+	}
+}
+
 type Settings struct {
 	AutoConnect       bool   `json:"auto_connect"`
 	StartMinimized    bool   `json:"start_minimized"`
@@ -133,50 +176,58 @@ type Settings struct {
 	// IPv6-only endpoints through the proxy, an HTTP inbound cannot carry them, and
 	// every one of those queries arrives at the core as
 	// `parse "http://2001:b28:f23f:f005::a:443": invalid port`.
-	TunSystemProxy              string   `json:"tun_system_proxy"` // "dual", "tun_only"
-	RealDelayUrl                string   `json:"real_delay_url"`
-	LastProfileID               string   `json:"last_profile_id,omitempty"`
-	LogLevel                    string   `json:"log_level"`
-	MaxLogEntries               int      `json:"max_log_entries"`
-	AutoReconnect               bool     `json:"auto_reconnect"`
-	ReconnectAttempts           int      `json:"reconnect_attempts"`
-	WarpCleanIP                 string   `json:"warp_clean_ip,omitempty"`
-	WarpPort                    int      `json:"warp_port,omitempty"`
-	WarpLicenseKey              string   `json:"warp_license_key,omitempty"`
-	WarpAccountType             string   `json:"warp_account_type,omitempty"` // "free", "plus"
-	FragmentEnabled             bool     `json:"fragment_enabled"`
-	FragmentSize                string   `json:"fragment_size"`
-	FragmentSleep               string   `json:"fragment_sleep"`
-	AppRoutingMode              string   `json:"app_routing_mode"` // "all", "proxy_selected", "bypass_selected"
-	SelectedApps                []string `json:"selected_apps"`
-	AutoFailover                bool     `json:"auto_failover"`
-	AutoFailoverEnabled         bool     `json:"auto_failover_enabled"`
-	SubscriptionAutoUpdateHours int      `json:"subscription_auto_update_hours"`
-	MultiHopWarp                bool     `json:"multi_hop_warp"`
-	IPStrategy                  string   `json:"ip_strategy"` // "prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"
-	BlockAds                    bool     `json:"block_ads"`
-	BypassLAN                   bool     `json:"bypass_lan"`
-	CustomDirectDomains         []string `json:"custom_direct_domains"`
-	CustomProxyDomains          []string `json:"custom_proxy_domains"`
-	CustomBlockDomains          []string `json:"custom_block_domains"`
-	AmneziaJc                   int      `json:"amnezia_jc"`
-	AmneziaJmin                 int      `json:"amnezia_jmin"`
-	AmneziaJmax                 int      `json:"amnezia_jmax"`
-	AmneziaS1                   int      `json:"amnezia_s1"`
-	AmneziaS2                   int      `json:"amnezia_s2"`
-	AmneziaH1                   int      `json:"amnezia_h1"`
-	AmneziaH2                   int      `json:"amnezia_h2"`
-	AmneziaH3                   int      `json:"amnezia_h3"`
-	AmneziaH4                   int      `json:"amnezia_h4"`
-	ShowMiniWidget              bool     `json:"show_mini_widget"`
-	V2RayCore                   string   `json:"v2ray_core"` // "auto", "xray", "singbox"
-	AllowLan                    bool     `json:"allow_lan"`
-	GameModeEnabled             bool     `json:"game_mode_enabled"`
-	SoundEffectsEnabled         bool     `json:"sound_effects_enabled"`
-	MonthlyQuotaGB              int      `json:"monthly_quota_gb"`
-	QuotaAlertPercentage        int      `json:"quota_alert_percentage"`
-	StealthModeEnabled          bool     `json:"stealth_mode_enabled"`
-	PrivacyShieldEnabled        bool     `json:"privacy_shield_enabled"` // Auto-redacts sensitive tokens/UUIDs in logs
+	TunSystemProxy      string   `json:"tun_system_proxy"` // "dual", "tun_only"
+	RealDelayUrl        string   `json:"real_delay_url"`
+	LastProfileID       string   `json:"last_profile_id,omitempty"`
+	LogLevel            string   `json:"log_level"`
+	MaxLogEntries       int      `json:"max_log_entries"`
+	AutoReconnect       bool     `json:"auto_reconnect"`
+	ReconnectAttempts   int      `json:"reconnect_attempts"`
+	WarpCleanIP         string   `json:"warp_clean_ip,omitempty"`
+	WarpPort            int      `json:"warp_port,omitempty"`
+	WarpLicenseKey      string   `json:"warp_license_key,omitempty"`
+	WarpAccountType     string   `json:"warp_account_type,omitempty"` // "free", "plus"
+	FragmentEnabled     bool     `json:"fragment_enabled"`
+	FragmentSize        string   `json:"fragment_size"`
+	FragmentSleep       string   `json:"fragment_sleep"`
+	AppRoutingMode      string   `json:"app_routing_mode"` // "all", "proxy_selected", "bypass_selected"
+	SelectedApps        []string `json:"selected_apps"`
+	AutoFailover        bool     `json:"auto_failover"`
+	AutoFailoverEnabled bool     `json:"auto_failover_enabled"`
+	// LastEmergencyFailover persists the Dynamic-Censorship-Failover cooldown
+	// across restarts, so relaunching right after an offline churn does not
+	// reset the Psiphon emergency shield's backoff. Managed only via
+	// UpdateSettings (atomic) from app.go.
+	LastEmergencyFailover time.Time `json:"last_emergency_failover,omitempty"`
+	// LastWarpFailoverAt backs escalation-ladder stage 1 (WARP sidestep) with
+	// the same persisted-cooldown discipline as the Psiphon shield.
+	LastWarpFailoverAt          time.Time `json:"last_warp_failover_at,omitempty"`
+	SubscriptionAutoUpdateHours int       `json:"subscription_auto_update_hours"`
+	MultiHopWarp                bool      `json:"multi_hop_warp"`
+	IPStrategy                  string    `json:"ip_strategy"` // "prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"
+	BlockAds                    bool      `json:"block_ads"`
+	BypassLAN                   bool      `json:"bypass_lan"`
+	CustomDirectDomains         []string  `json:"custom_direct_domains"`
+	CustomProxyDomains          []string  `json:"custom_proxy_domains"`
+	CustomBlockDomains          []string  `json:"custom_block_domains"`
+	AmneziaJc                   int       `json:"amnezia_jc"`
+	AmneziaJmin                 int       `json:"amnezia_jmin"`
+	AmneziaJmax                 int       `json:"amnezia_jmax"`
+	AmneziaS1                   int       `json:"amnezia_s1"`
+	AmneziaS2                   int       `json:"amnezia_s2"`
+	AmneziaH1                   int       `json:"amnezia_h1"`
+	AmneziaH2                   int       `json:"amnezia_h2"`
+	AmneziaH3                   int       `json:"amnezia_h3"`
+	AmneziaH4                   int       `json:"amnezia_h4"`
+	ShowMiniWidget              bool      `json:"show_mini_widget"`
+	V2RayCore                   string    `json:"v2ray_core"` // "auto", "xray", "singbox"
+	AllowLan                    bool      `json:"allow_lan"`
+	GameModeEnabled             bool      `json:"game_mode_enabled"`
+	SoundEffectsEnabled         bool      `json:"sound_effects_enabled"`
+	MonthlyQuotaGB              int       `json:"monthly_quota_gb"`
+	QuotaAlertPercentage        int       `json:"quota_alert_percentage"`
+	StealthModeEnabled          bool      `json:"stealth_mode_enabled"`
+	PrivacyShieldEnabled        bool      `json:"privacy_shield_enabled"` // Auto-redacts sensitive tokens/UUIDs in logs
 	// RemoteControllerLANOnly refuses non-RFC1918 peers at the LAN controller
 	// listener. Defaults to true; disabling it exposes the PIN prompt to any
 	// routable address that can reach the port.
@@ -796,6 +847,28 @@ func (s *Store) GetProfilesByCategory(category ProfileCategory) []Profile {
 	return res
 }
 
+func (s *Store) GetProfilesSummary() []ProfileSummary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]ProfileSummary, len(s.data.Profiles))
+	for i, p := range s.data.Profiles {
+		res[i] = p.ToSummary()
+	}
+	return res
+}
+
+func (s *Store) GetProfilesSummaryByCategory(category ProfileCategory) []ProfileSummary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]ProfileSummary, 0, len(s.data.Profiles))
+	for _, p := range s.data.Profiles {
+		if category == "" || p.EffectiveCategory() == category {
+			res = append(res, p.ToSummary())
+		}
+	}
+	return res
+}
+
 func (s *Store) GetProfile(id string) (Profile, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1269,6 +1342,24 @@ func (s *Store) SaveSettings(settings Settings) error {
 	return s.saveUnlocked()
 }
 
+// UpdateSettings performs an ATOMIC read-modify-write of one or more settings
+// fields under the store lock.
+//
+// The Get → mutate → SaveSettings two-step every caller used to run is a
+// lost-update race: two concurrent writers (schedule markers on the watchdog
+// ticker, tray callbacks, frontend saves, the auto-connect goroutine) each hold
+// a full snapshot, and whichever saves last silently erases the other's change.
+// Every single-field or marker mutation should go through here; only whole-form
+// saves from the frontend keep using SaveSettings.
+func (s *Store) UpdateSettings(mutate func(*Settings)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if mutate != nil {
+		mutate(&s.data.Settings)
+	}
+	return s.saveUnlocked()
+}
+
 func (s *Store) GetGroupsByCategory(category ProfileCategory) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1391,16 +1482,18 @@ func (s *Store) ExportAllProfiles(category ProfileCategory) string {
 
 // RecordConnectionSession saves a completed session to history.json
 func (s *Store) RecordConnectionSession(session ConnectionSession) error {
+	// Snapshot under both locks; the mutation section is panic-safe because the
+	// store lock releases via defer (a panic between Lock and a manual Unlock
+	// previously deadlocked the entire store).
 	s.mu.Lock()
 	s.historyMu.Lock()
-	defer s.historyMu.Unlock()
-
 	s.history = append([]ConnectionSession{session}, s.history...)
 	if len(s.history) > 100 {
 		s.history = s.history[:100]
 	}
 	historyCopy := append([]ConnectionSession(nil), s.history...)
 	historyFile := s.historyFile
+	s.historyMu.Unlock()
 	s.mu.Unlock()
 
 	bytes, err := json.MarshalIndent(historyCopy, "", "  ")
@@ -1460,12 +1553,19 @@ func (s *Store) ExportFullBackupJSON() (string, error) {
 	// read back in any of those places, so shipping it would produce a restore
 	// that looks complete and silently has no credentials — and it would put the
 	// one copy of the config most likely to leave the machine in the clear.
-	// Passwords are therefore omitted outright; profiles restore intact and the
-	// user re-enters the few accounts that need one.
+	//
+	// Passwords are not the only secret either: RawURI and ConfigContent carry
+	// embedded credentials (VLESS UUIDs, trojan/Hy2 passwords, Shadowsocks
+	// secrets, full WireGuard private keys). Those are removed here too — the
+	// backup restores structure, settings and metadata; subscription URLs are
+	// refreshed and the few URI-based profiles are re-imported on restore.
 	exportProfiles := make([]Profile, len(s.data.Profiles))
 	copy(exportProfiles, s.data.Profiles)
 	for i := range exportProfiles {
 		exportProfiles[i].Password = ""
+		exportProfiles[i].RawURI = ""
+		exportProfiles[i].ConfigContent = ""
+		exportProfiles[i].SubscriptionURL = ""
 	}
 
 	bundle := FullBackupBundle{
@@ -1496,6 +1596,23 @@ func (s *Store) ImportFullBackupJSON(jsonStr string, overwrite bool) (int, error
 	if overwrite {
 		s.data.Profiles = bundle.Profiles
 		s.data.Settings = bundle.Settings
+		// SECURITY back-fit: a foreign backup cannot silently disarm the
+		// safety controls Load deliberately back-fits (migrateSchema). Re-apply
+		// the same policy here so an imported Settings block cannot arrive with
+		// RemoteControllerLANOnly/TLS or Privacy Shield switched off.
+		if !s.data.Settings.RemoteControllerLANOnly {
+			s.data.Settings.RemoteControllerLANOnly = true
+		}
+		if !s.data.Settings.RemoteControllerTLS {
+			s.data.Settings.RemoteControllerTLS = true
+		}
+		if !s.data.Settings.PrivacyShieldEnabled {
+			s.data.Settings.PrivacyShieldEnabled = true
+		}
+		// Never import a stale emergency-failover marker: a cooldown recorded
+		// on the donor machine has no meaning here.
+		s.data.Settings.LastEmergencyFailover = time.Time{}
+		s.data.Settings.LastWarpFailoverAt = time.Time{}
 		s.rebuildIndexLocked()
 		_ = s.saveUnlocked()
 		return len(bundle.Profiles), nil

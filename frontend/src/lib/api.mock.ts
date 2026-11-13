@@ -100,8 +100,8 @@ const mockBinaries: Record<string, BinaryInfo> = {
 }
 
 export function getMockData<T>(method: string, args: any[]): T {
-  if (method === 'GetProfiles') return mockProfiles as unknown as T
-  if (method === 'GetProfilesByCategory') {
+  if (method === 'GetProfiles' || method === 'GetProfilesSummary') return mockProfiles as unknown as T
+  if (method === 'GetProfilesByCategory' || method === 'GetProfilesSummaryByCategory') {
     const cat = args[0]
     if (!cat) return mockProfiles as unknown as T
     return mockProfiles.filter(p => p.category === cat) as unknown as T
@@ -111,6 +111,31 @@ export function getMockData<T>(method: string, args: any[]): T {
   if (method === 'GetSettings') return mockSettings as unknown as T
   if (method === 'GetLogs') return mockLogs as unknown as T
   if (method === 'CheckCoreBinaries') return mockBinaries as unknown as T
+  // Kept in sync with the real bindings so dev-mode UI (badges, radar history)
+  // exercises the same shapes instead of silently rendering nothing.
+  if (method === 'GetProfileReliabilityScores') {
+    return {
+      '1': { score: 92, state: 'excellent', failures: 0, cooling: false, usage_count: 12 },
+      '2': { score: 55, state: 'fair', failures: 2, last_failure: 'connectex: timeout', last_failure_at: '2026-11-12 10:20', cooling: true, usage_count: 3 },
+    } as unknown as T
+  }
+  if (method === 'GetProtocolRadarHistory') {
+    return [
+      {
+        isp_name: 'Mock ISP',
+        ip_address: '185.220.101.5',
+        censorship_level: 'Medium (Targeted Filtering)',
+        best_protocol: 'VLESS Reality (TLS 1.3)',
+        recommended_action: 'Mock recommendation',
+        timestamp: '2026-11-12 10:30:00',
+        protocols: [
+          { name: 'VLESS Reality (TLS 1.3)', protocol: 'vless_reality', status: 'excellent', latency_ms: 88, packet_loss: 0, description: 'mock' },
+          { name: 'Cloudflare WARP (WireGuard UDP)', protocol: 'wireguard_warp', status: 'blocked', latency_ms: -1, packet_loss: 100, description: 'mock' },
+        ],
+      },
+    ] as unknown as T
+  }
+  if (method === 'CancelProtocolRadar') return undefined as unknown as T
   if (method === 'GetVersion') return '1.4.0' as unknown as T
   if (method === 'GetGroups' || method === 'GetGroupsByCategory') return ['Germany', 'Subscriptions', 'VIP-WARP'] as unknown as T
   if (method === 'PingProfile') return 65 as unknown as T

@@ -22,6 +22,57 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// emergencyFailoverCooldown is the Dynamic Censorship Failover (Psiphon
+// emergency shield) backoff window: at most one automatic emergency attempt per
+// window, so a fully-offline machine does not churn connect attempts from every
+// probe failure.
+const emergencyFailoverCooldown = 5 * time.Minute
+
+// emergencyShieldCanFire reports (and reserves) the right to fire one emergency
+// Psiphon attempt, enforcing the cooldown.
+//
+// The window is persisted in Settings through the atomic UpdateSettings — an
+// in-memory-only marker reset on relaunch let an offline user churn again the
+// moment they restarted the app.
+func (a *App) emergencyShieldCanFire() bool {
+	if a.store == nil {
+		return false
+	}
+	now := time.Now()
+	var allowed bool
+	_ = a.store.UpdateSettings(func(s *config.Settings) {
+		if now.Sub(s.LastEmergencyFailover) < emergencyFailoverCooldown {
+			allowed = false
+			return
+		}
+		s.LastEmergencyFailover = now
+		allowed = true
+	})
+	return allowed
+}
+
+// warpFailoverStageCooldown gates ladder stage 1; persisted like its stage-2
+// sibling so a restart does not reset the backoff.
+const warpFailoverStageCooldown = 5 * time.Minute
+
+// warpFailoverCanFire reports (and reserves) one WARP-sidestep attempt per
+// cooldown window, atomically (see UpdateSettings).
+func (a *App) warpFailoverCanFire() bool {
+	if a.store == nil {
+		return false
+	}
+	now := time.Now()
+	var allowed bool
+	_ = a.store.UpdateSettings(func(s *config.Settings) {
+		if now.Sub(s.LastWarpFailoverAt) < warpFailoverStageCooldown {
+			return
+		}
+		s.LastWarpFailoverAt = now
+		allowed = true
+	})
+	return allowed
+}
+
 // App struct is the main application backend binding
 type App struct {
 	// ctx is set once during startup and read from many background goroutines,
@@ -45,6 +96,11 @@ type App struct {
 	// the user a stop button is to have the workers observe a flag and return
 	// early.
 	pingAllCancel atomic.Bool
+
+	// pingAllMu serializes sweeps: a second concurrent sweep would un-cancel
+	// the flag of the first (pingAllCancel is shared) and both would write
+	// stale latency copies via UpdateProfileBatch.
+	pingAllMu sync.Mutex
 }
 
 // appCtx returns the Wails runtime context in a race-free way.
@@ -89,8 +145,8 @@ func NewApp() *App {
 	})
 	engine.OnSessionComplete(func(sess config.ConnectionSession) {
 		_ = store.RecordConnectionSession(sess)
-		if app.ctx != nil {
-			runtime.EventsEmit(app.ctx, "session:recorded", sess)
+		if ctx := app.appCtx(); ctx != nil {
+			runtime.EventsEmit(ctx, "session:recorded", sess)
 		}
 	})
 	engine.OnFailover(func(failedProfileID string) {
@@ -358,11 +414,14 @@ func (a *App) Connect(profileID string) error {
 		discovery.NoteTunnelBearAuthResult(tunnelBearAccount, discovery.TunnelBearAuthOK, "")
 	}
 
-	settings.LastProfileID = profileID
+	// LastProfileID write is atomic: this runs on the connect goroutine and
+	// races with frontend saves and the watchdog's schedule markers otherwise.
+	_ = a.store.UpdateSettings(func(s *config.Settings) {
+		s.LastProfileID = profileID
+	})
 	profile.UsageCount++
 	profile.LastUsed = time.Now()
 	_ = a.store.UpdateProfile(profile)
-	_ = a.store.SaveSettings(settings)
 
 	return nil
 }
@@ -468,17 +527,69 @@ func (a *App) triggerAutoFailover(failedProfileID string) {
 		"cooling_down", fmt.Sprintf("%d", cooling))
 	msg := fmt.Sprintf(
 		"[Auto-Failover] None of the %d backup servers answered a reachability probe. "+
-			"Staying disconnected instead of switching to a server that is likely dead too — "+
-			"the problem is more likely your network or ISP than this particular profile.",
+			"The problem is likely network-level censorship or ISP blocking of standard proxy protocols.",
 		len(candidates))
 	if cooling > 0 {
-		// Without this the message reads "everything is dead", when what actually
-		// happened is that everything already failed minutes ago and is being
-		// avoided on purpose. Refreshing the subscription is the fix in that case,
-		// and the user needs to be told which of the two they are looking at.
-		msg += fmt.Sprintf(" %d of them had already failed in the last few minutes and are on a short cooldown; update the subscription if this keeps happening.", cooling)
+		msg += fmt.Sprintf(" %d of them had already failed in the last few minutes and are on a short cooldown.", cooling)
 	}
-	a.engine.AddLog("error", msg, "engine")
+	a.engine.AddLog("warning", msg, "engine")
+
+	// ESCALATION LADDER — stage 1: a WARP (WireGuard-over-UDP) sidestep before
+	// the Psiphon shield. Standard proxy protocols are more likely to be port-
+	// filtered than Cloudflare's UDP range, so a clean-IP WARP profile often
+	// survives when every VLESS/trojan endpoint answers nothing. Gate it with
+	// the same persisted cooldown discipline as the shield so an offline streak
+	// cannot churn WARP attempts either.
+	if failedProf, err := a.store.GetProfile(failedProfileID); err != nil || failedProf.Protocol != config.ProtocolWARP {
+		var warpStage *config.Profile
+		for i := range profiles {
+			p := profiles[i]
+			if p.Protocol == config.ProtocolWARP && !config.ProfileIsCoolingDown(p, time.Now(), 0) {
+				warpStage = &profiles[i]
+				break
+			}
+		}
+		if warpStage != nil && a.warpFailoverCanFire() {
+			a.engine.AddLog("warning", fmt.Sprintf(
+				"[Auto-Failover] Ladder stage 1/2: standard proxies unreachable — trying WireGuard-over-UDP sidestep (%s)",
+				warpStage.Name), "engine")
+			diary.Log("connect", "failover-ladder-warp", "target", warpStage.Name)
+			go func(id string) {
+				time.Sleep(1 * time.Second)
+				_ = a.Connect(id)
+			}(warpStage.ID)
+			return
+		}
+	}
+
+	// ESCALATION LADDER — stage 2 (the previous terminal stage): Dynamic
+	// Censorship Failover via the Psiphon emergency obfuscation tunnel.
+	{
+		failedProf, err := a.store.GetProfile(failedProfileID)
+		if err != nil || failedProf.Protocol != config.ProtocolPsiphon {
+			// Cooldown gate: in a genuinely offline situation (dead Wi-Fi, airplane
+			// mode) every probe failure would otherwise spawn another Psiphon
+			// attempt, each failure re-firing OnFailover — an endless emergency
+			// churn. One attempt per cooldown window.
+			if a.emergencyShieldCanFire() {
+				a.engine.AddLog("warning",
+					"[Dynamic-Censorship-Failover] Standard proxies appear blocked by ISP. Engaging Psiphon Emergency Shield...",
+					"engine")
+				diary.Log("connect", "dynamic-censorship-failover-psiphon", "failed_profile", failedProfileID)
+				go func() {
+					time.Sleep(1 * time.Second)
+					_ = a.ConnectPsiphon("auto")
+				}()
+			} else {
+				diary.Log("connect", "dynamic-censorship-failover-suppressed",
+					"failed_profile", failedProfileID,
+					"cooldown", emergencyFailoverCooldown.String())
+			}
+			return
+		}
+
+		a.engine.AddLog("error", "[Auto-Failover] All servers including emergency shield were attempted without success.", "engine")
+	}
 }
 
 func (a *App) GetConnectionStatus() core.ConnectionStatus {
@@ -720,7 +831,7 @@ func (a *App) CheckForUpdates() UpdateCheckResult {
 		}
 	}
 
-	hasUpdate := latest != "" && latest != current
+	hasUpdate := latest != "" && compareVersions(latest, current) > 0
 
 	return UpdateCheckResult{
 		HasUpdate:      hasUpdate,

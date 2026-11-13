@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Go modules: security bumps (e.g. golang.org/x/crypto) applied automatically.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-minor-patches:
+        update-types:
+          - minor
+          - patch
+
+  # Frontend dependencies.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patches:
+        update-types:
+          - minor
+          - patch
+
+  # Keep the CI actions themselves current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

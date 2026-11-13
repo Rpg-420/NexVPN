@@ -32,6 +32,8 @@ import {
   Trash2,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useToast } from '../hooks/useToast'
+import { useTimers } from '../lib/useTimers'
 import { t, getLanguage } from '../lib/i18n'
 import { sound } from '../lib/sound'
 import { generateQRCodeSVG } from '../lib/qrcode'
@@ -171,28 +173,33 @@ export default function DiscoveryHub(_props: Props) {
   const [qrModalData, setQrModalData] = useState<{ title: string; link: string; qrSvg: string } | null>(null)
   const [sourcesModalTab, setSourcesModalTab] = useState<'telegram' | 'configs' | null>(null)
   const [sourcesInputText, setSourcesInputText] = useState('')
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg)
-    setTimeout(() => setToastMessage(null), 3000)
-  }
+  // Shared toast helper: managed timer + unmount cleanup + per-show re-arm
+  const { toast: toastMessage, showToast } = useToast(3000)
+  const safeTimeout = useTimers()
 
   const copyToClipboard = (text: string, idKey: string, toastTxt?: string) => {
-    navigator.clipboard.writeText(text)
+    // Copy failures are otherwise silent while the UI claims success.
+    navigator.clipboard.writeText(text).catch(err => {
+      console.error('Clipboard write failed:', err)
+      showToast(t('error'))
+    })
     setCopiedId(idKey)
     showToast(toastTxt || t('copied_to_clipboard'))
-    setTimeout(() => setCopiedId(null), 2000)
+    safeTimeout(() => setCopiedId(null), 2000)
   }
 
   // ==========================================
   // 1. Telegram Proxies Handlers
   // ==========================================
-  const handleFetchTelegramProxies = async () => {
+  const handleFetchTelegramProxies = async (sourcesOverride?: string[]) => {
     setIsFetchingTg(true)
     try {
-      const list = await api.fetchTelegramProxies(customTgSources)
+      // Use the explicit list when given: state setters are async, so a fetch
+      // fired directly after setCustomTgSources would otherwise read the
+      // PREVIOUS render's sources (the stale-closure bug).
+      const list = await api.fetchTelegramProxies(sourcesOverride ?? customTgSources)
       if (Array.isArray(list)) {
         setTgProxies(prev => {
           const existingMap = new Set(prev.map(p => `${p.server}:${p.port}`))
@@ -285,10 +292,14 @@ export default function DiscoveryHub(_props: Props) {
   // ==========================================
   // 2. Free Configs Handlers
   // ==========================================
-  const handleFetchFreeConfigs = async () => {
+  const handleFetchFreeConfigs = async (sourcesOverride?: string[]) => {
     setIsFetchingConfigs(true)
     try {
-      const list = await api.fetchFreeConfigs(customConfigSources.length > 0 ? customConfigSources : undefined)
+      const list = await api.fetchFreeConfigs(
+        (sourcesOverride ?? customConfigSources).length > 0
+          ? (sourcesOverride ?? customConfigSources)
+          : undefined
+      )
       if (Array.isArray(list)) {
         setFreeConfigs(list)
         showToast(`${list.length} ` + t('fetch_configs'))
@@ -399,12 +410,12 @@ export default function DiscoveryHub(_props: Props) {
       setCustomTgSources(lines)
       localStorage.setItem('nexvpn_custom_tg_sources', JSON.stringify(lines))
       showToast(t('custom_sources_saved') || 'Custom sources saved!')
-      handleFetchTelegramProxies()
+      handleFetchTelegramProxies(lines)
     } else {
       setCustomConfigSources(lines)
       localStorage.setItem('nexvpn_custom_cfg_sources', JSON.stringify(lines))
       showToast(t('custom_sources_saved') || 'Custom sources saved!')
-      handleFetchFreeConfigs()
+      handleFetchFreeConfigs(lines)
     }
     setSourcesModalTab(null)
   }
@@ -460,7 +471,17 @@ export default function DiscoveryHub(_props: Props) {
     setIsCfScanning(true)
     setCfResults([])
     setCfProgress({ total: 100, scanned: 0, found: 0, current_ip: 'Initializing Anycast feed...', mode: cfMode, results: [] })
-    await api.startCloudflareDiscoveryScan(cfMode, cfIspFilter)
+    try {
+      await api.startCloudflareDiscoveryScan(cfMode, cfIspFilter)
+    } catch (err) {
+      // Without this catch the start-call rejection left isCfScanning stuck at
+      // true with no *_error event coming (nothing was started) — a spinner
+      // the user could never dismiss.
+      console.error('Start CF scan error:', err)
+      setIsCfScanning(false)
+      setCfProgress(null)
+      showToast(t('error'))
+    }
   }
 
   const handleStopCfScan = async () => {
@@ -519,7 +540,15 @@ export default function DiscoveryHub(_props: Props) {
     setFragResults([])
     setBestFragment(null)
     setFragProgress({ total: 10, scanned: 0, current: 'Starting TLS ClientHello probes...', results: [] })
-    await api.startFragmentDiscoveryScan()
+    try {
+      await api.startFragmentDiscoveryScan()
+    } catch (err) {
+      // Same stuck-spinner fix as handleStartCfScan.
+      console.error('Start fragment scan error:', err)
+      setIsFragScanning(false)
+      setFragProgress(null)
+      showToast(t('error'))
+    }
   }
 
   const handleStopFragScan = async () => {
@@ -640,7 +669,7 @@ export default function DiscoveryHub(_props: Props) {
       {toastMessage && (
         <div className="fixed top-6 end-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-primary/90 text-primary-foreground rounded-xl shadow-2xl backdrop-blur-md border border-primary/30 animate-in fade-in slide-in-from-top-4 duration-300">
           <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-          <span className="text-sm font-medium">{toastMessage}</span>
+          <span className="text-sm font-medium">{toastMessage?.message ?? ''}</span>
         </div>
       )}
 
@@ -735,7 +764,7 @@ export default function DiscoveryHub(_props: Props) {
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-card/80 dark:bg-card/60 rounded-2xl border border-border/80 backdrop-blur-md shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={handleFetchTelegramProxies}
+                onClick={() => handleFetchTelegramProxies()}
                 disabled={isFetchingTg || isTestingTg}
                 className="flex items-center gap-2 px-3.5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95"
               >
@@ -910,7 +939,7 @@ export default function DiscoveryHub(_props: Props) {
               <Send className="w-10 h-10 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">{t('empty_discovery_results')}</p>
               <button
-                onClick={handleFetchTelegramProxies}
+                onClick={() => handleFetchTelegramProxies()}
                 className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-semibold shadow-sm"
               >
                 {t('fetch_proxies')}
@@ -1024,7 +1053,7 @@ export default function DiscoveryHub(_props: Props) {
             <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={handleFetchFreeConfigs}
+                  onClick={() => handleFetchFreeConfigs()}
                   disabled={isFetchingConfigs || isTestingConfigs}
                   className="flex items-center gap-2 px-3.5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95"
                 >
@@ -1187,7 +1216,7 @@ export default function DiscoveryHub(_props: Props) {
               <Globe className="w-10 h-10 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">{t('empty_discovery_results')}</p>
               <button
-                onClick={handleFetchFreeConfigs}
+                onClick={() => handleFetchFreeConfigs()}
                 className="px-4 py-2 bg-primary/80 hover:bg-primary text-primary-foreground rounded-xl text-xs font-semibold"
               >
                 {t('fetch_configs')}

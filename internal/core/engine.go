@@ -828,17 +828,20 @@ func (e *Engine) Connect(profile config.Profile, settings config.Settings) error
 			verified := false
 			var lastErr error
 			verifyWindow := 40 * time.Second
+			verifyPort := 10808
 			if targetProtocol == config.ProtocolPsiphon {
 				// Psiphon negotiates through its own broker before it can forward
 				// anything, which routinely takes longer than a sing-box handshake.
+				// Psiphon listens for SOCKS5 on 10808 and HTTP proxy on 10809.
 				verifyWindow = 90 * time.Second
+				verifyPort = 10809
 			}
 			verifyDeadline := time.Now().Add(verifyWindow)
 			for time.Now().Before(verifyDeadline) {
 				if abortIfCoreDead("verify") {
 					return
 				}
-				if _, verr := parser.RealDelayPing(10808, testURL, 8*time.Second); verr == nil {
+				if _, verr := parser.RealDelayPing(verifyPort, testURL, 8*time.Second); verr == nil {
 					verified = true
 					break
 				} else {

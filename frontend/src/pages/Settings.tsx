@@ -273,8 +273,10 @@ export default function SettingsPage({ onSettingsSaved, connectionState }: Setti
       await api.toggleAutoFailover(enabled)
     } catch (err) {
       console.error('Toggle auto-failover error:', err)
-      // Roll the local state back so the switch never lies about reality.
-      setSettings({ ...settings, auto_failover_enabled: !enabled })
+      // Roll ONLY this flag back via a functional update: reverting the whole
+      // stale `settings` snapshot would wipe any other switch the user flipped
+      // between the optimistic set and this rollback.
+      setSettings(prev => (prev ? { ...prev, auto_failover_enabled: !enabled } : prev))
     }
   }
 

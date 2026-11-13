@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
+	"sync"
 
 	"nexvpn/internal/config"
 	"nexvpn/internal/core"
@@ -43,18 +43,35 @@ func main() {
 		"code_integrity_disabled", fmt.Sprintf("%t", startupSettings.WebviewDisableCodeIntegrity))
 
 	// Graceful Shutdown & Signal Trap:
-	// Ensures proxy and firewall rules are always restored even on force termination
+	// Ensures proxy and firewall rules are always restored even on force termination.
+	// runTerminationCleanup is guarded by a sync.Once because a signal can arrive
+	// while wails.Run is already exiting; without it, the signal goroutine and the
+	// normal post-Run path would run the same proxy/firewall teardown concurrently.
+	var cleanupOnce sync.Once
+	runTerminationCleanup := func() {
+		cleanupOnce.Do(func() {
+			diary.Log("launch", "termination-cleanup-started")
+			if app.engine != nil {
+				_ = app.engine.Disconnect()
+			}
+			_ = sysproxy.ClearSystemProxy()
+			_ = core.GetKillSwitch().ForceCleanup()
+			core.CleanupStaleCores()
+			// Clear the crash journal so the next launch does not run a spurious
+			// "previous session ended unexpectedly" auto-repair for a clean exit.
+			core.ClearConnectJournal()
+			diary.Log("launch", "termination-cleanup-done")
+		})
+	}
+
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	// os.Interrupt IS syscall.SIGINT on Windows; listing both is redundant and
+	// SIGTERM is never delivered to a Windows console app. Keep it minimal.
+	signal.Notify(sigChan, os.Interrupt)
 	go func() {
 		<-sigChan
 		diary.Log("launch", "signal-received")
-		if app.engine != nil {
-			_ = app.engine.Disconnect()
-		}
-		_ = sysproxy.ClearSystemProxy()
-		_ = core.GetKillSwitch().ForceCleanup()
-		core.CleanupStaleCores()
+		runTerminationCleanup()
 		diary.Close()
 		os.Exit(0)
 	}()
@@ -107,12 +124,7 @@ func main() {
 	})
 
 	// Ensure cleanup on normal termination
-	if app.engine != nil {
-		_ = app.engine.Disconnect()
-	}
-	_ = sysproxy.ClearSystemProxy()
-	_ = core.GetKillSwitch().ForceCleanup()
-	core.CleanupStaleCores()
+	runTerminationCleanup()
 
 	if err != nil {
 		diary.LogErr("launch", "wails-exited-with-error", err)

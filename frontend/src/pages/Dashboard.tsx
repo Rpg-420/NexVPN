@@ -42,7 +42,6 @@ import { t } from '../lib/i18n'
 import { translateBackendError } from '../lib/backendErrors'
 import { sound } from '../lib/sound'
 import { requestNotificationPermission } from '../lib/notification'
-import { generateQRCodeSVG } from '../lib/qrcode'
 import type { ConnectionStatus, TrafficStats, Settings, IPInfo, Profile } from '../types'
 import {
   cn,
@@ -81,7 +80,6 @@ const GlobeWidget = lazy(() => import('../components/GlobeWidget'))
 import SmartISPOptimizerCard from '../components/SmartISPOptimizerCard'
 import FloatingMiniWidget from '../components/FloatingMiniWidget'
 import CyberWaveVisualizer from '../components/CyberWaveVisualizer'
-import { ModalShell } from '../components/ui/modal-shell'
 import { Button } from '../components/ui/button'
 import { Progress } from '../components/ui/progress'
 import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
@@ -324,7 +322,6 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
   const pingProgress = usePingProgress(isPingingAll)
   const [dashboardToast, setDashboardToast] = useState<string | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
-  const [copiedQRLink, setCopiedQRLink] = useState(false)
   const [peakDown, setPeakDown] = useState(0)
   const [peakUp, setPeakUp] = useState(0)
   const [monthlyQuotaGB, setMonthlyQuotaGB] = useState<number>(0)
@@ -458,6 +455,10 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
   const loadDashboardData = useCallback(async () => {
     try {
       const [pList, s] = await Promise.all([api.getProfiles(), api.getSettings()])
+      // Always cache the latest settings: FragmentStudioModal and GamingModeModal
+      // read from this state when they open — previously it was never populated,
+      // so both modals received an empty Settings object.
+      if (s) setCurrentSettings(s)
       if (pList && Array.isArray(pList)) {
         setProfiles(pList)
         const savedLocal = localStorage.getItem('nexvpn_last_selected_profile_id')
@@ -535,6 +536,24 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
     }
   }, [isActioning, status.state, status.profile_id, selectedProfileId, profiles])
 
+  // A true disconnect: the floating widget previously mapped BOTH onConnect and
+  // onDisconnect to handleConnectToggle, which — when a different profile was
+  // selected — silently CONNECTED to that profile instead of disconnecting.
+  const handleWidgetDisconnect = useCallback(async () => {
+    if (isActioning) return
+    setIsActioning(true)
+    try {
+      sound.playDisconnect()
+      await api.disconnect()
+      setRealDelay(null)
+    } catch (err) {
+      console.error('Widget disconnect error:', err)
+      showToast(err instanceof Error ? err.message : t('error'))
+    } finally {
+      setIsActioning(false)
+    }
+  }, [isActioning])
+
   const handleTestRealDelay = async () => {
     if (isTestingDelay) return
     setIsTestingDelay(true)
@@ -590,17 +609,28 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
   }
 
   const handleAutoConnectFastest = async () => {
-    if (profiles.length === 0) return
-    const sorted = [...profiles].sort((a, b) => {
-      const pA = a.latency_ms && a.latency_ms > 0 ? a.latency_ms : 9999
-      const pB = b.latency_ms && b.latency_ms > 0 ? b.latency_ms : 9999
-      return pA - pB
-    })
-    const fastest = sorted[0]
-    if (fastest) {
-      handleSelectProfile(fastest.id)
-      sound.playConnect()
-      await api.connect(fastest.id)
+    if (profiles.length === 0 || isActioning) return
+    // Guarded like handleConnectToggle: double-clicks previously fired two
+    // api.connect calls, rejections were unhandled, and clicking while already
+    // connected switched profiles without disconnecting first.
+    setIsActioning(true)
+    try {
+      const sorted = [...profiles].sort((a, b) => {
+        const pA = a.latency_ms && a.latency_ms > 0 ? a.latency_ms : 9999
+        const pB = b.latency_ms && b.latency_ms > 0 ? b.latency_ms : 9999
+        return pA - pB
+      })
+      const fastest = sorted.find(p => p.id !== status.profile_id)
+      if (fastest) {
+        handleSelectProfile(fastest.id)
+        sound.playConnect()
+        await api.connect(fastest.id)
+      }
+    } catch (err) {
+      console.error('Auto-connect fastest error:', err)
+      showToast(err instanceof Error ? err.message : t('error'))
+    } finally {
+      setIsActioning(false)
     }
   }
 
@@ -1117,7 +1147,19 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
 
                 <Button variant="secondary" size="sm" className="p-1.5 text-secondary hover:text-primary hover:border-primary/40"
                   type="button"
-                  onClick={() => setShowQRModal(true)}
+                  onClick={async () => {
+                    if (activeProfile && !activeProfile.raw_uri && !activeProfile.config_content && activeProfile.id) {
+                      try {
+                        const full = await api.getProfileById(activeProfile.id)
+                        if (full) {
+                          setProfiles(prev => prev.map(p => p.id === full.id ? { ...p, ...full } : p))
+                        }
+                      } catch (err) {
+                        console.error('Failed to load profile details:', err)
+                      }
+                    }
+                    setShowQRModal(true)
+                  }}
                   disabled={!selectedProfileId}
                   title={t('qr_code_modal_title')}
                 >
@@ -1360,61 +1402,10 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
       {/* Smart ISP & Operator AI Recommendation Card (Moved to bottom) */}
       <SmartISPOptimizerCard />
 
-      {/* Mobile QR Code Exporter Modal */}
-      {showQRModal && activeProfile && (
-        <ModalShell
-          isOpen={showQRModal}
-          onClose={() => setShowQRModal(false)}
-          maxWidth="max-w-sm"
-          bodyClassName="p-4 text-center"
-        >
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <div className="flex items-center gap-2 font-bold text-foreground text-sm">
-                <Smartphone size={16} className="text-primary" />
-                <span>{t('qr_code_modal_title')}</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-md text-muted-foreground"
-                onClick={() => setShowQRModal(false)}
-              >
-                <X size={15} />
-              </Button>
-            </div>
-
-            <div className="p-4 flex flex-col items-center gap-3">
-              <div className="p-3 bg-card rounded-2xl shadow-xl">
-                <img
-                  src={generateQRCodeSVG(activeProfile.raw_uri || activeProfile.config_content || activeProfile.name, 190)}
-                  alt="QR Code"
-                  className="w-48 h-48"
-                />
-              </div>
-
-              <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <CountryFlag codeOrName={activeProfile.country_code || activeProfile.name} size="xs" />
-                <span>{activeProfile.name}</span>
-              </div>
-
-              <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-                {t('qr_code_modal_desc')}
-              </p>
-
-              <Button variant="secondary" size="sm" className="w-full flex items-center justify-center gap-2 text-xs text-primary border-primary/30 hover:bg-primary/10"
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(activeProfile.raw_uri || activeProfile.config_content)
-                  setCopiedQRLink(true)
-                  safeTimeout(() => setCopiedQRLink(false), 2000)
-                }}
-              >
-                {copiedQRLink ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                <span>{copiedQRLink ? t('link_copied') : t('copy_config_link')}</span>
-              </Button>
-            </div>
-        </ModalShell>
-      )}
+      {/* Mobile QR Code Exporter Modal — the legacy inline ModalShell variant
+          was removed: it rendered ALONGSIDE ProfileQRModal below, producing two
+          stacked dialogs whenever showQRModal was set. The lazy
+          ProfileQRModal (Suspense block) is the single QR surface now. */}
 
       {/* Modals - lazy-loaded once, wrapped in Suspense (duplicate renders removed) */}
       <Suspense fallback={null}>
@@ -1570,7 +1561,7 @@ export default function Dashboard({ status, stats, onOpenDoctor }: Props) {
           onSelectProfile={handleSelectProfile}
           onToggleConnect={handleConnectToggle}
           onConnect={handleConnectToggle}
-          onDisconnect={handleConnectToggle}
+          onDisconnect={handleWidgetDisconnect}
           onCloseWidget={() => setShowFloatingWidget(false)}
           onHideToTray={() => api.hideWindow()}
           onOpenMainWindow={() => api.showWindow()}

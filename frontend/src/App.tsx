@@ -65,7 +65,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './components/ui/tooltip'
-import { api } from './lib/api'
+import { api, whenRuntimeReady } from './lib/api'
 import { cn, reportFailure } from './lib/utils'
 import { t, getLanguage, setLanguage, onLanguageChange } from './lib/i18n'
 import { announce } from './lib/announcer'
@@ -222,20 +222,29 @@ export default function App() {
       }
     })
 
-    // Low-overhead fallback poll — only fires if Wails events are unavailable (dev/mock mode)
-    const hasWailsRuntime =
-      typeof window !== 'undefined' &&
-      (window as any).runtime?.EventsOn
-    const interval = hasWailsRuntime
-      ? null
-      : setInterval(() => {
-          api.getConnectionStatus().then(st => {
-            if (st) {
-              setStatus(st)
-              handleGlobalStatusNotification(st)
-            }
-          }).catch(reportFailure('status poll'))
-        }, 3000)
+    // Low-overhead fallback poll — only fires if Wails events are genuinely
+    // unavailable (dev/mock mode). The decision is made AFTER the runtime-ready
+    // gate resolves, not synchronously at mount: in a cold start the Wails
+    // runtime is injected late and a mount-time snapshot would either spin a
+    // useless poll forever or miss events that do eventually attach.
+    let cancelled = false
+    let pollInterval: ReturnType<typeof setInterval> | null = null
+    whenRuntimeReady()
+      .then(ready => {
+        if (cancelled) return
+        const eventsAvailable = ready && typeof (window as any).runtime?.EventsOn === 'function'
+        if (!eventsAvailable) {
+          pollInterval = setInterval(() => {
+            api.getConnectionStatus().then(st => {
+              if (st) {
+                setStatus(st)
+                handleGlobalStatusNotification(st)
+              }
+            }).catch(reportFailure('status poll'))
+          }, 3000)
+        }
+      })
+      .catch(() => { /* surface via status poll below */ })
 
     // Global Command Palette Shortcut Listener (Ctrl+K or Cmd+K)
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -247,13 +256,14 @@ export default function App() {
     window.addEventListener('keydown', handleGlobalKeyDown)
 
     return () => {
+      cancelled = true
       unsubLang()
       unsubTheme()
       unlistenStatus()
       unlistenStats()
       unlistenNetwork()
       unlistenPower()
-      if (interval) clearInterval(interval)
+      if (pollInterval) clearInterval(pollInterval)
       window.removeEventListener('keydown', handleGlobalKeyDown)
     }
   }, [])

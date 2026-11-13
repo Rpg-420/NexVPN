@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import type { ProfileReliability } from '../types'
 import {
   Zap,
   Copy,
@@ -17,6 +18,9 @@ import {
   ArrowRightLeft,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useProfileList } from '../hooks/useProfileList'
+import { ReliabilityBadge } from '../components/ui/reliability-badge'
+import { useToast } from '../hooks/useToast'
 import { t } from '../lib/i18n'
 import type { Profile, ConnectionStatus } from '../types'
 import { generateQRCodeSVG } from '../lib/qrcode'
@@ -42,7 +46,22 @@ interface Props {
 type SortMode = 'default' | 'ping_asc' | 'ping_desc' | 'name'
 
 export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTab }: Props) {
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  // Shared loader + live-sync (the missing Array.isArray guard here once blanked this page)
+  const { profiles, setProfiles, loadProfiles } = useProfileList('wireguard_warp')
+  const [scores, setScores] = useState<Record<string, ProfileReliability>>({})
+
+  const loadScores = useCallback(async () => {
+    try {
+      const m = await api.getProfileReliabilityScores()
+      if (m) setScores(m)
+    } catch (err) {
+      console.error('Failed to load reliability scores:', err)
+    }
+  }, [])
+  useEffect(() => {
+    void loadScores()
+  }, [loadScores])
+
   const [search, setSearch] = useState('')
   const [sortMode, setSortModeState] = useState<SortMode>(() => {
     return (localStorage.getItem('nexvpn_warp_sort') as SortMode) || 'default'
@@ -69,21 +88,10 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isPinging, setIsPinging] = useState(false)
   const pingProgress = usePingProgress(isPinging)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg)
-    setTimeout(() => setToastMessage(null), 3000)
-  }
+  // Shared toast helper: managed timer + unmount cleanup + per-show re-arm
+  const { toast: toastMessage, showToast } = useToast(3000)
 
-  const loadProfiles = useCallback(async () => {
-    try {
-      const list = await api.getProfilesByCategory('wireguard_warp')
-      if (list && Array.isArray(list)) setProfiles(list)
-    } catch (err) {
-      console.error('Failed to load WireGuard/WARP profiles:', err)
-    }
-  }, [])
 
   // Seed the Clean IP / port inputs from the persisted settings so a value
   // discovered by an optimal-IP scan is actually reused instead of silently
@@ -201,7 +209,8 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
     setIsPinging(true)
     try {
       const updated = await api.pingAllProfiles('wireguard_warp')
-      setProfiles(updated)
+      if (updated && Array.isArray(updated)) setProfiles(updated)
+      void loadScores()
     } catch (err) {
       console.error('Ping all error:', err)
     } finally {
@@ -268,10 +277,18 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
     }
   }
 
-  const handleCopyURI = (p: Profile, e: React.MouseEvent) => {
+  const handleCopyURI = async (p: Profile, e: React.MouseEvent) => {
     e.stopPropagation()
-    const text = p.raw_uri || p.config_content || p.name
-    navigator.clipboard.writeText(text)
+    let text = p.raw_uri || p.config_content
+    if (!text && p.id) {
+      try {
+        const full = await api.getProfileById(p.id)
+        text = full?.raw_uri || full?.config_content
+      } catch (err) {
+        console.error('Failed to load profile for copy:', err)
+      }
+    }
+    navigator.clipboard.writeText(text || p.name)
     setCopiedId(p.id)
     setTimeout(() => setCopiedId(null), 2000)
   }
@@ -308,7 +325,7 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
           aria-live="polite"
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-xl bg-card border border-primary/40 text-primary text-xs font-semibold shadow-2xl animate-fade-in"
         >
-          {toastMessage}
+          {toastMessage?.message ?? ''}
         </div>
       )}
       {/* Header */}
@@ -543,6 +560,7 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground truncate shrink-0">
                       WireGuard
                     </span>
+                    <ReliabilityBadge r={scores[p.id]} />
                   </>
                 }
                 actionsSlot={
@@ -573,9 +591,18 @@ export default function WarpWireGuardPage({ status, onStatusChange, onNavigateTa
                       type="button"
                       className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition"
                       title={t('qr_code_modal_title')}
-                      onClick={e => {
+                      onClick={async e => {
                         e.stopPropagation()
-                        setSharingProfile(p)
+                        let full = p
+                        if (!full.raw_uri && !full.config_content && p.id) {
+                          try {
+                            const fetched = await api.getProfileById(p.id)
+                            if (fetched) full = fetched
+                          } catch (err) {
+                            console.error('Failed to load full profile for share:', err)
+                          }
+                        }
+                        setSharingProfile(full)
                       }}
                     >
                       <QrCode size={13} />

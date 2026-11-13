@@ -148,10 +148,14 @@ func (a *App) prepareTunnelBearProfile(profile config.Profile) (config.Profile, 
 		return profile, "", err
 	}
 
-	// A relay from a previous connection is stopped first: the port it held is
-	// about to be reissued, and two listeners would race for it.
-	closeTunnelBearRelay()
-
+	// Hold the lock across the whole start-new → swap → close-old sequence.
+	// Two concurrent connects previously both passed closeTunnelBearRelay (each
+	// seeing a nil relay), both started a relay, and the one assigned first was
+	// overwritten without ever being closed — a leaked loopback listener and
+	// its goroutines. Starting under the lock is safe: packet forwarding runs
+	// on the relay's own goroutines, not on this critical section.
+	tunnelBearRelayMu.Lock()
+	old := tunnelBearRelay
 	relay := protocols.NewSplitRelay(ips, discovery.TunnelBearTCPPort, func(level, msg, source string) {
 		if a.engine != nil {
 			a.engine.AddLog(level, msg, source)
@@ -159,12 +163,14 @@ func (a *App) prepareTunnelBearProfile(profile config.Profile) (config.Profile, 
 	})
 	port, err := relay.Start()
 	if err != nil {
+		tunnelBearRelayMu.Unlock()
 		return profile, "", fmt.Errorf("could not start the TunnelBear relay: %w", err)
 	}
-
-	tunnelBearRelayMu.Lock()
 	tunnelBearRelay = relay
 	tunnelBearRelayMu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
 
 	profile = applyTunnelBearConnection(profile,
 		discovery.BuildTunnelBearConfig(host, port, ips), username, password)

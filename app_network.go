@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -73,8 +76,88 @@ type RadarReport struct {
 	Timestamp         string                `json:"timestamp"`
 }
 
-// RunProtocolRadar concurrently tests various protocols against censorship filters
+// Radar state: a radar run is a bounded but multi-second operation, so it gets
+// a cancel handle exactly like the other scanners, though the run itself stays
+// a synchronous binding call (the RadarModal awaits the report).
+type radarState struct {
+	mu     sync.Mutex
+	cancel context.CancelFunc
+}
+
+var radarRun radarState
+
+// ProtocolRadarHistoryFile returns <dataDir>/radar-history.json.
+func protocolRadarHistoryFile(dataDir string) string {
+	return filepath.Join(dataDir, "radar-history.json")
+}
+
+// appendRadarHistory persists a finished report (capped at the most recent 50)
+// so "is the block getting worse?" is answerable across app restarts — radar
+// reports used to be thrown away the moment the modal closed.
+func (a *App) appendRadarHistory(report *RadarReport) {
+	if a.store == nil || report == nil {
+		return
+	}
+	path := protocolRadarHistoryFile(a.store.GetDataDir())
+	var history []*RadarReport
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &history)
+	}
+	history = append([]*RadarReport{report}, history...)
+	if len(history) > 50 {
+		history = history[:50]
+	}
+	if raw, err := json.MarshalIndent(history, "", "  "); err == nil {
+		_ = os.WriteFile(path, raw, 0600)
+	}
+}
+
+// GetProtocolRadarHistory returns the persisted radar reports, newest first.
+func (a *App) GetProtocolRadarHistory() []*RadarReport {
+	if a.store == nil {
+		return nil
+	}
+	raw, err := os.ReadFile(protocolRadarHistoryFile(a.store.GetDataDir()))
+	if err != nil {
+		return nil
+	}
+	var history []*RadarReport
+	if err := json.Unmarshal(raw, &history); err != nil {
+		return nil
+	}
+	return history
+}
+
+// CancelProtocolRadar aborts an in-flight radar run between probe samples.
+func (a *App) CancelProtocolRadar() {
+	radarRun.mu.Lock()
+	if radarRun.cancel != nil {
+		radarRun.cancel()
+	}
+	radarRun.mu.Unlock()
+}
+
+// RunProtocolRadar tests various protocols against censorship filters and
+// stores the finished report in the persisted history.
+//
+// Re-entry is rejected instead of racing a second run over the shared results
+// buffer, and the run honours a cancel handle (checked between probe samples)
+// so a slow network cannot lock an unbounded scan in place.
 func (a *App) RunProtocolRadar() (*RadarReport, error) {
+	radarRun.mu.Lock()
+	if radarRun.cancel != nil {
+		radarRun.mu.Unlock()
+		return nil, fmt.Errorf("a radar run is already in progress")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	radarRun.cancel = cancel
+	radarRun.mu.Unlock()
+	defer func() {
+		radarRun.mu.Lock()
+		radarRun.cancel = nil
+		radarRun.mu.Unlock()
+	}()
+
 	ipInfo, _ := a.LookupExternalIP()
 	ispName := "Unknown ISP"
 	ipAddr := "127.0.0.1"
@@ -134,6 +217,11 @@ func (a *App) RunProtocolRadar() (*RadarReport, error) {
 			bestLatency := -1
 
 			for s := 0; s < probeSamples; s++ {
+				// Bail out between samples on cancel — SmartPing itself does not
+				// take a context, so this bounds a cancelled run to one probe.
+				if ctx.Err() != nil {
+					return
+				}
 				sent++
 				sample := parser.SmartPing(target.host, target.port, target.probe, 2500*time.Millisecond)
 				if sample > 0 {
@@ -213,6 +301,11 @@ func (a *App) RunProtocolRadar() (*RadarReport, error) {
 		Timestamp:         time.Now().Format("2006-01-02 15:04:05"),
 	}
 
+	// A cancelled run is abandoned, not recorded.
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("radar run cancelled")
+	}
+	a.appendRadarHistory(report)
 	return report, nil
 }
 

@@ -67,7 +67,7 @@ func currentSSID() string {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "netsh", "wlan", "show", "interfaces")
+	cmd := exec.CommandContext(ctx, "cmd", "/c", "chcp", "65001", ">nul", "&", "netsh", "wlan", "show", "interfaces")
 	cmd.SysProcAttr = sysproc.HideWindowAttr()
 	out, err := cmd.Output()
 	if err != nil {
@@ -339,15 +339,19 @@ func (a *App) startScheduleLoop(ctx context.Context) {
 
 // runDueSchedules is separated from the ticker so it can be tested and so the
 // scheduling decision is visible in one place.
+//
+// The marker write is ATOMIC via UpdateSettings: the old pattern (mutate a full
+// GetSettings snapshot for the whole batch, then SaveSettings) could erase a
+// settings change the user made in the same tick — the read-modify-write was
+// not under the store lock.
 func (a *App) runDueSchedules(now time.Time) {
 	settings := a.store.GetSettings()
 	if len(settings.ScheduleRules) == 0 {
 		return
 	}
 
-	changed := false
 	for i := range settings.ScheduleRules {
-		rule := &settings.ScheduleRules[i]
+		rule := settings.ScheduleRules[i]
 		due, slot := rule.ShouldFireAt(now)
 		if !due {
 			continue
@@ -357,8 +361,16 @@ func (a *App) runDueSchedules(now time.Time) {
 		// dies mid-action, the rule must not re-fire every 30 seconds for the
 		// rest of the minute — a connect/disconnect loop is worse than a
 		// missed schedule.
-		rule.LastRun = slot
-		changed = true
+		if err := a.store.UpdateSettings(func(s *config.Settings) {
+			for j := range s.ScheduleRules {
+				if s.ScheduleRules[j].ID == rule.ID {
+					s.ScheduleRules[j].LastRun = slot
+				}
+			}
+		}); err != nil {
+			a.engine.AddLog("error", fmt.Sprintf(
+				"Could not persist the schedule run marker: %v", err), "schedule")
+		}
 
 		diary.Log("schedule", "fire",
 			"action", rule.Action,
@@ -393,13 +405,6 @@ func (a *App) runDueSchedules(now time.Time) {
 			a.engine.AddLog("info", fmt.Sprintf(
 				"Scheduled disconnect (%s)", rule.Time), "schedule")
 			go func() { _ = a.Disconnect() }()
-		}
-	}
-
-	if changed {
-		if err := a.store.SaveSettings(settings); err != nil {
-			a.engine.AddLog("error", fmt.Sprintf(
-				"Could not persist the schedule run marker: %v", err), "schedule")
 		}
 	}
 }
