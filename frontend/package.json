@@ -29,7 +29,7 @@
     "flag-icons": "^7.5.0",
     "framer-motion": "^11.3.19",
     "jsqr": "^1.4.0",
-    "lucide-react": "^0.438.0",
+    "lucide-react": "^1.70.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
